@@ -9,6 +9,13 @@ import { registerProjectsCommands } from './commands/projects/list.js';
 import { registerProjectLinkCommand } from './commands/projects/link.js';
 import { registerDbCommands } from './commands/db/query.js';
 import { registerDbTablesCommand } from './commands/db/tables.js';
+import { registerDbFunctionsCommand } from './commands/db/functions.js';
+import { registerDbIndexesCommand } from './commands/db/indexes.js';
+import { registerDbPoliciesCommand } from './commands/db/policies.js';
+import { registerDbTriggersCommand } from './commands/db/triggers.js';
+import { registerDbRpcCommand } from './commands/db/rpc.js';
+import { registerDbExportCommand } from './commands/db/export.js';
+import { registerDbImportCommand } from './commands/db/import.js';
 import { registerRecordsCommands } from './commands/records/list.js';
 import { registerRecordsCreateCommand } from './commands/records/create.js';
 import { registerRecordsUpdateCommand } from './commands/records/update.js';
@@ -85,6 +92,13 @@ registerProjectLinkCommand(projectsCmd);
 const dbCmd = program.command('db').description('Database operations');
 registerDbCommands(dbCmd);
 registerDbTablesCommand(dbCmd);
+registerDbFunctionsCommand(dbCmd);
+registerDbIndexesCommand(dbCmd);
+registerDbPoliciesCommand(dbCmd);
+registerDbTriggersCommand(dbCmd);
+registerDbRpcCommand(dbCmd);
+registerDbExportCommand(dbCmd);
+registerDbImportCommand(dbCmd);
 
 // Records commands
 const recordsCmd = program.command('records').description('CRUD operations on table records');

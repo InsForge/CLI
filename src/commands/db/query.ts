@@ -20,7 +20,7 @@ export function registerDbCommands(dbCmd: Command): void {
 
         const res = await ossFetch(endpoint, {
           method: 'POST',
-          body: JSON.stringify({ sql }),
+          body: JSON.stringify({ query: sql }),
         });
 
         const data = await res.json() as { rows?: Record<string, unknown>[]; data?: Record<string, unknown>[] };
