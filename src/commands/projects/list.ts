@@ -25,13 +25,13 @@ export function registerProjectsCommands(projectsCmd: Command): void {
             throw new CLIError('No organizations found. Create one on the InsForge dashboard.');
           }
           if (orgs.length === 1) {
-            orgId = orgs[0].organization.id;
+            orgId = orgs[0].id;
           } else if (!json) {
             const selected = await clack.select({
               message: 'Select an organization:',
               options: orgs.map((o) => ({
-                value: o.organization.id,
-                label: o.organization.name,
+                value: o.id,
+                label: o.name,
               })),
             });
             if (clack.isCancel(selected)) {

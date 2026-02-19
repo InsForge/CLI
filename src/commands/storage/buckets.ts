@@ -14,11 +14,22 @@ export function registerStorageBucketsCommand(storageCmd: Command): void {
         requireAuth();
 
         const res = await ossFetch('/api/storage/buckets');
-        const data = await res.json() as { buckets?: ({ name?: string } | string)[] };
-        const buckets = data.buckets ?? [];
+        const raw = await res.json() as unknown;
+
+        // API may return { buckets: string[] } or string[] directly
+        let buckets: string[];
+        if (Array.isArray(raw)) {
+          buckets = raw as string[];
+        } else if (raw && typeof raw === 'object' && 'buckets' in raw && Array.isArray((raw as Record<string, unknown>).buckets)) {
+          buckets = (raw as Record<string, unknown>).buckets as string[];
+        } else {
+          // Fallback: find first array in response
+          const arr = raw && typeof raw === 'object' ? Object.values(raw).find(Array.isArray) : null;
+          buckets = (arr as string[] | null) ?? [];
+        }
 
         if (json) {
-          outputJson(buckets);
+          outputJson(raw);
         } else {
           if (buckets.length === 0) {
             console.log('No buckets found.');
@@ -26,7 +37,7 @@ export function registerStorageBucketsCommand(storageCmd: Command): void {
           }
           outputTable(
             ['Bucket Name'],
-            buckets.map((b) => [typeof b === 'string' ? b : b.name ?? JSON.stringify(b)]),
+            buckets.map((b) => [typeof b === 'string' ? b : JSON.stringify(b)]),
           );
         }
       } catch (err) {

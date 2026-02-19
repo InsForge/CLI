@@ -4,7 +4,7 @@ import { refreshAccessToken } from '../credentials.js';
 import type {
   ApiKeyResponse,
   LoginResponse,
-  OrgMembership,
+  Organization,
   Project,
   User,
 } from '../../types.js';
@@ -83,10 +83,10 @@ export async function getProfile(apiUrl?: string): Promise<User> {
 
 // --- Organizations ---
 
-export async function listOrganizations(apiUrl?: string): Promise<OrgMembership[]> {
+export async function listOrganizations(apiUrl?: string): Promise<Organization[]> {
   const res = await platformFetch('/organizations/v1', {}, apiUrl);
-  const data = await res.json() as { organizations?: OrgMembership[] };
-  return data.organizations ?? (data as unknown as OrgMembership[]);
+  const data = await res.json() as { organizations?: Organization[] };
+  return data.organizations ?? (data as unknown as Organization[]);
 }
 
 // --- Projects ---

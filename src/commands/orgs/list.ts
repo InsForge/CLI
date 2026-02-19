@@ -22,11 +22,11 @@ export function registerOrgsCommands(orgsCmd: Command): void {
             return;
           }
           outputTable(
-            ['ID', 'Name', 'Role'],
+            ['ID', 'Name', 'Type'],
             orgs.map((o) => [
-              o.organization.id,
-              o.organization.name,
-              o.role ?? '-',
+              o.id,
+              o.name,
+              o.type ?? '-',
             ]),
           );
         }
