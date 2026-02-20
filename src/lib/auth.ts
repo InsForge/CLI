@@ -4,7 +4,7 @@ import { URL } from 'node:url';
 
 // Default OAuth client for InsForge CLI (pre-registered on the platform)
 export const DEFAULT_CLIENT_ID = 'clf_NK8cMUs41gm8ZcfdtSguVw';
-export const OAUTH_SCOPES = 'organizations:read projects:read projects:write';
+export const OAUTH_SCOPES = 'user:read organizations:read projects:read projects:write';
 
 export interface PKCEChallenge {
   code_verifier: string;
@@ -164,14 +164,14 @@ export function startCallbackServer(): Promise<{
       resolveServer({
         port,
         result: resultPromise,
-        close: () => server.close(),
+        close: () => { server.close(); server.closeAllConnections(); },
       });
     });
 
-    // Timeout after 5 minutes
+    // Timeout after 5 minutes (unref so it doesn't keep the process alive)
     setTimeout(() => {
       rejectResult!(new Error('Authentication timed out. Please try again.'));
       server.close();
-    }, 5 * 60 * 1000);
+    }, 5 * 60 * 1000).unref();
   });
 }
