@@ -1,6 +1,6 @@
 # @insforge/cli
 
-Command line tool for the [InsForge](https://insforge.dev) platform. Manage your databases, edge functions, storage, and more — directly from the terminal.
+Command line tool for the [InsForge](https://insforge.dev) platform. Manage your databases, edge functions, storage, deployments, secrets, and more — directly from the terminal.
 
 Designed to be both human-friendly (interactive prompts, formatted tables) and agent-friendly (structured JSON output, non-interactive mode, semantic exit codes).
 
@@ -24,22 +24,15 @@ insforge login --email
 # Check current user
 insforge whoami
 
-# List your organizations
-insforge orgs list
-
-# List projects in an organization
-insforge projects list
+# List all organizations and projects
+insforge list
 
 # Link current directory to a project
-insforge projects link
+insforge link
 
 # Query the database
 insforge db tables
 insforge db query "SELECT * FROM users LIMIT 10"
-
-# Manage records
-insforge records list users --limit 5
-insforge records create users --data '{"name": "Alice", "email": "alice@example.com"}'
 ```
 
 ## Authentication
@@ -83,107 +76,141 @@ All commands support the following flags:
 
 ## Commands
 
-### `insforge whoami`
+### Top-Level
+
+#### `insforge whoami`
 
 Show the current authenticated user.
 
 ```bash
 insforge whoami
-# Logged in as: alice@example.com
-# Name: Alice
-# ID: abc-123
-
 insforge whoami --json
-# {"id":"abc-123","name":"Alice","email":"alice@example.com",...}
 ```
 
-### `insforge orgs list`
+#### `insforge list`
 
-List all organizations you belong to.
+List all organizations and their projects in a grouped table.
 
 ```bash
-insforge orgs list
+insforge list
+insforge list --json
 ```
 
-### `insforge projects list`
+#### `insforge create`
 
-List all projects in an organization.
+Create a new InsForge project interactively.
 
 ```bash
-insforge projects list
-insforge projects list --org-id <org-id>
+insforge create
+insforge create --name "my-app" --org-id <org-id> --region us-east-1
 ```
 
-### `insforge projects link`
+#### `insforge link`
 
-Link the current directory to an InsForge project. This creates a `.insforge/project.json` file that stores the project ID, API key, and OSS host URL for subsequent commands.
+Link the current directory to an InsForge project. Creates `.insforge/project.json` with the project ID, API key, and OSS host URL.
 
 ```bash
 # Interactive: select from a list
-insforge projects link
+insforge link
 
 # Non-interactive
-insforge projects link --project-id <id> --org-id <org-id>
+insforge link --project-id <id> --org-id <org-id>
 ```
 
-### `insforge db tables`
+#### `insforge current`
 
-List all database tables in the linked project.
+Show current CLI context (authenticated user, linked project).
 
 ```bash
-insforge db tables
-insforge db tables --json
+insforge current
+insforge current --json
 ```
 
-### `insforge db query <sql>`
+---
+
+### Database — `insforge db`
+
+#### `insforge db query <sql>`
 
 Execute a raw SQL query.
 
 ```bash
 insforge db query "SELECT * FROM users LIMIT 10"
 insforge db query "SELECT count(*) FROM orders" --json
-
-# Use unrestricted mode for system table access
 insforge db query "SELECT * FROM pg_tables" --unrestricted
 ```
 
-### `insforge records list <table>`
+#### `insforge db tables`
 
-List records from a table with optional filtering, sorting, and pagination.
-
-```bash
-insforge records list users
-insforge records list users --select "id,name,email" --limit 10
-insforge records list users --filter "name=eq.Alice" --order "created_at.desc"
-insforge records list orders --limit 20 --offset 40 --json
-```
-
-### `insforge records create <table>`
-
-Create one or more records.
+List all database tables.
 
 ```bash
-insforge records create users --data '{"name": "Alice", "email": "alice@example.com"}'
-insforge records create users --data '[{"name": "Bob"}, {"name": "Carol"}]'
+insforge db tables
+insforge db tables --json
 ```
 
-### `insforge records update <table>`
+#### `insforge db functions`
 
-Update records matching a filter.
+List all database functions.
 
 ```bash
-insforge records update users --filter "id=eq.123" --data '{"name": "Alice Updated"}'
+insforge db functions
 ```
 
-### `insforge records delete <table>`
+#### `insforge db indexes`
 
-Delete records matching a filter.
+List all database indexes.
 
 ```bash
-insforge records delete users --filter "id=eq.123"
+insforge db indexes
 ```
 
-### `insforge functions list`
+#### `insforge db policies`
+
+List all RLS policies.
+
+```bash
+insforge db policies
+```
+
+#### `insforge db triggers`
+
+List all database triggers.
+
+```bash
+insforge db triggers
+```
+
+#### `insforge db rpc <functionName>`
+
+Call a database function via RPC.
+
+```bash
+insforge db rpc my_function --data '{"param1": "value"}'
+```
+
+#### `insforge db export`
+
+Export database schema and/or data.
+
+```bash
+insforge db export --output schema.sql
+insforge db export --data-only --output data.sql
+```
+
+#### `insforge db import <file>`
+
+Import database from a local SQL file.
+
+```bash
+insforge db import schema.sql
+```
+
+---
+
+### Functions — `insforge functions`
+
+#### `insforge functions list`
 
 List all edge functions.
 
@@ -192,16 +219,25 @@ insforge functions list
 insforge functions list --json
 ```
 
-### `insforge functions deploy <slug>`
+#### `insforge functions code <slug>`
 
-Deploy an edge function. Creates the function if it doesn't exist, or updates it if it does.
+View the source code of an edge function.
+
+```bash
+insforge functions code my-function
+insforge functions code my-function --json
+```
+
+#### `insforge functions deploy <slug>`
+
+Deploy an edge function. Creates the function if it doesn't exist, or updates it.
 
 ```bash
 insforge functions deploy my-function --file ./handler.ts
 insforge functions deploy my-function --file ./handler.ts --name "My Function" --description "Does something"
 ```
 
-### `insforge functions invoke <slug>`
+#### `insforge functions invoke <slug>`
 
 Invoke an edge function.
 
@@ -211,7 +247,11 @@ insforge functions invoke my-function --method GET
 insforge functions invoke my-function --data '{"key": "value"}' --json
 ```
 
-### `insforge storage buckets`
+---
+
+### Storage — `insforge storage`
+
+#### `insforge storage buckets`
 
 List all storage buckets.
 
@@ -220,7 +260,34 @@ insforge storage buckets
 insforge storage buckets --json
 ```
 
-### `insforge storage upload <file>`
+#### `insforge storage create-bucket <name>`
+
+Create a new storage bucket.
+
+```bash
+insforge storage create-bucket images
+insforge storage create-bucket private-docs --private
+```
+
+#### `insforge storage delete-bucket <name>`
+
+Delete a storage bucket and all its objects.
+
+```bash
+insforge storage delete-bucket images
+insforge storage delete-bucket images -y   # skip confirmation
+```
+
+#### `insforge storage list-objects <bucket>`
+
+List objects in a storage bucket.
+
+```bash
+insforge storage list-objects images
+insforge storage list-objects images --prefix "avatars/" --limit 50
+```
+
+#### `insforge storage upload <file>`
 
 Upload a file to a storage bucket.
 
@@ -229,7 +296,7 @@ insforge storage upload ./photo.png --bucket images
 insforge storage upload ./photo.png --bucket images --key "avatars/user-123.png"
 ```
 
-### `insforge storage download <objectKey>`
+#### `insforge storage download <objectKey>`
 
 Download a file from a storage bucket.
 
@@ -238,9 +305,104 @@ insforge storage download avatars/user-123.png --bucket images
 insforge storage download avatars/user-123.png --bucket images --output ./downloaded.png
 ```
 
+---
+
+### Deployments — `insforge deployments`
+
+#### `insforge deployments deploy [directory]`
+
+Deploy a frontend project. Zips the source, uploads it, and polls for build completion (up to 2 minutes).
+
+```bash
+insforge deployments deploy
+insforge deployments deploy ./my-app
+insforge deployments deploy --env '{"API_URL": "https://api.example.com"}'
+```
+
+#### `insforge deployments list`
+
+List all deployments.
+
+```bash
+insforge deployments list
+insforge deployments list --limit 5 --json
+```
+
+#### `insforge deployments status <id>`
+
+Get deployment details and status.
+
+```bash
+insforge deployments status abc-123
+insforge deployments status abc-123 --sync   # sync status from Vercel first
+```
+
+#### `insforge deployments cancel <id>`
+
+Cancel a running deployment.
+
+```bash
+insforge deployments cancel abc-123
+```
+
+---
+
+### Secrets — `insforge secrets`
+
+#### `insforge secrets list`
+
+List all secrets (metadata only, values are hidden). Inactive (deleted) secrets are hidden by default.
+
+```bash
+insforge secrets list
+insforge secrets list --all   # include inactive secrets
+insforge secrets list --json
+```
+
+#### `insforge secrets get <key>`
+
+Get the decrypted value of a secret.
+
+```bash
+insforge secrets get STRIPE_API_KEY
+insforge secrets get STRIPE_API_KEY --json
+```
+
+#### `insforge secrets add <key> <value>`
+
+Create a new secret.
+
+```bash
+insforge secrets add STRIPE_API_KEY sk_live_xxx
+insforge secrets add STRIPE_API_KEY sk_live_xxx --reserved
+insforge secrets add TEMP_TOKEN abc123 --expires "2025-12-31T00:00:00Z"
+```
+
+#### `insforge secrets update <key>`
+
+Update an existing secret.
+
+```bash
+insforge secrets update STRIPE_API_KEY --value sk_live_new_xxx
+insforge secrets update STRIPE_API_KEY --active false
+insforge secrets update STRIPE_API_KEY --reserved true
+insforge secrets update STRIPE_API_KEY --expires null   # remove expiration
+```
+
+#### `insforge secrets delete <key>`
+
+Delete a secret (soft delete — marks as inactive).
+
+```bash
+insforge secrets delete STRIPE_API_KEY
+insforge secrets delete STRIPE_API_KEY -y   # skip confirmation
+```
+
+---
+
 ## Project Configuration
 
-Running `insforge projects link` creates a `.insforge/` directory in your project:
+Running `insforge link` creates a `.insforge/` directory in your project:
 
 ```
 .insforge/
@@ -276,10 +438,13 @@ All commands support `--json` for structured output and `-y` to skip confirmatio
 INSFORGE_EMAIL=$EMAIL INSFORGE_PASSWORD=$PASSWORD insforge login --email --json
 
 # Link a project
-insforge projects link --project-id $PROJECT_ID --org-id $ORG_ID -y
+insforge link --project-id $PROJECT_ID --org-id $ORG_ID -y
 
 # Query and pipe results
 insforge db query "SELECT * FROM users" --json | jq '.rows[].email'
+
+# Deploy frontend
+insforge deployments deploy ./dist --json
 
 # Upload a build artifact
 insforge storage upload ./dist/bundle.js --bucket assets --key "v1.2.0/bundle.js" --json
@@ -292,7 +457,7 @@ insforge storage upload ./dist/bundle.js --bucket assets --key "v1.2.0/bundle.js
 | 0 | Success |
 | 1 | General error |
 | 2 | Authentication failure |
-| 3 | Project not linked (run `insforge projects link` first) |
+| 3 | Project not linked (run `insforge link` first) |
 | 4 | Resource not found |
 | 5 | Permission denied |
 
