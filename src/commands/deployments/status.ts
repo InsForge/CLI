@@ -35,9 +35,9 @@ export function registerDeploymentsStatusCommand(deploymentsCmd: Command): void 
               ['Status', d.status],
               ['Provider', d.provider ?? '-'],
               ['Provider ID', d.providerDeploymentId ?? '-'],
-              ['URL', d.deploymentUrl ?? '-'],
-              ['Created', new Date(d.created_at).toLocaleString()],
-              ['Updated', new Date(d.updated_at).toLocaleString()],
+              ['URL', d.deploymentUrl ?? d.url ?? '-'],
+              ['Created', new Date(d.createdAt).toLocaleString()],
+              ['Updated', new Date(d.updatedAt).toLocaleString()],
               ...(d.error ? [['Error', d.error]] : []),
             ],
           );

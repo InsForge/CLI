@@ -8,7 +8,10 @@ import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
-import type { CreateDeploymentResponse, StartDeploymentRequest } from '../../types.js';
+import type { CreateDeploymentResponse, StartDeploymentRequest, SiteDeployment } from '../../types.js';
+
+const POLL_INTERVAL_MS = 5_000;
+const POLL_TIMEOUT_MS = 120_000;
 
 const EXCLUDE_PATTERNS = [
   'node_modules',
@@ -110,7 +113,15 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
         s?.message('Starting deployment...');
         const startBody: StartDeploymentRequest = {};
         if (opts.env) {
-          try { startBody.envVars = JSON.parse(opts.env); } catch { throw new CLIError('Invalid --env JSON.'); }
+          try {
+            const parsed = JSON.parse(opts.env) as Record<string, string>;
+            // Convert {"KEY":"value"} object to [{key,value}] array format
+            if (Array.isArray(parsed)) {
+              startBody.envVars = parsed;
+            } else {
+              startBody.envVars = Object.entries(parsed).map(([key, value]) => ({ key, value }));
+            }
+          } catch { throw new CLIError('Invalid --env JSON.'); }
         }
         if (opts.meta) {
           try { startBody.meta = JSON.parse(opts.meta); } catch { throw new CLIError('Invalid --meta JSON.'); }
@@ -120,17 +131,57 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
           method: 'POST',
           body: JSON.stringify(startBody),
         });
-        const result = await startRes.json() as { deploymentUrl?: string; url?: string };
+        await startRes.json();
 
-        s?.stop('Deployment started');
+        // Step 5: Poll for deployment status
+        s?.message('Building and deploying...');
+        const startTime = Date.now();
+        let deployment: SiteDeployment | null = null;
 
-        if (json) {
-          outputJson(result);
+        while (Date.now() - startTime < POLL_TIMEOUT_MS) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          try {
+            const statusRes = await ossFetch(`/api/deployments/${deploymentId}`);
+            deployment = (await statusRes.json()) as SiteDeployment;
+
+            if (deployment.status === 'ready' || deployment.status === 'READY') {
+              break;
+            }
+            if (deployment.status === 'error' || deployment.status === 'ERROR' || deployment.status === 'canceled') {
+              s?.stop('Deployment failed');
+              throw new CLIError(deployment.error ?? `Deployment failed with status: ${deployment.status}`);
+            }
+
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+            s?.message(`Building and deploying... (${elapsed}s, status: ${deployment.status})`);
+          } catch (err) {
+            if (err instanceof CLIError) throw err;
+            // Ignore transient fetch errors during polling
+          }
+        }
+
+        const isReady = deployment?.status === 'ready' || deployment?.status === 'READY';
+
+        if (isReady) {
+          s?.stop('Deployment complete');
+          if (json) {
+            outputJson(deployment);
+          } else {
+            const liveUrl = deployment?.deploymentUrl ?? deployment?.url;
+            if (liveUrl) {
+              clack.log.success(`Live at: ${liveUrl}`);
+            }
+            clack.log.info(`Deployment ID: ${deploymentId}`);
+          }
         } else {
-          const url = result.deploymentUrl ?? result.url;
-          if (url) clack.log.info(`URL: ${url}`);
-          clack.log.info(`Deployment ID: ${deploymentId}`);
-          clack.log.info('Check status with `insforge deployments status <id>`');
+          s?.stop('Deployment is still building');
+          if (json) {
+            outputJson({ id: deploymentId, status: deployment?.status ?? 'building', timedOut: true });
+          } else {
+            clack.log.info(`Deployment ID: ${deploymentId}`);
+            clack.log.warn('Deployment did not finish within 2 minutes.');
+            clack.log.info(`Check status with: insforge deployments status ${deploymentId}`);
+          }
         }
       } catch (err) {
         handleError(err, json);

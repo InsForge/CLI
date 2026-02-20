@@ -19,11 +19,20 @@ export function registerDeploymentsListCommand(deploymentsCmd: Command): void {
         if (!getProjectConfig()) throw new ProjectNotLinkedError();
 
         const res = await ossFetch(`/api/deployments?limit=${opts.limit}&offset=${opts.offset}`);
-        const data = await res.json() as { data?: SiteDeployment[] };
-        const deployments: SiteDeployment[] = data.data ?? [];
+        const raw = await res.json() as unknown;
+
+        // API may return array directly or { data: [...] }
+        let deployments: Record<string, unknown>[];
+        if (Array.isArray(raw)) {
+          deployments = raw as Record<string, unknown>[];
+        } else if (raw && typeof raw === 'object' && 'data' in raw && Array.isArray((raw as Record<string, unknown>).data)) {
+          deployments = (raw as Record<string, unknown>).data as Record<string, unknown>[];
+        } else {
+          deployments = [];
+        }
 
         if (json) {
-          outputJson(data);
+          outputJson(raw);
         } else {
           if (!deployments.length) {
             console.log('No deployments found.');
@@ -32,11 +41,11 @@ export function registerDeploymentsListCommand(deploymentsCmd: Command): void {
           outputTable(
             ['ID', 'Status', 'Provider', 'URL', 'Created'],
             deployments.map((d) => [
-              d.id,
-              d.status,
-              d.provider ?? '-',
-              d.deploymentUrl ?? '-',
-              new Date(d.created_at).toLocaleString(),
+              String(d.id ?? '-'),
+              String(d.status ?? '-'),
+              String(d.provider ?? '-'),
+              String(d.deploymentUrl ?? d.url ?? '-'),
+              d.createdAt ?? d.created_at ? new Date(String(d.createdAt ?? d.created_at)).toLocaleString() : '-',
             ]),
           );
         }

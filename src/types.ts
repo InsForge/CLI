@@ -135,10 +135,13 @@ export interface SiteDeployment {
   status: string;
   provider: string;
   providerDeploymentId: string | null;
-  deploymentUrl: string | null;
+  // API returns "url"; some endpoints may use "deploymentUrl"
+  url: string | null;
+  deploymentUrl?: string | null;
   error: string | null;
-  created_at: string;
-  updated_at: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DeploymentMetadata {
@@ -149,7 +152,13 @@ export interface DeploymentMetadata {
 }
 
 export interface StartDeploymentRequest {
-  projectSettings?: Record<string, unknown>;
-  envVars?: Record<string, string>;
+  projectSettings?: {
+    buildCommand?: string | null;
+    outputDirectory?: string | null;
+    installCommand?: string | null;
+    devCommand?: string | null;
+    rootDirectory?: string | null;
+  };
+  envVars?: { key: string; value: string }[];
   meta?: Record<string, string>;
 }

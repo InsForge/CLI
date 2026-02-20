@@ -135,7 +135,8 @@ registerDeploymentsDeployCommand(deploymentsCmd);
 registerDeploymentsListCommand(deploymentsCmd);
 registerDeploymentsStatusCommand(deploymentsCmd);
 registerDeploymentsCancelCommand(deploymentsCmd);
-registerDeploymentsMetadataCommand(deploymentsCmd);
-registerDeploymentsSlugCommand(deploymentsCmd);
+// registerDeploymentsMetadataCommand(deploymentsCmd);
+// slug command doesn't work yet.
+// registerDeploymentsSlugCommand(deploymentsCmd);
 
 program.parse();
