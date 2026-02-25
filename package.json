@@ -4,7 +4,7 @@
   "description": "InsForge CLI - Command line tool for InsForge platform",
   "type": "module",
   "bin": {
-    "insforge": "./bin/insforge.js"
+    "insforge": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "scripts": {
@@ -27,8 +27,7 @@
     "node": ">=18.0.0"
   },
   "files": [
-    "dist",
-    "bin"
+    "dist"
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",
