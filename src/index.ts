@@ -46,6 +46,15 @@ import { registerSecretsAddCommand } from './commands/secrets/add.js';
 import { registerSecretsUpdateCommand } from './commands/secrets/update.js';
 import { registerSecretsDeleteCommand } from './commands/secrets/delete.js';
 
+import { registerSchedulesListCommand } from './commands/schedules/list.js';
+import { registerSchedulesGetCommand } from './commands/schedules/get.js';
+import { registerSchedulesCreateCommand } from './commands/schedules/create.js';
+import { registerSchedulesUpdateCommand } from './commands/schedules/update.js';
+import { registerSchedulesDeleteCommand } from './commands/schedules/delete.js';
+import { registerSchedulesLogsCommand } from './commands/schedules/logs.js';
+
+import { registerLogsCommand } from './commands/logs.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
 
@@ -155,5 +164,17 @@ registerSecretsGetCommand(secretsCmd);
 registerSecretsAddCommand(secretsCmd);
 registerSecretsUpdateCommand(secretsCmd);
 registerSecretsDeleteCommand(secretsCmd);
+
+// Logs command
+registerLogsCommand(program);
+
+// Schedules commands
+const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');
+registerSchedulesListCommand(schedulesCmd);
+registerSchedulesGetCommand(schedulesCmd);
+registerSchedulesCreateCommand(schedulesCmd);
+registerSchedulesUpdateCommand(schedulesCmd);
+registerSchedulesDeleteCommand(schedulesCmd);
+registerSchedulesLogsCommand(schedulesCmd);
 
 program.parse();
