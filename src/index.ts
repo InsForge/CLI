@@ -82,7 +82,6 @@ program
 // Global options
 program
   .option('--json', 'Output in JSON format')
-  .option('--project-id <id>', 'Override linked project ID')
   .option('--api-url <url>', 'Override Platform API URL')
   .option('-y, --yes', 'Skip confirmation prompts');
 

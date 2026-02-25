@@ -62,7 +62,7 @@ export function getJsonFlag(cmd: Command): boolean {
   return root.opts().json ?? false;
 }
 
-export function getRootOpts(cmd: Command): { json: boolean; projectId?: string; apiUrl?: string; yes: boolean } {
+export function getRootOpts(cmd: Command): { json: boolean; apiUrl?: string; yes: boolean } {
   let root: Command = cmd;
   while (root.parent) {
     root = root.parent;
@@ -70,7 +70,6 @@ export function getRootOpts(cmd: Command): { json: boolean; projectId?: string; 
   const opts = root.opts();
   return {
     json: opts.json ?? false,
-    projectId: opts.projectId,
     apiUrl: opts.apiUrl,
     yes: opts.yes ?? false,
   };
