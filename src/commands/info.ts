@@ -33,10 +33,10 @@ export function registerContextCommand(program: Command): void {
           console.log('  User:          (not logged in)');
         }
 
-        // Org
-        if (globalConfig.default_org_id) {
+        // Org (only relevant when logged in)
+        if (creds && globalConfig.default_org_id) {
           console.log(`  Default Org:   ${globalConfig.default_org_id}`);
-        } else {
+        } else if (creds) {
           console.log('  Default Org:   (none)');
         }
 
@@ -48,7 +48,7 @@ export function registerContextCommand(program: Command): void {
           console.log(`  Region:        ${projectConfig.region}`);
           console.log(`  OSS Host:      ${projectConfig.oss_host}`);
         } else {
-          console.log('\n  Project:       (not linked — run `insforge projects link`)');
+          console.log('\n  Project:       (not linked — run `insforge link`)');
         }
 
         console.log('');

@@ -473,6 +473,22 @@ npm link        # makes `insforge` available globally
 npm run dev     # watch mode for development
 ```
 
+## Releasing
+
+Bump the version, push the tag, and create a GitHub Release — the CI will publish to npm automatically.
+
+```bash
+# Bump version (creates commit + tag)
+npm version patch   # 0.1.3 → 0.1.4
+# or
+npm version minor   # 0.1.3 → 0.2.0
+
+# Push commit and tag
+git push && git push --tags
+```
+
+Then go to GitHub → Releases → **Draft a new release**, select the tag (e.g. `v0.1.4`), and publish. The [publish workflow](.github/workflows/publish.yml) will run `npm publish` automatically.
+
 ## License
 
 Apache-2.0

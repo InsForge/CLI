@@ -50,6 +50,12 @@ export function clearCredentials(): void {
   if (existsSync(CREDENTIALS_FILE)) {
     unlinkSync(CREDENTIALS_FILE);
   }
+  // Clear session-related config (default_org_id) but keep platform_api_url etc.
+  const config = getGlobalConfig();
+  if (config.default_org_id) {
+    delete config.default_org_id;
+    saveGlobalConfig(config);
+  }
 }
 
 // --- Project Config (local) ---
