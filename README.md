@@ -37,6 +37,8 @@ insforge db query "SELECT * FROM users LIMIT 10"
 
 ## Authentication
 
+If you run any command without being logged in, the CLI will automatically open your browser and start the login flow — no need to run `insforge login` first.
+
 ### Browser Login (default)
 
 ```bash
