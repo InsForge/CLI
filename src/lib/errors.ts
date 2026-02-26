@@ -19,7 +19,7 @@ export class AuthError extends CLIError {
 
 export class ProjectNotLinkedError extends CLIError {
   constructor() {
-    super('No project linked. Run `insforge projects link` first.', 3, 'PROJECT_NOT_LINKED');
+    super('No project linked. Run `insforge link` first.', 3, 'PROJECT_NOT_LINKED');
   }
 }
 
