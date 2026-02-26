@@ -1,6 +1,6 @@
 {
   "name": "@insforge/cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "InsForge CLI - Command line tool for InsForge platform",
   "type": "module",
   "bin": {
