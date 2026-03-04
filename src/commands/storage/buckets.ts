@@ -19,7 +19,9 @@ export function registerStorageBucketsCommand(storageCmd: Command): void {
         // API may return array directly or { buckets: [...] }
         const buckets: StorageBucketSchema[] = Array.isArray(raw)
           ? raw
-          : (raw as { buckets?: StorageBucketSchema[] }).buckets ?? [];
+          : raw && typeof raw === 'object' && 'buckets' in raw
+            ? (raw as { buckets?: StorageBucketSchema[] }).buckets ?? []
+            : [];
 
         if (json) {
           outputJson(raw);

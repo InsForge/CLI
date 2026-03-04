@@ -19,7 +19,9 @@ export function registerFunctionsCommands(functionsCmd: Command): void {
         // API may return array directly or { functions: [...] }
         const functions: ListFunctionsResponse['functions'] = Array.isArray(raw)
           ? raw
-          : (raw as ListFunctionsResponse).functions ?? [];
+          : raw && typeof raw === 'object' && 'functions' in raw
+            ? (raw as ListFunctionsResponse).functions ?? []
+            : [];
 
         if (json) {
           outputJson(raw);

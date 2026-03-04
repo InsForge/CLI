@@ -23,7 +23,9 @@ export function registerDeploymentsListCommand(deploymentsCmd: Command): void {
         // API may return array directly or { data: [...] }
         const deployments: ListDeploymentsResponse['data'] = Array.isArray(raw)
           ? raw
-          : (raw as ListDeploymentsResponse).data ?? [];
+          : raw && typeof raw === 'object' && 'data' in raw
+            ? (raw as ListDeploymentsResponse).data ?? []
+            : [];
 
         if (json) {
           outputJson(raw);
