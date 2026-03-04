@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
+import type { GetScheduleResponse } from '../../types.js';
 
 export function registerSchedulesGetCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -14,7 +15,7 @@ export function registerSchedulesGetCommand(schedulesCmd: Command): void {
         await requireAuth();
 
         const res = await ossFetch(`/api/schedules/${encodeURIComponent(id)}`);
-        const data = await res.json() as Record<string, unknown>;
+        const data = await res.json() as GetScheduleResponse;
 
         if (json) {
           outputJson(data);

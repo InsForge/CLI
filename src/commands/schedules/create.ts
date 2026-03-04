@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import type { CreateScheduleResponse } from '../../types.js';
 
 export function registerSchedulesCreateCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -45,7 +46,7 @@ export function registerSchedulesCreateCommand(schedulesCmd: Command): void {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        const data = await res.json() as Record<string, unknown>;
+        const data = await res.json() as CreateScheduleResponse;
 
         if (json) {
           outputJson(data);

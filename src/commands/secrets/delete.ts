@@ -4,6 +4,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import type { DeleteSecretResponse } from '../../types.js';
 
 export function registerSecretsDeleteCommand(secretsCmd: Command): void {
   secretsCmd
@@ -26,7 +27,7 @@ export function registerSecretsDeleteCommand(secretsCmd: Command): void {
         const res = await ossFetch(`/api/secrets/${encodeURIComponent(key)}`, {
           method: 'DELETE',
         });
-        const data = await res.json() as { success: boolean; message: string };
+        const data = await res.json() as DeleteSecretResponse;
 
         if (json) {
           outputJson(data);

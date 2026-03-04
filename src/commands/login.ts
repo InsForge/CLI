@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
-import { saveCredentials, getPlatformApiUrl } from '../lib/config.js';
+import { saveCredentials } from '../lib/config.js';
 import { login as platformLogin } from '../lib/api/platform.js';
 import { performOAuthLogin } from '../lib/auth.js';
 import { handleError, getRootOpts } from '../lib/errors.js';

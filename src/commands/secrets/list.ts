@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
+import type { ListSecretsResponse } from '../../types.js';
 
 export function registerSecretsListCommand(secretsCmd: Command): void {
   secretsCmd
@@ -15,7 +16,7 @@ export function registerSecretsListCommand(secretsCmd: Command): void {
         await requireAuth();
 
         const res = await ossFetch('/api/secrets');
-        const data = await res.json() as { secrets: Record<string, unknown>[] };
+        const data = await res.json() as ListSecretsResponse;
         let secrets = data.secrets ?? [];
 
         if (!opts.all) {

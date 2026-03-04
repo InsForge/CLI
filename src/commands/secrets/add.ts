@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import type { CreateSecretResponse } from '../../types.js';
 
 export function registerSecretsAddCommand(secretsCmd: Command): void {
   secretsCmd
@@ -23,7 +24,7 @@ export function registerSecretsAddCommand(secretsCmd: Command): void {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        const data = await res.json() as { success: boolean; message: string; id: string };
+        const data = await res.json() as CreateSecretResponse;
 
         if (json) {
           outputJson(data);

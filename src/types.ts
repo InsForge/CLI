@@ -104,7 +104,11 @@ export interface ApiError {
 
 // OSS API types
 
-export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsResponse } from '@insforge/shared-schemas';
+export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsResponse,
+  DatabaseFunctionsResponse, DatabaseIndexesResponse, DatabasePoliciesResponse, DatabaseTriggersResponse,
+  CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
+  ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse
+ } from '@insforge/shared-schemas';
 
 // Deployment types (OSS - Vercel deployment)
 

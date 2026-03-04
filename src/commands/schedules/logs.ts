@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
+import type { ListExecutionLogsResponse } from '../../types.js';
 
 export function registerSchedulesLogsCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -19,7 +20,7 @@ export function registerSchedulesLogsCommand(schedulesCmd: Command): void {
         const offset = parseInt(opts.offset, 10) || 0;
 
         const res = await ossFetch(`/api/schedules/${encodeURIComponent(id)}/logs?limit=${limit}&offset=${offset}`);
-        const data = await res.json() as { logs: Record<string, unknown>[]; totalCount: number };
+        const data = await res.json() as ListExecutionLogsResponse;
         const logs = data.logs ?? [];
 
         if (json) {

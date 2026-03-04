@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import type { UpdateSecretResponse } from '../../types.js';
 
 export function registerSecretsUpdateCommand(secretsCmd: Command): void {
   secretsCmd
@@ -31,7 +32,7 @@ export function registerSecretsUpdateCommand(secretsCmd: Command): void {
           method: 'PUT',
           body: JSON.stringify(body),
         });
-        const data = await res.json() as { success: boolean; message: string };
+        const data = await res.json() as UpdateSecretResponse;
 
         if (json) {
           outputJson(data);

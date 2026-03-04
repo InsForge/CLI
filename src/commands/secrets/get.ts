@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
+import type { GetSecretValueResponse } from '../../types.js';
 
 export function registerSecretsGetCommand(secretsCmd: Command): void {
   secretsCmd
@@ -14,12 +15,13 @@ export function registerSecretsGetCommand(secretsCmd: Command): void {
         await requireAuth();
 
         const res = await ossFetch(`/api/secrets/${encodeURIComponent(key)}`);
-        const data = await res.json() as { key: string; value: string };
+        const data = await res.json();
+        const secret = data as GetSecretValueResponse;
 
         if (json) {
           outputJson(data);
         } else {
-          console.log(`${data.key} = ${data.value}`);
+          console.log(`${secret.key} = ${secret.value}`);
         }
       } catch (err) {
         handleError(err, json);
