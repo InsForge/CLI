@@ -31,8 +31,8 @@ export function registerProjectLinkCommand(program: Command): void {
         let orgId = opts.orgId;
         let projectId = opts.projectId;
 
-        // Always show organization selection
-        if (!orgId) {
+        // Show organization selection
+        if (!orgId && !projectId) {
           const orgs = await listOrganizations(apiUrl);
           if (orgs.length === 0) {
             throw new CLIError('No organizations found.');
