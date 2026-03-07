@@ -128,6 +128,15 @@ insforge current
 insforge current --json
 ```
 
+#### `insforge metadata`
+
+Show backend metadata including auth configuration, database tables, storage buckets, edge functions, AI models, and realtime channels.
+
+```bash
+insforge metadata
+insforge metadata --json
+```
+
 ---
 
 ### Database — `insforge db`
