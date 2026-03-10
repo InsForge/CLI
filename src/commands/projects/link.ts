@@ -10,7 +10,7 @@ import { getGlobalConfig, saveGlobalConfig, saveProjectConfig } from '../../lib/
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
-import { installSkills, reportCliUsage } from '../../lib/skills.js';
+import { installCliGlobally, installSkills, reportCliUsage } from '../../lib/skills.js';
 import type { ProjectConfig } from '../../types.js';
 
 function buildOssHost(appkey: string, region: string): string {
@@ -100,7 +100,8 @@ export function registerProjectLinkCommand(program: Command): void {
           outputSuccess(`Linked to project "${project.name}" (${project.appkey}.${project.region})`);
         }
 
-        // Install InsForge agent skills
+        // Install CLI globally and agent skills
+        await installCliGlobally(json);
         await installSkills(json);
         await reportCliUsage('cli.link', true, 6);
       } catch (err) {
