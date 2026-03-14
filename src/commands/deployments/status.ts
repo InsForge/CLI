@@ -4,7 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
-import type { SiteDeployment } from '../../types.js';
+import type { DeploymentSchema } from '../../types.js';
 
 export function registerDeploymentsStatusCommand(deploymentsCmd: Command): void {
   deploymentsCmd
@@ -23,7 +23,7 @@ export function registerDeploymentsStatusCommand(deploymentsCmd: Command): void 
         }
 
         const res = await ossFetch(`/api/deployments/${id}`);
-        const d = (await res.json()) as SiteDeployment;
+        const d = (await res.json()) as DeploymentSchema;
 
         if (json) {
           outputJson(d);
@@ -35,10 +35,10 @@ export function registerDeploymentsStatusCommand(deploymentsCmd: Command): void 
               ['Status', d.status],
               ['Provider', d.provider ?? '-'],
               ['Provider ID', d.providerDeploymentId ?? '-'],
-              ['URL', d.deploymentUrl ?? d.url ?? '-'],
+              ['URL', d.url ?? '-'],
               ['Created', new Date(d.createdAt).toLocaleString()],
               ['Updated', new Date(d.updatedAt).toLocaleString()],
-              ...(d.error ? [['Error', d.error]] : []),
+              ...((d.metadata as Record<string, unknown> | null)?.error ? [['Error', ((d.metadata as Record<string, unknown>).error as { errorMessage?: string })?.errorMessage ?? 'Unknown error']] : []),
             ],
           );
         }
