@@ -108,7 +108,7 @@ export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsRespons
   DatabaseFunctionsResponse, DatabaseIndexesResponse, DatabasePoliciesResponse, DatabaseTriggersResponse,
   CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
   ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse,
-  CreateDeploymentResponse, StartDeploymentRequest
+  CreateDeploymentResponse, StartDeploymentRequest, DeploymentSchema
  } from '@insforge/shared-schemas';
 
 // Function deploy/update response types
@@ -138,20 +138,6 @@ export interface FunctionResponse {
 }
 
 // Deployment types (OSS - Vercel deployment)
-
-export interface SiteDeployment {
-  id: string;
-  status: string;
-  provider: string;
-  providerDeploymentId: string | null;
-  // API returns "url"; some endpoints may use "deploymentUrl"
-  url: string | null;
-  deploymentUrl?: string | null;
-  error: string | null;
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface DeploymentMetadata {
   currentDeploymentId: string | null;
