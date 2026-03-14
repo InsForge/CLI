@@ -107,7 +107,8 @@ export interface ApiError {
 export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsResponse,
   DatabaseFunctionsResponse, DatabaseIndexesResponse, DatabasePoliciesResponse, DatabaseTriggersResponse,
   CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
-  ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse
+  ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse,
+  CreateDeploymentResponse
  } from '@insforge/shared-schemas';
 
 // Function deploy/update response types
@@ -137,12 +138,6 @@ export interface FunctionResponse {
 }
 
 // Deployment types (OSS - Vercel deployment)
-
-export interface CreateDeploymentResponse {
-  id: string;
-  uploadUrl: string;
-  uploadFields: Record<string, string>;
-}
 
 export interface SiteDeployment {
   id: string;
