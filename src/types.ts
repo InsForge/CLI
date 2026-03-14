@@ -108,7 +108,7 @@ export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsRespons
   DatabaseFunctionsResponse, DatabaseIndexesResponse, DatabasePoliciesResponse, DatabaseTriggersResponse,
   CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
   ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse,
-  CreateDeploymentResponse
+  CreateDeploymentResponse, StartDeploymentRequest
  } from '@insforge/shared-schemas';
 
 // Function deploy/update response types
@@ -158,16 +158,4 @@ export interface DeploymentMetadata {
   domain: string | null;
   slug: string | null;
   deploymentUrl: string | null;
-}
-
-export interface StartDeploymentRequest {
-  projectSettings?: {
-    buildCommand?: string | null;
-    outputDirectory?: string | null;
-    installCommand?: string | null;
-    devCommand?: string | null;
-    rootDirectory?: string | null;
-  };
-  envVars?: { key: string; value: string }[];
-  meta?: Record<string, string>;
 }
