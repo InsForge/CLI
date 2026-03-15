@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { ossFetch } from '../lib/api/oss.js';
 import { requireAuth } from '../lib/credentials.js';
-import { handleError, getRootOpts } from '../lib/errors.js';
+import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
 
 const VALID_SOURCES = ['insforge.logs', 'postgREST.logs', 'postgres.logs', 'function.logs'] as const;
@@ -19,8 +19,7 @@ export function registerLogsCommand(program: Command): void {
 
         const resolved = SOURCE_LOOKUP.get(source.toLowerCase());
         if (!resolved) {
-          console.error(`Invalid log source "${source}". Valid sources: ${VALID_SOURCES.join(', ')}`);
-          process.exit(1);
+          throw new CLIError(`Invalid log source "${source}". Valid sources: ${VALID_SOURCES.join(', ')}`);
         }
 
         const limit = parseInt(opts.limit, 10) || 20;

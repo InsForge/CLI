@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
+import { handleError, getRootOpts, ProjectNotLinkedError, CLIError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 
 export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
@@ -46,22 +46,16 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
           if (json) {
             outputJson({ status, body: data });
           } else {
-            if (status >= 400) {
-              console.error(`HTTP ${status}`);
-            }
             console.log(JSON.stringify(data, null, 2));
           }
         } else {
           const text = await res.text();
-          if (!json && status >= 400) {
-            console.error(`HTTP ${status}`);
-          }
           console.log(text);
         }
 
         // Exit with non-zero code on function errors
         if (status >= 400) {
-          process.exit(1);
+          throw new CLIError(`HTTP ${status}`);
         }
       } catch (err) {
         handleError(err, json);
