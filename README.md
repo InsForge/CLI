@@ -137,6 +137,48 @@ insforge metadata
 insforge metadata --json
 ```
 
+#### `insforge logs`
+
+Fetch backend container logs.
+
+```bash
+insforge logs <source> [options]
+```
+
+**Sources:** `insforge.logs`, `postgREST.logs`, `postgres.logs`, `function.logs`
+
+**Options:**
+- `--limit <n>`: Number of log entries to return (default: 20)
+
+**Examples:**
+```bash
+insforge logs insforge.logs
+insforge logs postgres.logs --limit 50
+insforge logs function.logs --json
+```
+
+#### `insforge docs`
+
+Browse InsForge SDK documentation.
+
+```bash
+insforge docs [feature] [language]
+```
+
+**Features:** `db`, `storage`, `functions`, `auth`, `ai`, `realtime`
+**Languages:** `typescript`, `swift`, `kotlin`, `rest-api`
+
+**Examples:**
+```bash
+# List all available docs
+insforge docs
+
+# Specific feature/language docs
+insforge docs db typescript
+insforge docs auth swift
+insforge docs storage rest-api
+```
+
 ---
 
 ### Database — `insforge db`
@@ -256,6 +298,15 @@ Invoke an edge function.
 insforge functions invoke my-function --data '{"key": "value"}'
 insforge functions invoke my-function --method GET
 insforge functions invoke my-function --data '{"key": "value"}' --json
+```
+
+#### `insforge functions delete <slug>`
+
+Delete an edge function.
+
+```bash
+insforge functions delete my-function
+insforge functions delete my-function -y  # skip confirmation
 ```
 
 ---
@@ -407,6 +458,64 @@ Delete a secret (soft delete — marks as inactive).
 ```bash
 insforge secrets delete STRIPE_API_KEY
 insforge secrets delete STRIPE_API_KEY -y   # skip confirmation
+```
+
+### Schedules — `insforge schedules`
+
+Manage scheduled tasks (cron jobs).
+
+#### `insforge schedules list`
+
+List all schedules in the current project.
+
+```bash
+insforge schedules list
+insforge schedules list --json
+```
+
+#### `insforge schedules create`
+
+Create a new scheduled task.
+
+```bash
+insforge schedules create --name "daily-cleanup" --cron "0 0 * * *" --url "https://api.example.com/cleanup" --method POST
+insforge schedules create --name "hourly-sync" --cron "0 * * * *" --url "https://api.example.com/sync" --method GET --headers '{"Authorization": "Bearer xxx"}'
+```
+
+#### `insforge schedules get <id>`
+
+Get details of a specific schedule.
+
+```bash
+insforge schedules get <id>
+insforge schedules get 123 --json
+```
+
+#### `insforge schedules update <id>`
+
+Update an existing schedule.
+
+```bash
+insforge schedules update <id> --name "weekly-cleanup" --cron "0 0 * * 0"
+insforge schedules update 123 --active false
+```
+
+#### `insforge schedules delete <id>`
+
+Delete a schedule.
+
+```bash
+insforge schedules delete <id>
+insforge schedules delete 123 -y
+```
+
+#### `insforge schedules logs <id>`
+
+Fetch execution logs for a specific schedule.
+
+```bash
+insforge schedules logs <id>
+insforge schedules logs 123 --limit 100
 ```
 
 ---
