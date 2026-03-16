@@ -79,8 +79,8 @@ export function registerFunctionsDeployCommand(functionsCmd: Command): void {
             }
           }
         }
-        await reportCliUsage('cli.functions.deploy', !deployFailed);
         if (deployFailed) throw new CLIError('Function deployment failed');
+        await reportCliUsage('cli.functions.deploy', true);
       } catch (err) {
         await reportCliUsage('cli.functions.deploy', false);
         handleError(err, json);
