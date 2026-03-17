@@ -64,6 +64,18 @@ export async function installSkills(json: boolean): Promise<void> {
     if (!json) clack.log.warn('Failed to install agent skills. You can run manually: npx skills add insforge/agent-skills -s insforge -s insforge-cli');
   }
 
+  // Install find-skills from vercel-labs for skill discovery
+  try {
+    if (!json) clack.log.info('Installing find-skills...');
+    await execAsync('npx skills add https://github.com/vercel-labs/skills --skill find-skills -y', {
+      cwd: process.cwd(),
+      timeout: 60_000,
+    });
+    if (!json) clack.log.success('find-skills installed.');
+  } catch {
+    if (!json) clack.log.warn('Failed to install find-skills. You can run manually: npx skills add https://github.com/vercel-labs/skills --skill find-skills');
+  }
+
   try {
     updateGitignore();
   } catch {
