@@ -109,7 +109,11 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 3. Select template
+        const validTemplates = ['react', 'nextjs', 'chatbot', 'empty'];
         let template = opts.template as string | undefined;
+        if (template && !validTemplates.includes(template)) {
+          throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
+        }
         if (!template) {
           if (json) {
             template = 'empty';
@@ -340,7 +344,7 @@ async function downloadGitHubTemplate(
       const anonKey = await getAnonKey();
       const envExample = await fs.readFile(envExamplePath, 'utf-8');
       const envContent = envExample.replace(
-        /^([A-Z_]+=)(.*)$/gm,
+        /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
         (_, prefix: string, _value: string) => {
           const key = prefix.slice(0, -1); // remove trailing '='
           if (/INSFORGE.*(URL|BASE_URL)$/.test(key)) return `${prefix}${projectConfig.oss_host}`;
