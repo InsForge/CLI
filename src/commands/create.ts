@@ -11,7 +11,7 @@ import {
   getProject,
   getProjectApiKey,
 } from '../lib/api/platform.js';
-import { getAnonKey } from '../lib/api/oss.js';
+import { getAnonKey, ossFetch } from '../lib/api/oss.js';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
@@ -59,7 +59,7 @@ export function registerCreateCommand(program: Command): void {
     .option('--name <name>', 'Project name')
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
-    .option('--template <template>', 'Template to use: react, nextjs, or empty')
+    .option('--template <template>', 'Template to use: react, nextjs, chatbot, or empty')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -118,6 +118,7 @@ export function registerCreateCommand(program: Command): void {
               options: [
                 { value: 'react', label: 'Web app template with React' },
                 { value: 'nextjs', label: 'Web app template with Next.js' },
+                { value: 'chatbot', label: 'AI Chatbot with Next.js' },
                 { value: 'empty', label: 'Empty project' },
               ],
             });
@@ -152,7 +153,9 @@ export function registerCreateCommand(program: Command): void {
 
         // 6. Download template if selected
         const hasTemplate = template !== 'empty';
-        if (hasTemplate) {
+        if (template === 'chatbot') {
+          await downloadGitHubTemplate('chatbot', projectConfig, json);
+        } else if (hasTemplate) {
           await downloadTemplate(template as Framework, projectConfig, projectName, json, apiUrl);
         }
 
@@ -291,4 +294,75 @@ async function downloadTemplate(
   }
 }
 
+async function downloadGitHubTemplate(
+  templateName: string,
+  projectConfig: ProjectConfig,
+  json: boolean,
+): Promise<void> {
+  const s = !json ? clack.spinner() : null;
+  s?.start(`Downloading ${templateName} template...`);
 
+  const tempDir = path.join(tmpdir(), `insforge-template-${Date.now()}`);
+
+  try {
+    await fs.mkdir(tempDir, { recursive: true });
+
+    // Shallow clone the templates repo
+    await execAsync(
+      'git clone --depth 1 https://github.com/InsForge/insforge-templates.git .',
+      { cwd: tempDir, maxBuffer: 10 * 1024 * 1024, timeout: 60_000 },
+    );
+
+    const templateDir = path.join(tempDir, templateName);
+    const stat = await fs.stat(templateDir).catch(() => null);
+    if (!stat?.isDirectory()) {
+      throw new Error(`Template "${templateName}" not found in repository`);
+    }
+
+    // Copy template files to cwd
+    s?.message('Copying template files...');
+    const cwd = process.cwd();
+    await copyDir(templateDir, cwd);
+
+    // Write .env.local with InsForge credentials
+    const anonKey = await getAnonKey();
+    const envContent = [
+      `NEXT_PUBLIC_INSFORGE_URL=${projectConfig.oss_host}`,
+      `NEXT_PUBLIC_INSFORGE_ANON_KEY=${anonKey}`,
+      '',
+    ].join('\n');
+    await fs.writeFile(path.join(cwd, '.env.local'), envContent);
+
+    s?.stop(`${templateName} template downloaded`);
+
+    // Run database migrations if db_int.sql exists
+    const migrationPath = path.join(cwd, 'migrations', 'db_int.sql');
+    const migrationExists = await fs.stat(migrationPath).catch(() => null);
+    if (migrationExists) {
+      const dbSpinner = !json ? clack.spinner() : null;
+      dbSpinner?.start('Running database migrations...');
+      try {
+        const sql = await fs.readFile(migrationPath, 'utf-8');
+        await ossFetch('/api/database/advance/rawsql/unrestricted', {
+          method: 'POST',
+          body: JSON.stringify({ query: sql }),
+        });
+        dbSpinner?.stop('Database migrations applied');
+      } catch (err) {
+        dbSpinner?.stop('Database migration failed');
+        if (!json) {
+          clack.log.warn(`Migration failed: ${(err as Error).message}`);
+          clack.log.info('You can run the migration manually: insforge db query --unrestricted "$(cat migrations/db_int.sql)"');
+        }
+      }
+    }
+  } catch (err) {
+    s?.stop(`${templateName} template download failed`);
+    if (!json) {
+      clack.log.warn(`Failed to download ${templateName} template: ${(err as Error).message}`);
+      clack.log.info('You can manually clone from: https://github.com/InsForge/insforge-templates');
+    }
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
