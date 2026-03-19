@@ -65,6 +65,33 @@ INSFORGE_EMAIL=user@example.com INSFORGE_PASSWORD=secret insforge login --email 
 insforge logout
 ```
 
+## Real Project Integration Tests (Issue #19 Phase 1)
+
+This repository includes a real-project integration suite for read-only checks.
+
+Run locally:
+
+```bash
+INTEGRATION_TEST_ENABLED=true \
+INSFORGE_API_URL=https://api.insforge.dev \
+INTEGRATION_LOG_SOURCE=insforge.logs \
+npm run test:integration:real
+```
+
+Prerequisites:
+- Logged in (`insforge login`) so `~/.insforge/credentials.json` exists
+- Linked project in this repo (`insforge link`) so `.insforge/project.json` exists
+
+Optional environment variables:
+- `INSFORGE_API_URL`: Platform API URL override (defaults to `https://api.insforge.dev`)
+- `INTEGRATION_LOG_SOURCE`: Log source for `logs` test (default `insforge.logs`)
+
+The suite currently validates read-only flows:
+- `whoami --json`
+- `metadata --json`
+- `logs <source> --json`
+- `docs instructions --json`
+
 ## Global Options
 
 All commands support the following flags:

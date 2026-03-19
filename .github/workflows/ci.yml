@@ -25,6 +25,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Unit tests
+        run: npm run test:unit
+
       - name: Notify owner on failure
         if: failure()
         uses: dawidd6/action-send-mail@v3
