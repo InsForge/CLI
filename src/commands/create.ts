@@ -16,6 +16,7 @@ import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } 
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
+import { readEnvFile } from '../lib/env.js';
 import { installCliGlobally, installSkills, reportCliUsage } from '../lib/skills.js';
 import { deployProject } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
@@ -189,9 +190,17 @@ export function registerCreateCommand(program: Command): void {
 
           if (!clack.isCancel(shouldDeploy) && shouldDeploy) {
             try {
+              // Read env vars from .env.local or .env to pass to deployment
+              const envVars = await readEnvFile(process.cwd());
+              const startBody: { envVars?: Array<{ key: string; value: string }> } = {};
+              if (envVars.length > 0) {
+                startBody.envVars = envVars;
+              }
+
               const deploySpinner = clack.spinner();
               const result = await deployProject({
                 sourceDir: process.cwd(),
+                startBody,
                 spinner: deploySpinner,
               });
 
@@ -375,3 +384,4 @@ async function downloadGitHubTemplate(
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 }
+
