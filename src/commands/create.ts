@@ -324,14 +324,23 @@ async function downloadGitHubTemplate(
     const cwd = process.cwd();
     await copyDir(templateDir, cwd);
 
-    // Write .env.local with InsForge credentials
-    const anonKey = await getAnonKey();
-    const envContent = [
-      `NEXT_PUBLIC_INSFORGE_URL=${projectConfig.oss_host}`,
-      `NEXT_PUBLIC_INSFORGE_ANON_KEY=${anonKey}`,
-      '',
-    ].join('\n');
-    await fs.writeFile(path.join(cwd, '.env.local'), envContent);
+    // Write .env.local from .env.example with InsForge credentials filled in
+    const envExamplePath = path.join(cwd, '.env.example');
+    const envExampleExists = await fs.stat(envExamplePath).catch(() => null);
+    if (envExampleExists) {
+      const anonKey = await getAnonKey();
+      const envExample = await fs.readFile(envExamplePath, 'utf-8');
+      const envContent = envExample.replace(
+        /^([A-Z_]+=)(.*)$/gm,
+        (_, prefix: string, _value: string) => {
+          const key = prefix.slice(0, -1); // remove trailing '='
+          if (/INSFORGE.*(URL|BASE_URL)$/.test(key)) return `${prefix}${projectConfig.oss_host}`;
+          if (/INSFORGE.*ANON_KEY$/.test(key)) return `${prefix}${anonKey}`;
+          return `${prefix}${_value}`;
+        },
+      );
+      await fs.writeFile(path.join(cwd, '.env.local'), envContent);
+    }
 
     s?.stop(`${templateName} template downloaded`);
 
