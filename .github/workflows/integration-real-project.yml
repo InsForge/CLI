@@ -58,33 +58,39 @@ jobs:
           INSFORGE_PROJECT_ID: ${{ secrets.INSFORGE_PROJECT_ID }}
           INSFORGE_ORG_ID: ${{ secrets.INSFORGE_ORG_ID }}
         run: |
-          mkdir -p "$HOME/.insforge"
-          cat > "$HOME/.insforge/credentials.json" <<EOF
-          {
-            "access_token": "${INSFORGE_ACCESS_TOKEN}",
-            "refresh_token": "",
-            "user": {
-              "id": "integration-user",
-              "name": "Integration User",
-              "email": "integration@example.com",
-              "avatar_url": null,
-              "email_verified": true
-            }
-          }
-          EOF
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-          mkdir -p .insforge
-          cat > .insforge/project.json <<EOF
-          {
-            "project_id": "${INSFORGE_PROJECT_ID}",
-            "project_name": "integration-project",
-            "org_id": "${INSFORGE_ORG_ID}",
-            "appkey": "integration-appkey",
-            "region": "integration-region",
-            "api_key": "${INSFORGE_API_KEY}",
-            "oss_host": "${INSFORGE_OSS_HOST}"
+          home_insforge = Path(os.environ['HOME']) / '.insforge'
+          home_insforge.mkdir(parents=True, exist_ok=True)
+          credentials = {
+              'access_token': os.environ['INSFORGE_ACCESS_TOKEN'],
+              'refresh_token': '',
+              'user': {
+                  'id': 'integration-user',
+                  'name': 'Integration User',
+                  'email': 'integration@example.com',
+                  'avatar_url': None,
+                  'email_verified': True,
+              },
           }
-          EOF
+          (home_insforge / 'credentials.json').write_text(json.dumps(credentials), encoding='utf-8')
+
+          local_insforge = Path('.insforge')
+          local_insforge.mkdir(parents=True, exist_ok=True)
+          project = {
+              'project_id': os.environ['INSFORGE_PROJECT_ID'],
+              'project_name': 'integration-project',
+              'org_id': os.environ['INSFORGE_ORG_ID'],
+              'appkey': 'integration-appkey',
+              'region': 'integration-region',
+              'api_key': os.environ['INSFORGE_API_KEY'],
+              'oss_host': os.environ['INSFORGE_OSS_HOST'],
+          }
+          (local_insforge / 'project.json').write_text(json.dumps(project), encoding='utf-8')
+          PY
 
       - name: Run real-project integration tests
         run: npm run test:integration:real

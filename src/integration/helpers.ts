@@ -28,7 +28,7 @@ export async function runCli(args: string[], opts?: { apiUrl?: string }): Promis
       cwd: process.cwd(),
       env: {
         ...process.env,
-        INSFORGE_API_URL: opts?.apiUrl,
+        ...(opts?.apiUrl !== undefined ? { INSFORGE_API_URL: opts.apiUrl } : {}),
       },
       maxBuffer: 1024 * 1024,
     });
