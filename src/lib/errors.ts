@@ -35,6 +35,15 @@ export class PermissionError extends CLIError {
   }
 }
 
+/**
+ * Extract error message from a deployment's metadata field.
+ * DeploymentSchema stores errors in metadata.error.errorMessage rather than a top-level field.
+ */
+export function getDeploymentError(metadata: Record<string, unknown> | null): string | null {
+  if (!metadata || typeof metadata.error !== 'object' || !metadata.error) return null;
+  return (metadata.error as { errorMessage?: string }).errorMessage ?? null;
+}
+
 export function handleError(err: unknown, json: boolean): never {
   if (err instanceof CLIError) {
     if (json) {

@@ -6,9 +6,9 @@ import archiver from 'archiver';
 import { ossFetch } from '../../lib/api/oss.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
+import { handleError, getRootOpts, CLIError, ProjectNotLinkedError, getDeploymentError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
-import type { CreateDeploymentResponse, StartDeploymentRequest, SiteDeployment } from '../../types.js';
+import type { CreateDeploymentResponse, StartDeploymentRequest, DeploymentSchema } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
 const POLL_INTERVAL_MS = 5_000;
@@ -68,7 +68,7 @@ export interface DeployProjectOptions {
 
 export interface DeployProjectResult {
   deploymentId: string;
-  deployment: SiteDeployment | null;
+  deployment: DeploymentSchema | null;
   isReady: boolean;
   liveUrl: string | null;
 }
@@ -119,20 +119,20 @@ export async function deployProject(opts: DeployProjectOptions): Promise<DeployP
   // Step 5: Poll for deployment status
   s?.message('Building and deploying...');
   const startTime = Date.now();
-  let deployment: SiteDeployment | null = null;
+  let deployment: DeploymentSchema | null = null;
 
   while (Date.now() - startTime < POLL_TIMEOUT_MS) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     try {
       const statusRes = await ossFetch(`/api/deployments/${deploymentId}`);
-      deployment = (await statusRes.json()) as SiteDeployment;
+      deployment = (await statusRes.json()) as DeploymentSchema;
 
-      if (deployment.status === 'ready' || deployment.status === 'READY') {
+      if (deployment.status === 'READY') {
         break;
       }
-      if (deployment.status === 'error' || deployment.status === 'ERROR' || deployment.status === 'canceled') {
+      if (deployment.status === 'ERROR' || deployment.status === 'CANCELED') {
         s?.stop('Deployment failed');
-        throw new CLIError(deployment.error ?? `Deployment failed with status: ${deployment.status}`);
+        throw new CLIError(getDeploymentError(deployment.metadata) ?? `Deployment failed with status: ${deployment.status}`);
       }
 
       const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -143,8 +143,8 @@ export async function deployProject(opts: DeployProjectOptions): Promise<DeployP
     }
   }
 
-  const isReady = deployment?.status === 'ready' || deployment?.status === 'READY';
-  const liveUrl = isReady ? (deployment?.deploymentUrl ?? deployment?.url ?? null) : null;
+  const isReady = deployment?.status === 'READY';
+  const liveUrl = isReady ? (deployment?.url ?? null) : null;
 
   return { deploymentId, deployment, isReady, liveUrl };
 }
