@@ -608,7 +608,6 @@ Run locally:
 
 ```bash
 INTEGRATION_TEST_ENABLED=true \
-INSFORGE_API_URL=https://api.insforge.dev \
 INTEGRATION_LOG_SOURCE=insforge.logs \
 npm run test:integration:real
 ```

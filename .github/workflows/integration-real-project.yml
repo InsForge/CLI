@@ -53,7 +53,6 @@ jobs:
           INSFORGE_EMAIL: ${{ secrets.INSFORGE_EMAIL }}
           INSFORGE_PASSWORD: ${{ secrets.INSFORGE_PASSWORD }}
           INSFORGE_PROJECT_ID: ${{ secrets.INSFORGE_PROJECT_ID }}
-          INSFORGE_API_URL: ${{ secrets.INSFORGE_API_URL }}
         run: |
           node dist/index.js --json login --email
           node dist/index.js --json link --project-id "${INSFORGE_PROJECT_ID}"
@@ -62,5 +61,4 @@ jobs:
         run: npm run test:integration:real
         env:
           INTEGRATION_TEST_ENABLED: 'true'
-          INSFORGE_API_URL: ${{ secrets.INSFORGE_API_URL }}
           INTEGRATION_LOG_SOURCE: ${{ secrets.INSFORGE_LOG_SOURCE }}
