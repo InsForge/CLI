@@ -126,11 +126,12 @@ export async function deployProject(opts: DeployProjectOptions): Promise<DeployP
     try {
       const statusRes = await ossFetch(`/api/deployments/${deploymentId}`);
       deployment = (await statusRes.json()) as DeploymentSchema;
+      const status = deployment.status.toUpperCase();
 
-      if (deployment.status === 'READY') {
+      if (status === 'READY') {
         break;
       }
-      if (deployment.status === 'ERROR' || deployment.status === 'CANCELED') {
+      if (status === 'ERROR' || status === 'CANCELED') {
         s?.stop('Deployment failed');
         throw new CLIError(getDeploymentError(deployment.metadata) ?? `Deployment failed with status: ${deployment.status}`);
       }
@@ -143,7 +144,7 @@ export async function deployProject(opts: DeployProjectOptions): Promise<DeployP
     }
   }
 
-  const isReady = deployment?.status === 'READY';
+  const isReady = deployment?.status.toUpperCase() === 'READY';
   const liveUrl = isReady ? (deployment?.url ?? null) : null;
 
   return { deploymentId, deployment, isReady, liveUrl };
