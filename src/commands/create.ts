@@ -60,7 +60,7 @@ export function registerCreateCommand(program: Command): void {
     .option('--name <name>', 'Project name')
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
-    .option('--template <template>', 'Template to use: react, nextjs, chatbot, or empty')
+    .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, or empty')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -109,7 +109,7 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 3. Select template
-        const validTemplates = ['react', 'nextjs', 'chatbot', 'empty'];
+        const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'empty'];
         let template = opts.template as string | undefined;
         if (template && !validTemplates.includes(template)) {
           throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
@@ -124,6 +124,8 @@ export function registerCreateCommand(program: Command): void {
                 { value: 'react', label: 'Web app template with React' },
                 { value: 'nextjs', label: 'Web app template with Next.js' },
                 { value: 'chatbot', label: 'AI Chatbot with Next.js' },
+                { value: 'crm', label: 'CRM with Next.js' },
+                { value: 'e-commerce', label: 'E-Commerce store with Next.js' },
                 { value: 'empty', label: 'Empty project' },
               ],
             });
@@ -158,8 +160,9 @@ export function registerCreateCommand(program: Command): void {
 
         // 6. Download template if selected
         const hasTemplate = template !== 'empty';
-        if (template === 'chatbot') {
-          await downloadGitHubTemplate('chatbot', projectConfig, json);
+        const githubTemplates = ['chatbot', 'crm', 'e-commerce'];
+        if (githubTemplates.includes(template!)) {
+          await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {
           await downloadTemplate(template as Framework, projectConfig, projectName, json, apiUrl);
         }
