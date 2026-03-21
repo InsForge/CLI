@@ -361,8 +361,8 @@ async function downloadGitHubTemplate(
 
     s?.stop(`${templateName} template downloaded`);
 
-    // Auto-run database migrations if db_int.sql exists
-    const migrationPath = path.join(cwd, 'migrations', 'db_int.sql');
+    // Auto-run database migrations if db_init.sql exists
+    const migrationPath = path.join(cwd, 'migrations', 'db_init.sql');
     const migrationExists = await fs.stat(migrationPath).catch(() => null);
     if (migrationExists) {
       const dbSpinner = !json ? clack.spinner() : null;
@@ -375,7 +375,7 @@ async function downloadGitHubTemplate(
         dbSpinner?.stop('Database migration failed');
         if (!json) {
           clack.log.warn(`Migration failed: ${(err as Error).message}`);
-          clack.log.info('You can run the migration manually: insforge db query --unrestricted "$(cat migrations/db_int.sql)"');
+          clack.log.info('You can run the migration manually: insforge db query --unrestricted "$(cat migrations/db_init.sql)"');
         } else {
           throw err;
         }
