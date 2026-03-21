@@ -361,33 +361,23 @@ async function downloadGitHubTemplate(
 
     s?.stop(`${templateName} template downloaded`);
 
-    // Run database migrations if db_int.sql exists
+    // Auto-run database migrations if db_int.sql exists
     const migrationPath = path.join(cwd, 'migrations', 'db_int.sql');
     const migrationExists = await fs.stat(migrationPath).catch(() => null);
     if (migrationExists) {
-      let shouldRun = json; // auto-run in JSON/non-interactive mode
-      if (!json) {
-        const runMigration = await clack.confirm({
-          message: 'This template includes a database migration. Apply it now?',
-        });
-        shouldRun = !clack.isCancel(runMigration) && runMigration;
-      }
-
-      if (shouldRun) {
-        const dbSpinner = !json ? clack.spinner() : null;
-        dbSpinner?.start('Running database migrations...');
-        try {
-          const sql = await fs.readFile(migrationPath, 'utf-8');
-          await runRawSql(sql, true);
-          dbSpinner?.stop('Database migrations applied');
-        } catch (err) {
-          dbSpinner?.stop('Database migration failed');
-          if (!json) {
-            clack.log.warn(`Migration failed: ${(err as Error).message}`);
-            clack.log.info('You can run the migration manually: insforge db query --unrestricted "$(cat migrations/db_int.sql)"');
-          } else {
-            throw err;
-          }
+      const dbSpinner = !json ? clack.spinner() : null;
+      dbSpinner?.start('Running database migrations...');
+      try {
+        const sql = await fs.readFile(migrationPath, 'utf-8');
+        await runRawSql(sql, true);
+        dbSpinner?.stop('Database migrations applied');
+      } catch (err) {
+        dbSpinner?.stop('Database migration failed');
+        if (!json) {
+          clack.log.warn(`Migration failed: ${(err as Error).message}`);
+          clack.log.info('You can run the migration manually: insforge db query --unrestricted "$(cat migrations/db_int.sql)"');
+        } else {
+          throw err;
         }
       }
     }
