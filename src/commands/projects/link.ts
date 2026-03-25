@@ -10,7 +10,7 @@ import { getGlobalConfig, saveGlobalConfig, saveProjectConfig } from '../../lib/
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
-import { installCliGlobally, installSkills, reportCliUsage } from '../../lib/skills.js';
+import { installSkills, reportCliUsage } from '../../lib/skills.js';
 import type { ProjectConfig } from '../../types.js';
 
 function buildOssHost(appkey: string, region: string): string {
@@ -59,8 +59,7 @@ export function registerProjectLinkCommand(program: Command): void {
               outputSuccess(`Linked to direct project at ${projectConfig.oss_host}`);
             }
 
-            // Install CLI globally and agent skills
-            await installCliGlobally(json);
+            // Install agent skills
             await installSkills(json);
             await reportCliUsage('cli.link_direct', true, 6);
             return;
@@ -70,7 +69,7 @@ export function registerProjectLinkCommand(program: Command): void {
           }
         }
 
-        await requireAuth(apiUrl, false);
+        const creds = await requireAuth(apiUrl, false);
 
         let orgId = opts.orgId;
         let projectId = opts.projectId;
@@ -121,10 +120,24 @@ export function registerProjectLinkCommand(program: Command): void {
         }
 
         // Fetch project details and API key
-        const [project, apiKey] = await Promise.all([
-          getProject(projectId, apiUrl),
-          getProjectApiKey(projectId, apiUrl),
-        ]);
+        let project;
+        let apiKey;
+        try {
+          [project, apiKey] = await Promise.all([
+            getProject(projectId, apiUrl),
+            getProjectApiKey(projectId, apiUrl),
+          ]);
+        } catch (err) {
+          if (err instanceof CLIError && err.exitCode === 5) {
+            const identity = creds.user?.email ?? creds.user?.name ?? 'unknown user';
+            throw new CLIError(
+              `You're logged in as ${identity}, and you don't have access to project ${projectId}. Check that the project ID is correct and belongs to one of your organizations.`,
+              5,
+              'PERMISSION_DENIED',
+            );
+          }
+          throw err;
+        }
 
         const projectConfig: ProjectConfig = {
           project_id: project.id,
@@ -144,8 +157,7 @@ export function registerProjectLinkCommand(program: Command): void {
           outputSuccess(`Linked to project "${project.name}" (${project.appkey}.${project.region})`);
         }
 
-        // Install CLI globally and agent skills
-        await installCliGlobally(json);
+        // Install agent skills
         await installSkills(json);
         await reportCliUsage('cli.link', true, 6);
       } catch (err) {

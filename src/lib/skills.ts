@@ -34,23 +34,6 @@ function updateGitignore(): void {
   const block = `\n# InsForge & AI agent skills\n${missing.join('\n')}\n`;
   appendFileSync(gitignorePath, block);
 }
-export async function installCliGlobally(json: boolean): Promise<void> {
-  try {
-    const { stdout } = await execAsync('npm ls -g @insforge/cli --json', { timeout: 10_000 });
-    const parsed = JSON.parse(stdout);
-    if (parsed?.dependencies?.['@insforge/cli']) return;
-  } catch {
-    // not installed globally — proceed with install
-  }
-
-  try {
-    if (!json) clack.log.info('Installing InsForge CLI globally...');
-    await execAsync('npm install -g @insforge/cli', { timeout: 60_000 });
-    if (!json) clack.log.success('InsForge CLI installed. You can now run `insforge` directly.');
-  } catch {
-    if (!json) clack.log.warn('Failed to install CLI globally. You can run manually: npm install -g @insforge/cli');
-  }
-}
 
 export async function installSkills(json: boolean): Promise<void> {
   try {

@@ -16,7 +16,7 @@ import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } 
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
-import { installCliGlobally, installSkills, reportCliUsage } from '../lib/skills.js';
+import { installSkills, reportCliUsage } from '../lib/skills.js';
 import { deployProject } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
 
@@ -156,8 +156,7 @@ export function registerCreateCommand(program: Command): void {
           await downloadTemplate(template as Framework, projectConfig, projectName, json, apiUrl);
         }
 
-        // Install CLI globally and agent skills
-        await installCliGlobally(json);
+        // Install agent skills
         await installSkills(json);
         await reportCliUsage('cli.create', true, 6);
 
