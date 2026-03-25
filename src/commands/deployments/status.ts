@@ -2,9 +2,9 @@ import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
-import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
+import { handleError, getRootOpts, ProjectNotLinkedError, getDeploymentError } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
-import type { SiteDeployment } from '../../types.js';
+import type { DeploymentSchema } from '../../types.js';
 
 export function registerDeploymentsStatusCommand(deploymentsCmd: Command): void {
   deploymentsCmd
@@ -23,11 +23,12 @@ export function registerDeploymentsStatusCommand(deploymentsCmd: Command): void 
         }
 
         const res = await ossFetch(`/api/deployments/${id}`);
-        const d = (await res.json()) as SiteDeployment;
+        const d = (await res.json()) as DeploymentSchema;
 
         if (json) {
           outputJson(d);
         } else {
+          const errorMessage = getDeploymentError(d.metadata);
           outputTable(
             ['Field', 'Value'],
             [
@@ -35,10 +36,10 @@ export function registerDeploymentsStatusCommand(deploymentsCmd: Command): void 
               ['Status', d.status],
               ['Provider', d.provider ?? '-'],
               ['Provider ID', d.providerDeploymentId ?? '-'],
-              ['URL', d.deploymentUrl ?? d.url ?? '-'],
+              ['URL', d.url ?? '-'],
               ['Created', new Date(d.createdAt).toLocaleString()],
               ['Updated', new Date(d.updatedAt).toLocaleString()],
-              ...(d.error ? [['Error', d.error]] : []),
+              ...(errorMessage ? [['Error', errorMessage]] : []),
             ],
           );
         }

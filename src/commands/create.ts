@@ -11,11 +11,12 @@ import {
   getProject,
   getProjectApiKey,
 } from '../lib/api/platform.js';
-import { getAnonKey } from '../lib/api/oss.js';
+import { getAnonKey, runRawSql } from '../lib/api/oss.js';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
+import { readEnvFile } from '../lib/env.js';
 import { installSkills, reportCliUsage } from '../lib/skills.js';
 import { deployProject } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
@@ -59,7 +60,7 @@ export function registerCreateCommand(program: Command): void {
     .option('--name <name>', 'Project name')
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
-    .option('--template <template>', 'Template to use: react, nextjs, or empty')
+    .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, or empty')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -108,7 +109,11 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 3. Select template
+        const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'empty'];
         let template = opts.template as string | undefined;
+        if (template && !validTemplates.includes(template)) {
+          throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
+        }
         if (!template) {
           if (json) {
             template = 'empty';
@@ -118,6 +123,9 @@ export function registerCreateCommand(program: Command): void {
               options: [
                 { value: 'react', label: 'Web app template with React' },
                 { value: 'nextjs', label: 'Web app template with Next.js' },
+                { value: 'chatbot', label: 'AI Chatbot with Next.js' },
+                { value: 'crm', label: 'CRM with Next.js' },
+                { value: 'e-commerce', label: 'E-Commerce store with Next.js' },
                 { value: 'empty', label: 'Empty project' },
               ],
             });
@@ -152,7 +160,10 @@ export function registerCreateCommand(program: Command): void {
 
         // 6. Download template if selected
         const hasTemplate = template !== 'empty';
-        if (hasTemplate) {
+        const githubTemplates = ['chatbot', 'crm', 'e-commerce'];
+        if (githubTemplates.includes(template!)) {
+          await downloadGitHubTemplate(template!, projectConfig, json);
+        } else if (hasTemplate) {
           await downloadTemplate(template as Framework, projectConfig, projectName, json, apiUrl);
         }
 
@@ -185,9 +196,17 @@ export function registerCreateCommand(program: Command): void {
 
           if (!clack.isCancel(shouldDeploy) && shouldDeploy) {
             try {
+              // Read env vars from .env.local or .env to pass to deployment
+              const envVars = await readEnvFile(process.cwd());
+              const startBody: { envVars?: Array<{ key: string; value: string }> } = {};
+              if (envVars.length > 0) {
+                startBody.envVars = envVars;
+              }
+
               const deploySpinner = clack.spinner();
               const result = await deployProject({
                 sourceDir: process.cwd(),
+                startBody,
                 spinner: deploySpinner,
               });
 
@@ -290,4 +309,85 @@ async function downloadTemplate(
   }
 }
 
+async function downloadGitHubTemplate(
+  templateName: string,
+  projectConfig: ProjectConfig,
+  json: boolean,
+): Promise<void> {
+  const s = !json ? clack.spinner() : null;
+  s?.start(`Downloading ${templateName} template...`);
+
+  const tempDir = path.join(tmpdir(), `insforge-template-${Date.now()}`);
+
+  try {
+    await fs.mkdir(tempDir, { recursive: true });
+
+    // Shallow clone the templates repo
+    await execAsync(
+      'git clone --depth 1 https://github.com/InsForge/insforge-templates.git .',
+      { cwd: tempDir, maxBuffer: 10 * 1024 * 1024, timeout: 60_000 },
+    );
+
+    const templateDir = path.join(tempDir, templateName);
+    const stat = await fs.stat(templateDir).catch(() => null);
+    if (!stat?.isDirectory()) {
+      throw new Error(`Template "${templateName}" not found in repository`);
+    }
+
+    // Copy template files to cwd
+    s?.message('Copying template files...');
+    const cwd = process.cwd();
+    await copyDir(templateDir, cwd);
+
+    // Write .env.local from .env.example with InsForge credentials filled in
+    const envExamplePath = path.join(cwd, '.env.example');
+    const envExampleExists = await fs.stat(envExamplePath).catch(() => null);
+    if (envExampleExists) {
+      const anonKey = await getAnonKey();
+      const envExample = await fs.readFile(envExamplePath, 'utf-8');
+      const envContent = envExample.replace(
+        /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
+        (_, prefix: string, _value: string) => {
+          const key = prefix.slice(0, -1); // remove trailing '='
+          if (/INSFORGE.*(URL|BASE_URL)$/.test(key)) return `${prefix}${projectConfig.oss_host}`;
+          if (/INSFORGE.*ANON_KEY$/.test(key)) return `${prefix}${anonKey}`;
+          if (key === 'NEXT_PUBLIC_APP_URL') return `${prefix}https://${projectConfig.appkey}.insforge.site`;
+          return `${prefix}${_value}`;
+        },
+      );
+      await fs.writeFile(path.join(cwd, '.env.local'), envContent);
+    }
+
+    s?.stop(`${templateName} template downloaded`);
+
+    // Auto-run database migrations if db_init.sql exists
+    const migrationPath = path.join(cwd, 'migrations', 'db_init.sql');
+    const migrationExists = await fs.stat(migrationPath).catch(() => null);
+    if (migrationExists) {
+      const dbSpinner = !json ? clack.spinner() : null;
+      dbSpinner?.start('Running database migrations...');
+      try {
+        const sql = await fs.readFile(migrationPath, 'utf-8');
+        await runRawSql(sql, true);
+        dbSpinner?.stop('Database migrations applied');
+      } catch (err) {
+        dbSpinner?.stop('Database migration failed');
+        if (!json) {
+          clack.log.warn(`Migration failed: ${(err as Error).message}`);
+          clack.log.info('You can run the migration manually: insforge db query --unrestricted "$(cat migrations/db_init.sql)"');
+        } else {
+          throw err;
+        }
+      }
+    }
+  } catch (err) {
+    s?.stop(`${templateName} template download failed`);
+    if (!json) {
+      clack.log.warn(`Failed to download ${templateName} template: ${(err as Error).message}`);
+      clack.log.info('You can manually clone from: https://github.com/InsForge/insforge-templates');
+    }
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 

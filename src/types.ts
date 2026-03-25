@@ -107,10 +107,13 @@ export interface ApiError {
 export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsResponse,
   DatabaseFunctionsResponse, DatabaseIndexesResponse, DatabasePoliciesResponse, DatabaseTriggersResponse,
   CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
-  ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse
+  ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse,
+  CreateDeploymentResponse, StartDeploymentRequest, DeploymentSchema,
+  DeploymentMetadataResponse
  } from '@insforge/shared-schemas';
 
-// Function deploy/update response types
+// Function types (kept local: shared-schemas source defines FunctionResponse and
+// DeploymentResult but the published npm package does not export them yet)
 
 export interface FunctionDeploymentResult {
   id: string;
@@ -136,43 +139,3 @@ export interface FunctionResponse {
   deployment?: FunctionDeploymentResult | null;
 }
 
-// Deployment types (OSS - Vercel deployment)
-
-export interface CreateDeploymentResponse {
-  id: string;
-  uploadUrl: string;
-  uploadFields: Record<string, string>;
-}
-
-export interface SiteDeployment {
-  id: string;
-  status: string;
-  provider: string;
-  providerDeploymentId: string | null;
-  // API returns "url"; some endpoints may use "deploymentUrl"
-  url: string | null;
-  deploymentUrl?: string | null;
-  error: string | null;
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DeploymentMetadata {
-  currentDeploymentId: string | null;
-  domain: string | null;
-  slug: string | null;
-  deploymentUrl: string | null;
-}
-
-export interface StartDeploymentRequest {
-  projectSettings?: {
-    buildCommand?: string | null;
-    outputDirectory?: string | null;
-    installCommand?: string | null;
-    devCommand?: string | null;
-    rootDirectory?: string | null;
-  };
-  envVars?: { key: string; value: string }[];
-  meta?: Record<string, string>;
-}

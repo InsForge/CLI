@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { ossFetch } from '../../lib/api/oss.js';
+import { runRawSql } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
@@ -15,23 +15,12 @@ export function registerDbCommands(dbCmd: Command): void {
       try {
         await requireAuth();
 
-        const endpoint = opts.unrestricted
-          ? '/api/database/advance/rawsql/unrestricted'
-          : '/api/database/advance/rawsql';
-
-        const res = await ossFetch(endpoint, {
-          method: 'POST',
-          body: JSON.stringify({ query: sql }),
-        });
-
-        const data = await res.json() as { rows?: Record<string, unknown>[]; data?: Record<string, unknown>[] };
+        const { rows, raw } = await runRawSql(sql, !!opts.unrestricted);
 
         if (json) {
-          outputJson(data);
+          outputJson(raw);
         } else {
-          // Try to render as table if results are array of objects
-          const rows = data.rows ?? data.data ?? null;
-          if (rows && rows.length > 0) {
+          if (rows.length > 0) {
             const headers = Object.keys(rows[0]);
             outputTable(
               headers,
@@ -40,7 +29,7 @@ export function registerDbCommands(dbCmd: Command): void {
             console.log(`${rows.length} row(s) returned.`);
           } else {
             console.log('Query executed successfully.');
-            if (rows && rows.length === 0) {
+            if (rows.length === 0) {
               console.log('No rows returned.');
             }
           }
