@@ -128,7 +128,7 @@ export function registerProjectLinkCommand(program: Command): void {
             getProjectApiKey(projectId, apiUrl),
           ]);
         } catch (err) {
-          if (err instanceof CLIError && err.exitCode === 5) {
+          if (err instanceof CLIError && (err.exitCode === 5 || err.exitCode === 4 || err.message.includes('not found'))) {
             const identity = creds.user?.email ?? creds.user?.name ?? 'unknown user';
             throw new CLIError(
               `You're logged in as ${identity}, and you don't have access to project ${projectId}. Check that the project ID is correct and belongs to one of your organizations.`,
