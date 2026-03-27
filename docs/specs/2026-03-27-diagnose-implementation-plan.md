@@ -88,12 +88,6 @@ function computeStats(data: MetricDataPoint[]): { latest: number; avg: number; m
   return { latest, avg, max };
 }
 
-/** Returns true when linked via --api-key (OSS/self-hosted) — no Platform API access. */
-export function isOssMode(): boolean {
-  const config = getProjectConfig();
-  return config?.project_id === 'oss-project';
-}
-
 export async function fetchMetricsSummary(
   projectId: string,
   apiUrl?: string,
@@ -111,10 +105,10 @@ export function registerDiagnoseMetricsCommand(diagnoseCmd: Command): void {
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth();
+        await requireAuth(apiUrl);
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
-        if (isOssMode()) {
+        if (config.project_id === 'oss-project') {
           throw new CLIError(
             'Metrics requires InsForge Platform login. Not available when linked via --api-key.',
           );
@@ -204,7 +198,7 @@ import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../..
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
-import { isOssMode } from './metrics.js';
+
 
 interface AdvisorScanSummary {
   scanId: string;
@@ -250,10 +244,10 @@ export function registerDiagnoseAdvisorCommand(diagnoseCmd: Command): void {
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth();
+        await requireAuth(apiUrl);
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
-        if (isOssMode()) {
+        if (config.project_id === 'oss-project') {
           throw new CLIError(
             'Advisor requires InsForge Platform login. Not available when linked via --api-key.',
           );
@@ -696,7 +690,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { outputJson } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
-import { fetchMetricsSummary, isOssMode, registerDiagnoseMetricsCommand } from './metrics.js';
+import { fetchMetricsSummary, registerDiagnoseMetricsCommand } from './metrics.js';
 import { fetchAdvisorSummary, registerDiagnoseAdvisorCommand } from './advisor.js';
 import { runDbChecks, registerDiagnoseDbCommand } from './db.js';
 import { fetchLogsSummary, registerDiagnoseLogsCommand } from './logs.js';
@@ -712,13 +706,13 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
     .action(async (_opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth();
+        await requireAuth(apiUrl);
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
 
         const projectId = config.project_id;
         const projectName = config.project_name;
-        const ossMode = isOssMode();
+        const ossMode = config.project_id === 'oss-project';
 
         // In OSS mode (linked via --api-key), skip Platform API calls (metrics/advisor)
         const metricsPromise = ossMode
@@ -742,12 +736,18 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
           if (metricsResult.status === 'fulfilled') {
             const data = metricsResult.value;
             report.metrics = data.metrics.map((m) => {
-              const vals = m.data.map((d) => d.value);
+              if (m.data.length === 0) return { metric: m.metric, latest: null, avg: null, max: null };
+              let sum = 0;
+              let max = -Infinity;
+              for (const d of m.data) {
+                sum += d.value;
+                if (d.value > max) max = d.value;
+              }
               return {
                 metric: m.metric,
-                latest: vals.length > 0 ? vals[vals.length - 1] : null,
-                avg: vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
-                max: vals.length > 0 ? Math.max(...vals) : null,
+                latest: m.data[m.data.length - 1].value,
+                avg: sum / m.data.length,
+                max,
               };
             });
           } else {
