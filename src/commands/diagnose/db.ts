@@ -84,7 +84,7 @@ const DB_CHECKS: Record<string, DbCheck> = {
   },
   'index-usage': {
     label: 'Index Usage (worst 10)',
-    sql: `SELECT relname AS table, idx_scan, seq_scan,
+    sql: `SELECT schemaname || '.' || relname AS table, idx_scan, seq_scan,
         CASE WHEN (idx_scan + seq_scan) > 0
           THEN round(100.0 * idx_scan / (idx_scan + seq_scan), 1)
           ELSE 0 END AS idx_ratio
