@@ -58,6 +58,7 @@ import { registerSchedulesLogsCommand } from './commands/schedules/logs.js';
 
 import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
+import { registerDiagnoseCommands } from './commands/diagnose/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -161,6 +162,10 @@ registerLogsCommand(program);
 
 // Metadata command
 registerMetadataCommand(program);
+
+// Diagnose commands
+const diagnoseCmd = program.command('diagnose');
+registerDiagnoseCommands(diagnoseCmd);
 
 // Schedules commands
 const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');

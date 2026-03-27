@@ -9,7 +9,7 @@ import type {
   User,
 } from '../../types.js';
 
-async function platformFetch(
+export async function platformFetch(
   path: string,
   options: RequestInit = {},
   apiUrl?: string,
