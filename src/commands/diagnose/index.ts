@@ -113,7 +113,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
               const netIn = vals.network_in !== undefined ? formatBytesCompact(vals.network_in) + '/s' : 'N/A';
               const netOut = vals.network_out !== undefined ? formatBytesCompact(vals.network_out) + '/s' : 'N/A';
               console.log(`  CPU: ${cpu}   Memory: ${mem}`);
-              console.log(`  Disk: ${disk}  Network: ↑${netIn} ↓${netOut}`);
+              console.log(`  Disk: ${disk}  Network: ↓${netIn} ↑${netOut}`);
             }
           } else {
             console.log(`  N/A — ${metricsResult.reason?.message ?? 'unavailable'}`);
