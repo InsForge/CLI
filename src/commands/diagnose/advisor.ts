@@ -5,7 +5,7 @@ import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../..
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
-import { isOssMode } from './metrics.js';
+
 
 interface AdvisorScanSummary {
   scanId: string;
@@ -54,7 +54,7 @@ export function registerDiagnoseAdvisorCommand(diagnoseCmd: Command): void {
         await requireAuth();
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
-        if (isOssMode()) {
+        if (config.project_id === 'oss-project') {
           throw new CLIError(
             'Advisor requires InsForge Platform login. Not available when linked via --api-key.',
           );

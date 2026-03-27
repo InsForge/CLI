@@ -1,7 +1,8 @@
 import type { Command } from 'commander';
 import { runRawSql } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
+import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
@@ -163,6 +164,7 @@ export function registerDiagnoseDbCommand(diagnoseCmd: Command): void {
       const { json } = getRootOpts(cmd);
       try {
         await requireAuth();
+        if (!getProjectConfig()) throw new ProjectNotLinkedError();
 
         const checkNames =
           opts.check === 'all'

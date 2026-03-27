@@ -50,15 +50,13 @@ function formatBytes(bytes: number): string {
 function computeStats(data: MetricDataPoint[]): { latest: number; avg: number; max: number } {
   if (data.length === 0) return { latest: 0, avg: 0, max: 0 };
   const latest = data[data.length - 1].value;
-  const avg = data.reduce((sum, d) => sum + d.value, 0) / data.length;
-  const max = Math.max(...data.map((d) => d.value));
-  return { latest, avg, max };
-}
-
-/** Returns true when linked via --api-key (OSS/self-hosted) — no Platform API access. */
-export function isOssMode(): boolean {
-  const config = getProjectConfig();
-  return config?.project_id === 'oss-project';
+  let sum = 0;
+  let max = -Infinity;
+  for (const d of data) {
+    sum += d.value;
+    if (d.value > max) max = d.value;
+  }
+  return { latest, avg: sum / data.length, max };
 }
 
 export async function fetchMetricsSummary(
@@ -81,7 +79,7 @@ export function registerDiagnoseMetricsCommand(diagnoseCmd: Command): void {
         await requireAuth();
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
-        if (isOssMode()) {
+        if (config.project_id === 'oss-project') {
           throw new CLIError(
             'Metrics requires InsForge Platform login. Not available when linked via --api-key.',
           );

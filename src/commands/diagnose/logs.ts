@@ -1,7 +1,8 @@
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
+import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
@@ -21,7 +22,7 @@ interface SourceSummary {
   errors: LogEntry[];
 }
 
-function parseLogEntry(entry: unknown, source: string): { ts: string; msg: string } {
+function parseLogEntry(entry: unknown): { ts: string; msg: string } {
   if (typeof entry === 'string') {
     return { ts: '', msg: entry };
   }
@@ -38,7 +39,7 @@ async function fetchSourceLogs(source: string, limit: number): Promise<SourceSum
 
   const errors: LogEntry[] = [];
   for (const entry of logs) {
-    const { ts, msg } = parseLogEntry(entry, source);
+    const { ts, msg } = parseLogEntry(entry);
     if (ERROR_PATTERN.test(msg)) {
       errors.push({ timestamp: ts, message: msg, source });
     }
@@ -69,6 +70,7 @@ export function registerDiagnoseLogsCommand(diagnoseCmd: Command): void {
       const { json } = getRootOpts(cmd);
       try {
         await requireAuth();
+        if (!getProjectConfig()) throw new ProjectNotLinkedError();
 
         const limit = parseInt(opts.limit, 10) || 100;
         const sources = opts.source ? [opts.source as string] : [...LOG_SOURCES];

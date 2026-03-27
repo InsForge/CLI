@@ -5,7 +5,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { outputJson } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
-import { fetchMetricsSummary, isOssMode, registerDiagnoseMetricsCommand } from './metrics.js';
+import { fetchMetricsSummary, registerDiagnoseMetricsCommand } from './metrics.js';
 import { fetchAdvisorSummary, registerDiagnoseAdvisorCommand } from './advisor.js';
 import { runDbChecks, registerDiagnoseDbCommand } from './db.js';
 import { fetchLogsSummary, registerDiagnoseLogsCommand } from './logs.js';
@@ -27,7 +27,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
 
         const projectId = config.project_id;
         const projectName = config.project_name;
-        const ossMode = isOssMode();
+        const ossMode = config.project_id === 'oss-project';
 
         // In OSS mode (linked via --api-key), skip Platform API calls (metrics/advisor)
         const metricsPromise = ossMode
@@ -51,12 +51,18 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
           if (metricsResult.status === 'fulfilled') {
             const data = metricsResult.value;
             report.metrics = data.metrics.map((m) => {
-              const vals = m.data.map((d) => d.value);
+              if (m.data.length === 0) return { metric: m.metric, latest: null, avg: null, max: null };
+              let sum = 0;
+              let max = -Infinity;
+              for (const d of m.data) {
+                sum += d.value;
+                if (d.value > max) max = d.value;
+              }
               return {
                 metric: m.metric,
-                latest: vals.length > 0 ? vals[vals.length - 1] : null,
-                avg: vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
-                max: vals.length > 0 ? Math.max(...vals) : null,
+                latest: m.data[m.data.length - 1].value,
+                avg: sum / m.data.length,
+                max,
               };
             });
           } else {
