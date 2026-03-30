@@ -68,6 +68,12 @@ export async function refreshAccessToken(apiUrl?: string): Promise<string> {
     saveCredentials(updated);
     return data.access_token;
   } catch {
+    // Token refresh failed — try re-authenticating interactively
+    if (process.stdout.isTTY) {
+      clack.log.warn('Session expired. Please log in again.');
+      const newCreds = await performOAuthLogin(apiUrl);
+      return newCreds.access_token;
+    }
     throw new AuthError('Failed to refresh token. Run `insforge login` again.');
   }
 }
