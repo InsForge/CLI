@@ -39,6 +39,91 @@ async function waitForProjectActive(projectId: string, apiUrl?: string, timeoutM
   throw new CLIError('Project creation timed out. Check the dashboard for status.');
 }
 
+const INSFORGE_BANNER = [
+  '██╗███╗   ██╗███████╗███████╗ ██████╗ ██████╗  ██████╗ ███████╗',
+  '██║████╗  ██║██╔════╝██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝',
+  '██║██╔██╗ ██║███████╗█████╗  ██║   ██║██████╔╝██║  ███╗█████╗  ',
+  '██║██║╚██╗██║╚════██║██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ',
+  '██║██║ ╚████║███████║██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗',
+  '╚═╝╚═╝  ╚═══╝╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝',
+];
+
+async function animateBanner(): Promise<void> {
+  const isTTY = process.stderr.isTTY;
+  if (!isTTY || process.env.CI) {
+    // Non-interactive: just print static banner
+    for (const line of INSFORGE_BANNER) {
+      process.stderr.write(`${line}\n`);
+    }
+    process.stderr.write('\n');
+    return;
+  }
+
+  const totalLines = INSFORGE_BANNER.length;
+  const maxLen = Math.max(...INSFORGE_BANNER.map((l) => l.length));
+
+  // Phase 1: Line-by-line reveal with cursor sweep
+  const REVEAL_STEPS = 10;
+  const REVEAL_DELAY = 30;
+  for (let lineIdx = 0; lineIdx < totalLines; lineIdx++) {
+    const line = INSFORGE_BANNER[lineIdx];
+    for (let step = 0; step <= REVEAL_STEPS; step++) {
+      const pos = Math.floor((step / REVEAL_STEPS) * line.length);
+      let rendered = '';
+      for (let i = 0; i < line.length; i++) {
+        if (i < pos) {
+          rendered += `\x1b[97m${line[i]}\x1b[0m`; // bright white (revealed)
+        } else if (i === pos) {
+          rendered += `\x1b[1;37m${line[i]}\x1b[0m`; // bold white (cursor)
+        } else {
+          rendered += `\x1b[90m${line[i]}\x1b[0m`; // dim gray (hidden)
+        }
+      }
+      process.stderr.write(`\r${rendered}`);
+      await new Promise((r) => setTimeout(r, REVEAL_DELAY));
+    }
+    process.stderr.write('\n');
+  }
+
+  // Phase 2: Shimmer pass across the full banner
+  const SHIMMER_STEPS = 16;
+  const SHIMMER_DELAY = 40;
+  const SHIMMER_WIDTH = 4;
+  for (let step = 0; step < SHIMMER_STEPS; step++) {
+    const shimmerPos = Math.floor((step / SHIMMER_STEPS) * (maxLen + SHIMMER_WIDTH));
+    // Move cursor up to start of banner
+    process.stderr.write(`\x1b[${totalLines}A`);
+    for (const line of INSFORGE_BANNER) {
+      let rendered = '';
+      for (let i = 0; i < line.length; i++) {
+        const dist = Math.abs(i - shimmerPos);
+        if (dist === 0) {
+          rendered += `\x1b[1;97m${line[i]}\x1b[0m`; // bold bright white (shimmer peak)
+        } else if (dist <= SHIMMER_WIDTH) {
+          rendered += `\x1b[37m${line[i]}\x1b[0m`; // white (shimmer edge)
+        } else {
+          rendered += `\x1b[90m${line[i]}\x1b[0m`; // dim (base)
+        }
+      }
+      process.stderr.write(`${rendered}\n`);
+    }
+    await new Promise((r) => setTimeout(r, SHIMMER_DELAY));
+  }
+
+  // Final: show banner in steady bright white
+  process.stderr.write(`\x1b[${totalLines}A`);
+  for (const line of INSFORGE_BANNER) {
+    process.stderr.write(`\x1b[97m${line}\x1b[0m\n`);
+  }
+  process.stderr.write('\n');
+}
+
+function getDefaultProjectName(): string {
+  const dirName = path.basename(process.cwd());
+  const sanitized = dirName.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return sanitized.length >= 2 ? sanitized : '';
+}
+
 async function copyDir(src: string, dest: string): Promise<void> {
   const entries = await fs.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
@@ -67,7 +152,8 @@ export function registerCreateCommand(program: Command): void {
         await requireAuth(apiUrl, false);
 
         if (!json) {
-          clack.intro('Create a new InsForge project');
+          await animateBanner();
+          clack.intro("Let's build something great");
         }
 
         // 1. Select organization
@@ -96,19 +182,21 @@ export function registerCreateCommand(program: Command): void {
         globalConfig.default_org_id = orgId;
         saveGlobalConfig(globalConfig);
 
-        // 2. Project name
+        // 2. Project name (pre-filled from directory name)
         let projectName = opts.name;
         if (!projectName) {
           if (json) throw new CLIError('--name is required in JSON mode.');
+          const defaultName = getDefaultProjectName();
           const name = await clack.text({
             message: 'Project name:',
+            ...(defaultName ? { defaultValue: defaultName, placeholder: defaultName } : {}),
             validate: (v) => (v.length >= 2 ? undefined : 'Name must be at least 2 characters'),
           });
           if (clack.isCancel(name)) process.exit(0);
           projectName = name as string;
         }
 
-        // 3. Select template
+        // 3. Select template (two-step: blank vs template, then pick template)
         const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'empty'];
         let template = opts.template as string | undefined;
         if (template && !validTemplates.includes(template)) {
@@ -118,19 +206,31 @@ export function registerCreateCommand(program: Command): void {
           if (json) {
             template = 'empty';
           } else {
-            const selected = await clack.select({
-              message: 'Choose a starter template:',
+            const approach = await clack.select({
+              message: 'How would you like to start?',
               options: [
-                { value: 'react', label: 'Web app template with React' },
-                { value: 'nextjs', label: 'Web app template with Next.js' },
-                { value: 'chatbot', label: 'AI Chatbot with Next.js' },
-                { value: 'crm', label: 'CRM with Next.js' },
-                { value: 'e-commerce', label: 'E-Commerce store with Next.js' },
-                { value: 'empty', label: 'Empty project' },
+                { value: 'blank', label: 'Blank project', hint: 'Start from scratch with .env.local ready' },
+                { value: 'template', label: 'Start from a template', hint: 'Pre-built starter apps' },
               ],
             });
-            if (clack.isCancel(selected)) process.exit(0);
-            template = selected as string;
+            if (clack.isCancel(approach)) process.exit(0);
+
+            if (approach === 'blank') {
+              template = 'empty';
+            } else {
+              const selected = await clack.select({
+                message: 'Choose a starter template:',
+                options: [
+                  { value: 'react', label: 'Web app template with React' },
+                  { value: 'nextjs', label: 'Web app template with Next.js' },
+                  { value: 'chatbot', label: 'AI Chatbot with Next.js' },
+                  { value: 'crm', label: 'CRM with Next.js' },
+                  { value: 'e-commerce', label: 'E-Commerce store with Next.js' },
+                ],
+              });
+              if (clack.isCancel(selected)) process.exit(0);
+              template = selected as string;
+            }
           }
         }
 
@@ -158,13 +258,26 @@ export function registerCreateCommand(program: Command): void {
 
         s?.stop(`Project "${project.name}" created and linked`);
 
-        // 6. Download template if selected
+        // 6. Download template or seed env for blank projects
         const hasTemplate = template !== 'empty';
         const githubTemplates = ['chatbot', 'crm', 'e-commerce'];
         if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {
           await downloadTemplate(template as Framework, projectConfig, projectName, json, apiUrl);
+        } else {
+          // Blank project: seed .env.local with InsForge credentials
+          const anonKey = await getAnonKey();
+          const envContent = [
+            '# InsForge',
+            `NEXT_PUBLIC_INSFORGE_URL=${projectConfig.oss_host}`,
+            `NEXT_PUBLIC_INSFORGE_ANON_KEY=${anonKey || ''}`,
+            '',
+          ].join('\n');
+          await fs.writeFile(path.join(process.cwd(), '.env.local'), envContent);
+          if (!json) {
+            clack.log.success('Created .env.local with your InsForge credentials');
+          }
         }
 
         // Install agent skills
