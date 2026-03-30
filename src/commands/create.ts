@@ -207,8 +207,8 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // Sanitize project name to prevent path traversal
-        projectName = path.basename(projectName).replace(/[^a-zA-Z0-9._-]/g, '-');
-        if (projectName.length < 2) {
+        projectName = path.basename(projectName).replace(/[^a-zA-Z0-9._-]/g, '-').replace(/\.+/g, '.');
+        if (projectName.length < 2 || projectName === '.' || projectName === '..') {
           throw new CLIError('Project name must be at least 2 safe characters (letters, numbers, hyphens).');
         }
 
@@ -288,20 +288,26 @@ export function registerCreateCommand(program: Command): void {
             if (!anonKey) {
               if (!json) clack.log.warn('Could not retrieve anon key. You can add it to .env.local manually.');
             } else {
+              const envPath = path.join(process.cwd(), '.env.local');
               const envContent = [
                 '# InsForge',
                 `NEXT_PUBLIC_INSFORGE_URL=${projectConfig.oss_host}`,
                 `NEXT_PUBLIC_INSFORGE_ANON_KEY=${anonKey}`,
                 '',
               ].join('\n');
-              await fs.writeFile(path.join(process.cwd(), '.env.local'), envContent);
+              await fs.writeFile(envPath, envContent, { flag: 'wx' });
               if (!json) {
                 clack.log.success('Created .env.local with your InsForge credentials');
               }
             }
           } catch (err) {
+            const error = err as NodeJS.ErrnoException;
             if (!json) {
-              clack.log.warn(`Failed to create .env.local: ${(err as Error).message}`);
+              if (error.code === 'EEXIST') {
+                clack.log.warn('.env.local already exists; skipping InsForge key seeding.');
+              } else {
+                clack.log.warn(`Failed to create .env.local: ${error.message}`);
+              }
             }
           }
         }
@@ -494,7 +500,16 @@ async function downloadGitHubTemplate(
           return `${prefix}${_value}`;
         },
       );
-      await fs.writeFile(path.join(cwd, '.env.local'), envContent);
+      const envLocalPath = path.join(cwd, '.env.local');
+      try {
+        await fs.writeFile(envLocalPath, envContent, { flag: 'wx' });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
+          if (!json) clack.log.warn('.env.local already exists; skipping env seeding.');
+        } else {
+          throw e;
+        }
+      }
     }
 
     s?.stop(`${templateName} template downloaded`);
