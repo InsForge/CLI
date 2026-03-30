@@ -61,6 +61,16 @@ async function animateBanner(): Promise<void> {
 
   const totalLines = INSFORGE_BANNER.length;
   const maxLen = Math.max(...INSFORGE_BANNER.map((l) => l.length));
+  const cols = process.stderr.columns ?? 0;
+
+  // Narrow terminal: skip animation to avoid garbled output from line wrapping
+  if (cols > 0 && cols < maxLen) {
+    for (const line of INSFORGE_BANNER) {
+      process.stderr.write(`\x1b[97m${line}\x1b[0m\n`);
+    }
+    process.stderr.write('\n');
+    return;
+  }
 
   // Phase 1: Line-by-line reveal with cursor sweep
   const REVEAL_STEPS = 10;
@@ -196,6 +206,12 @@ export function registerCreateCommand(program: Command): void {
           projectName = name as string;
         }
 
+        // Sanitize project name to prevent path traversal
+        projectName = path.basename(projectName).replace(/[^a-zA-Z0-9._-]/g, '-');
+        if (projectName.length < 2) {
+          throw new CLIError('Project name must be at least 2 safe characters (letters, numbers, hyphens).');
+        }
+
         // 3. Select template (two-step: blank vs template, then pick template)
         const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'empty'];
         let template = opts.template as string | undefined;
@@ -266,17 +282,27 @@ export function registerCreateCommand(program: Command): void {
         } else if (hasTemplate) {
           await downloadTemplate(template as Framework, projectConfig, projectName, json, apiUrl);
         } else {
-          // Blank project: seed .env.local with InsForge credentials
-          const anonKey = await getAnonKey();
-          const envContent = [
-            '# InsForge',
-            `NEXT_PUBLIC_INSFORGE_URL=${projectConfig.oss_host}`,
-            `NEXT_PUBLIC_INSFORGE_ANON_KEY=${anonKey || ''}`,
-            '',
-          ].join('\n');
-          await fs.writeFile(path.join(process.cwd(), '.env.local'), envContent);
-          if (!json) {
-            clack.log.success('Created .env.local with your InsForge credentials');
+          // Blank project: seed .env.local with InsForge credentials (non-fatal)
+          try {
+            const anonKey = await getAnonKey();
+            if (!anonKey) {
+              if (!json) clack.log.warn('Could not retrieve anon key. You can add it to .env.local manually.');
+            } else {
+              const envContent = [
+                '# InsForge',
+                `NEXT_PUBLIC_INSFORGE_URL=${projectConfig.oss_host}`,
+                `NEXT_PUBLIC_INSFORGE_ANON_KEY=${anonKey}`,
+                '',
+              ].join('\n');
+              await fs.writeFile(path.join(process.cwd(), '.env.local'), envContent);
+              if (!json) {
+                clack.log.success('Created .env.local with your InsForge credentials');
+              }
+            }
+          } catch (err) {
+            if (!json) {
+              clack.log.warn(`Failed to create .env.local: ${(err as Error).message}`);
+            }
           }
         }
 
