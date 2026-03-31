@@ -18,6 +18,7 @@ import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
 import { readEnvFile } from '../lib/env.js';
 import { installSkills, reportCliUsage } from '../lib/skills.js';
+import { captureEvent, shutdownAnalytics } from '../lib/analytics.js';
 import { deployProject } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
 
@@ -231,6 +232,10 @@ export function registerCreateCommand(program: Command): void {
             });
             if (clack.isCancel(approach)) process.exit(0);
 
+            captureEvent(orgId, 'create_approach_selected', {
+              approach: approach as string,
+            });
+
             if (approach === 'blank') {
               template = 'empty';
             } else {
@@ -249,6 +254,11 @@ export function registerCreateCommand(program: Command): void {
             }
           }
         }
+
+        captureEvent(orgId, 'template_selected', {
+          template,
+          approach: template === 'empty' ? 'blank' : 'template',
+        });
 
         // 4. Create project via Platform API
         const s = !json ? clack.spinner() : null;
@@ -392,6 +402,8 @@ export function registerCreateCommand(program: Command): void {
         }
       } catch (err) {
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }
