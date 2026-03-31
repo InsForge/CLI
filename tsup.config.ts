@@ -12,7 +12,4 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
-  define: {
-    'process.env.POSTHOG_API_KEY': JSON.stringify(process.env.POSTHOG_API_KEY || ''),
-  },
 });

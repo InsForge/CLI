@@ -1,6 +1,6 @@
 import { PostHog } from 'posthog-node';
 
-const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
+const POSTHOG_API_KEY = 'phc_ueV1ii62wdBTkH7E70ugyeqHIHu8dFDdjs0qq3TZhJz';
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
 let client: PostHog | null = null;
