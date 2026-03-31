@@ -276,7 +276,7 @@ export function registerCreateCommand(program: Command): void {
 
         // 6. Download template or seed env for blank projects
         const hasTemplate = template !== 'empty';
-        const githubTemplates = ['chatbot', 'crm', 'e-commerce'];
+        const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react'];
         if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {
