@@ -234,7 +234,6 @@ export function registerCreateCommand(program: Command): void {
 
             captureEvent(orgId, 'create_approach_selected', {
               approach: approach as string,
-              project_name: projectName,
             });
 
             if (approach === 'blank') {
@@ -259,7 +258,6 @@ export function registerCreateCommand(program: Command): void {
         captureEvent(orgId, 'template_selected', {
           template,
           approach: template === 'empty' ? 'blank' : 'template',
-          project_name: projectName,
         });
 
         // 4. Create project via Platform API
@@ -402,9 +400,10 @@ export function registerCreateCommand(program: Command): void {
           }
           clack.outro('Done!');
         }
-        await shutdownAnalytics();
       } catch (err) {
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }
