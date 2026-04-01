@@ -372,7 +372,7 @@ export function registerCreateCommand(program: Command): void {
                 deploySpinner.stop('Deployment is still building');
                 clack.log.info(`Deployment ID: ${result.deploymentId}`);
                 clack.log.warn('Deployment did not finish within 2 minutes.');
-                clack.log.info(`Check status with: insforge deployments status ${result.deploymentId}`);
+                clack.log.info(`Check status with: npx @insforge/cli deployments status ${result.deploymentId}`);
               }
             } catch (err) {
               clack.log.warn(`Deploy failed: ${(err as Error).message}`);
@@ -540,7 +540,7 @@ async function downloadGitHubTemplate(
         dbSpinner?.stop('Database migration failed');
         if (!json) {
           clack.log.warn(`Migration failed: ${(err as Error).message}`);
-          clack.log.info('You can run the migration manually: insforge db query --unrestricted "$(cat migrations/db_init.sql)"');
+          clack.log.info('You can run the migration manually: npx @insforge/cli db query --unrestricted "$(cat migrations/db_init.sql)"');
         } else {
           throw err;
         }

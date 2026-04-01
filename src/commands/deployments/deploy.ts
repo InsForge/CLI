@@ -207,7 +207,7 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
           } else {
             clack.log.info(`Deployment ID: ${result.deploymentId}`);
             clack.log.warn('Deployment did not finish within 2 minutes.');
-            clack.log.info(`Check status with: insforge deployments status ${result.deploymentId}`);
+            clack.log.info(`Check status with: npx @insforge/cli deployments status ${result.deploymentId}`);
           }
         }
         await reportCliUsage('cli.deployments.deploy', true);
