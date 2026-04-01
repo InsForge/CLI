@@ -41,6 +41,7 @@ import { registerDeploymentsDeployCommand } from './commands/deployments/deploy.
 import { registerDeploymentsListCommand } from './commands/deployments/list.js';
 import { registerDeploymentsStatusCommand } from './commands/deployments/status.js';
 import { registerDeploymentsCancelCommand } from './commands/deployments/cancel.js';
+import { registerDeploymentsEnvVarsCommand } from './commands/deployments/env-vars.js';
 
 import { registerDocsCommand } from './commands/docs.js';
 import { registerSecretsListCommand } from './commands/secrets/list.js';
@@ -145,6 +146,7 @@ registerDeploymentsDeployCommand(deploymentsCmd);
 registerDeploymentsListCommand(deploymentsCmd);
 registerDeploymentsStatusCommand(deploymentsCmd);
 registerDeploymentsCancelCommand(deploymentsCmd);
+registerDeploymentsEnvVarsCommand(deploymentsCmd);
 // registerDeploymentsMetadataCommand(deploymentsCmd);
 // slug command doesn't work yet.
 // registerDeploymentsSlugCommand(deploymentsCmd);

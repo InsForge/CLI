@@ -6,9 +6,14 @@ import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
-const LOG_SOURCES = ['insforge.logs', 'postgREST.logs', 'postgres.logs', 'function.logs'] as const;
+const LOG_SOURCES = ['insforge.logs', 'postgREST.logs', 'postgres.logs', 'function.logs', 'function-deploy.logs'] as const;
 
 const ERROR_PATTERN = /\b(error|fatal|panic)\b/i;
+
+/** Maps source names to their API paths. Most use /api/logs/{source}, but some have custom paths. */
+const SOURCE_PATH: Record<string, string> = {
+  'function-deploy.logs': '/api/logs/functions/build-logs',
+};
 
 interface LogEntry {
   timestamp: string;
@@ -32,8 +37,14 @@ function parseLogEntry(entry: unknown): { ts: string; msg: string } {
   return { ts, msg };
 }
 
+function getLogPath(source: string, limit: number): string {
+  const custom = SOURCE_PATH[source];
+  if (custom) return `${custom}?limit=${limit}`;
+  return `/api/logs/${encodeURIComponent(source)}?limit=${limit}`;
+}
+
 async function fetchSourceLogs(source: string, limit: number): Promise<SourceSummary> {
-  const res = await ossFetch(`/api/logs/${encodeURIComponent(source)}?limit=${limit}`);
+  const res = await ossFetch(getLogPath(source, limit));
   const data = await res.json();
   const logs = Array.isArray(data) ? data : ((data as Record<string, unknown>).logs as unknown[]) ?? [];
 
