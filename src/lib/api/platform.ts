@@ -109,6 +109,25 @@ export async function getProjectApiKey(projectId: string, apiUrl?: string): Prom
   return data.access_api_key;
 }
 
+export async function reportAgentConnected(
+  payload: { project_id?: string; app_key?: string },
+  apiUrl?: string,
+): Promise<void> {
+  const baseUrl = getPlatformApiUrl(apiUrl);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const token = getAccessToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  await fetch(`${baseUrl}/tracking/v1/agent-connected`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createProject(
   orgId: string,
   name: string,

@@ -5,6 +5,7 @@ import {
   listProjects,
   getProject,
   getProjectApiKey,
+  reportAgentConnected,
 } from '../../lib/api/platform.js';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
@@ -62,6 +63,14 @@ export function registerProjectLinkCommand(program: Command): void {
             // Install agent skills
             await installSkills(json);
             await reportCliUsage('cli.link_direct', true, 6);
+
+            // Report agent-connected event (best-effort)
+            try {
+              const urlMatch = opts.apiBaseUrl.match(/^https?:\/\/([^.]+)\.[^.]+\.insforge\.app/);
+              if (urlMatch) {
+                await reportAgentConnected({ app_key: urlMatch[1] }, apiUrl);
+              }
+            } catch { /* ignore */ }
             return;
           } catch (err) {
             await reportCliUsage('cli.link_direct', false);
@@ -160,6 +169,11 @@ export function registerProjectLinkCommand(program: Command): void {
         // Install agent skills
         await installSkills(json);
         await reportCliUsage('cli.link', true, 6);
+
+        // Report agent-connected event (best-effort)
+        try {
+          await reportAgentConnected({ project_id: project.id }, apiUrl);
+        } catch { /* ignore */ }
       } catch (err) {
         await reportCliUsage('cli.link', false);
         handleError(err, json);
