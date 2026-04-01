@@ -200,7 +200,7 @@ export function registerCreateCommand(program: Command): void {
           const defaultName = getDefaultProjectName();
           const name = await clack.text({
             message: 'Project name:',
-            ...(defaultName ? { defaultValue: defaultName, placeholder: defaultName } : {}),
+            ...(defaultName ? { initialValue: defaultName } : {}),
             validate: (v) => (v.length >= 2 ? undefined : 'Name must be at least 2 characters'),
           });
           if (clack.isCancel(name)) process.exit(0);
