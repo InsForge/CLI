@@ -17,11 +17,11 @@ Features: ${FEATURES.join(', ')}
 Languages: ${LANGUAGES.join(', ')}
 
 Examples:
-  insforge docs                        List all available docs
-  insforge docs instructions           Show setup instructions
-  insforge docs db typescript          Show TypeScript database SDK docs
-  insforge docs auth swift             Show Swift auth SDK docs
-  insforge docs storage rest-api       Show REST API storage docs`)
+  npx @insforge/cli docs                        List all available docs
+  npx @insforge/cli docs instructions           Show setup instructions
+  npx @insforge/cli docs db typescript          Show TypeScript database SDK docs
+  npx @insforge/cli docs auth swift             Show Swift auth SDK docs
+  npx @insforge/cli docs storage rest-api       Show REST API storage docs`)
     .action(async (feature: string | undefined, language: string | undefined, _opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {

@@ -36,7 +36,7 @@ export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promi
 
       const retry = await clack.confirm({ message: 'Would you like to try again?' });
       if (clack.isCancel(retry) || !retry) {
-        throw new AuthError('Authentication required. Run `insforge login` to authenticate.');
+        throw new AuthError('Authentication required. Run `npx @insforge/cli login` to authenticate.');
       }
     }
   }
@@ -45,7 +45,7 @@ export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promi
 export async function refreshAccessToken(apiUrl?: string): Promise<string> {
   const creds = getCredentials();
   if (!creds?.refresh_token) {
-    throw new AuthError('Refresh token not found. Run `insforge login` again.');
+    throw new AuthError('Refresh token not found. Run `npx @insforge/cli login` again.');
   }
 
   const platformUrl = getPlatformApiUrl(apiUrl);
@@ -74,6 +74,6 @@ export async function refreshAccessToken(apiUrl?: string): Promise<string> {
       const newCreds = await performOAuthLogin(apiUrl);
       return newCreds.access_token;
     }
-    throw new AuthError('Failed to refresh token. Run `insforge login` again.');
+    throw new AuthError('Failed to refresh token. Run `npx @insforge/cli login` again.');
   }
 }

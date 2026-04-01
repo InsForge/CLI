@@ -48,7 +48,7 @@ export function registerContextCommand(program: Command): void {
           console.log(`  Region:        ${projectConfig.region}`);
           console.log(`  OSS Host:      ${projectConfig.oss_host}`);
         } else {
-          console.log('\n  Project:       (not linked — run `insforge link`)');
+          console.log('\n  Project:       (not linked — run `npx @insforge/cli link`)');
         }
 
         console.log('');
