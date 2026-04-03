@@ -186,6 +186,12 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
           throw new CLIError(`"${sourceDir}" is not a valid directory.`);
         }
 
+        // Reject excluded directories as deploy source
+        const dirName = path.basename(sourceDir);
+        if (EXCLUDE_PATTERNS.includes(dirName)) {
+          throw new CLIError(`"${dirName}" is an excluded directory and cannot be used as a deploy source. Please specify your project root or output directory instead.`);
+        }
+
         const s = !json ? clack.spinner() : null;
 
         // Parse env/meta from CLI flags
