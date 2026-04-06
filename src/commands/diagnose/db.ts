@@ -5,6 +5,7 @@ import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/error
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackDiagnose, shutdownAnalytics } from '../../lib/analytics.js';
 
 interface DbCheck {
   label: string;
@@ -164,7 +165,9 @@ export function registerDiagnoseDbCommand(diagnoseCmd: Command): void {
       const { json } = getRootOpts(cmd);
       try {
         await requireAuth();
-        if (!getProjectConfig()) throw new ProjectNotLinkedError();
+        const config = getProjectConfig();
+        if (!config) throw new ProjectNotLinkedError();
+        trackDiagnose('db', config);
 
         const checkNames =
           opts.check === 'all'
@@ -205,6 +208,8 @@ export function registerDiagnoseDbCommand(diagnoseCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.diagnose.db', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

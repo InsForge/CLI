@@ -5,6 +5,7 @@ import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/error
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackDiagnose, shutdownAnalytics } from '../../lib/analytics.js';
 
 const LOG_SOURCES = ['insforge.logs', 'postgREST.logs', 'postgres.logs', 'function.logs', 'function-deploy.logs'] as const;
 
@@ -81,7 +82,9 @@ export function registerDiagnoseLogsCommand(diagnoseCmd: Command): void {
       const { json } = getRootOpts(cmd);
       try {
         await requireAuth();
-        if (!getProjectConfig()) throw new ProjectNotLinkedError();
+        const config = getProjectConfig();
+        if (!config) throw new ProjectNotLinkedError();
+        trackDiagnose('logs', config);
 
         const limit = parseInt(opts.limit, 10) || 100;
         const sources = opts.source ? [opts.source as string] : [...LOG_SOURCES];
@@ -119,6 +122,8 @@ export function registerDiagnoseLogsCommand(diagnoseCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.diagnose.logs', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

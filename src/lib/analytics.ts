@@ -1,4 +1,5 @@
 import { PostHog } from 'posthog-node';
+import type { ProjectConfig } from '../types.js';
 
 const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
@@ -23,6 +24,17 @@ export function captureEvent(
   } catch {
     // analytics should never break the CLI
   }
+}
+
+export function trackDiagnose(subcommand: string, config: ProjectConfig): void {
+  captureEvent(config.project_id, 'cli_diagnose_invoked', {
+    subcommand,
+    project_id: config.project_id,
+    project_name: config.project_name,
+    org_id: config.org_id,
+    region: config.region,
+    oss_mode: config.project_id === 'oss-project',
+  });
 }
 
 export async function shutdownAnalytics(): Promise<void> {
