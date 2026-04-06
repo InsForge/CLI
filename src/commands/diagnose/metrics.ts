@@ -5,6 +5,7 @@ import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../..
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackDiagnose, shutdownAnalytics } from '../../lib/analytics.js';
 
 interface MetricDataPoint {
   timestamp: number;
@@ -117,6 +118,7 @@ export function registerDiagnoseMetricsCommand(diagnoseCmd: Command): void {
             'Metrics requires InsForge Platform login. Not available when linked via --api-key.',
           );
         }
+        trackDiagnose('metrics', config);
 
         const params = new URLSearchParams({ range: opts.range });
         if (opts.metrics) params.set('metrics', opts.metrics);
@@ -161,6 +163,8 @@ export function registerDiagnoseMetricsCommand(diagnoseCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.diagnose.metrics', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

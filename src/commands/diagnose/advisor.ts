@@ -5,6 +5,7 @@ import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../..
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackDiagnose, shutdownAnalytics } from '../../lib/analytics.js';
 
 
 interface AdvisorScanSummary {
@@ -59,6 +60,7 @@ export function registerDiagnoseAdvisorCommand(diagnoseCmd: Command): void {
             'Advisor requires InsForge Platform login. Not available when linked via --api-key.',
           );
         }
+        trackDiagnose('advisor', config);
 
         const projectId = config.project_id;
 
@@ -111,6 +113,8 @@ export function registerDiagnoseAdvisorCommand(diagnoseCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.diagnose.advisor', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

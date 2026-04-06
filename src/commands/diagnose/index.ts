@@ -4,6 +4,7 @@ import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/error
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackDiagnose, shutdownAnalytics } from '../../lib/analytics.js';
 
 import { fetchMetricsSummary, registerDiagnoseMetricsCommand } from './metrics.js';
 import { fetchAdvisorSummary, registerDiagnoseAdvisorCommand } from './advisor.js';
@@ -28,6 +29,9 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
         const projectId = config.project_id;
         const projectName = config.project_name;
         const ossMode = config.project_id === 'oss-project';
+
+        // Track diagnose usage in PostHog
+        trackDiagnose('report', config);
 
         // In OSS mode (linked via --api-key), skip Platform API calls (metrics/advisor)
         const metricsPromise = ossMode
@@ -168,6 +172,8 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.diagnose', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 
