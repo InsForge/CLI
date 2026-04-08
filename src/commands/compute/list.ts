@@ -23,6 +23,7 @@ export function registerComputeListCommand(computeCmd: Command): void {
         } else {
           if (services.length === 0) {
             console.log('No compute services found.');
+            await reportCliUsage('cli.compute.list', true);
             return;
           }
           outputTable(
@@ -32,7 +33,7 @@ export function registerComputeListCommand(computeCmd: Command): void {
               String(s.status ?? '-'),
               String(s.imageUrl ?? '-'),
               String(s.cpu ?? '-'),
-              `${s.memory ?? '-'}MB`,
+              s.memory ? `${s.memory}MB` : '-',
               String(s.endpointUrl ?? '-'),
             ]),
           );

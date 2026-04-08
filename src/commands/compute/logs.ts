@@ -15,7 +15,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
       try {
         await requireAuth();
 
-        const limit = Number(opts.limit) || 50;
+        const limit = Math.max(1, Math.min(Number(opts.limit) || 50, 1000));
         const res = await ossFetch(
           `/api/compute/services/${encodeURIComponent(id)}/logs?limit=${limit}`,
         );
@@ -26,6 +26,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
         } else {
           if (!Array.isArray(logs) || logs.length === 0) {
             console.log('No logs found.');
+            await reportCliUsage('cli.compute.logs', true);
             return;
           }
           for (const entry of logs) {
