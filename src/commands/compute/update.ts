@@ -22,9 +22,19 @@ export function registerComputeUpdateCommand(computeCmd: Command): void {
 
         const body: Record<string, unknown> = {};
         if (opts.image) body.imageUrl = opts.image;
-        if (opts.port) body.port = Number(opts.port);
+        if (opts.port) {
+          if (!Number.isFinite(Number(opts.port))) {
+            throw new CLIError('Invalid value for --port: must be a number');
+          }
+          body.port = Number(opts.port);
+        }
         if (opts.cpu) body.cpu = opts.cpu;
-        if (opts.memory) body.memory = Number(opts.memory);
+        if (opts.memory) {
+          if (!Number.isFinite(Number(opts.memory))) {
+            throw new CLIError('Invalid value for --memory: must be a number');
+          }
+          body.memory = Number(opts.memory);
+        }
         if (opts.region) body.region = opts.region;
 
         if (opts.env) {

@@ -7,7 +7,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
-import { getProjectConfig } from '../../lib/config.js';
+
 
 interface FlyTomlConfig {
   internalPort?: number;
@@ -96,7 +96,6 @@ function checkFlyctl(): void {
 }
 
 function getFlyToken(): string {
-  const config = getProjectConfig();
   // The backend knows the Fly token, but we need it for flyctl.
   // Check env var first (user may have it set), then fall back to asking.
   const token = process.env.FLY_API_TOKEN;
@@ -238,9 +237,13 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           await reportCliUsage('cli.compute.deploy', true);
         } finally {
           // Restore original fly.toml
-          unlinkSync(existingTomlPath);
-          if (hadExistingToml) {
-            renameSync(backupTomlPath, existingTomlPath);
+          try {
+            unlinkSync(existingTomlPath);
+            if (hadExistingToml) {
+              renameSync(backupTomlPath, existingTomlPath);
+            }
+          } catch {
+            // Cleanup failure should not mask the real deploy error
           }
         }
       } catch (err) {

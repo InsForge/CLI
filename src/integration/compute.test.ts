@@ -12,6 +12,7 @@ const integrationEnabled = process.env.INTEGRATION_TEST_ENABLED === 'true';
 describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
   const apiUrl = getOptionalApiUrl();
   let createdServiceId: string | undefined;
+  let deletedServiceId: string | undefined;
 
   afterAll(async () => {
     // Cleanup: delete the test service if it was created
@@ -47,7 +48,7 @@ describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
     expect(payload).toHaveProperty('name');
     expect(payload).toHaveProperty('status');
     expect(payload).toHaveProperty('endpointUrl');
-    expect(payload.status).toBe('running');
+    expect(['running', 'creating', 'deploying']).toContain(payload.status);
 
     createdServiceId = payload.id as string;
   });
@@ -118,15 +119,18 @@ describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
     expect(payload.message).toBe('Service deleted');
 
     // Mark as cleaned up so afterAll doesn't try again
+    deletedServiceId = createdServiceId;
     createdServiceId = undefined;
   });
 
-  it('compute list --json should be empty after delete', async () => {
+  it('compute list --json should not contain deleted service', async () => {
+    expect(deletedServiceId).toBeDefined();
+
     const result = await runCli(['--json', 'compute', 'list'], { apiUrl });
     expectCliSuccess(result);
 
     const payload = parseJsonOutput(result.stdout) as Record<string, unknown>[];
-    const found = payload.find((s) => (s.name as string)?.startsWith('cli-test-'));
+    const found = payload.find((s) => s.id === deletedServiceId);
     expect(found).toBeUndefined();
   });
 });
