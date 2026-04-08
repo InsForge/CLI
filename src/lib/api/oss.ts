@@ -53,8 +53,24 @@ export async function ossFetch(
   const res = await fetch(`${config.oss_host}${path}`, { ...options, headers });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: string };
-    throw new CLIError(err.error ?? `OSS request failed: ${res.status}`);
+    const err = await res.json().catch(() => ({})) as {
+      error?: string;
+      message?: string;
+      nextActions?: string;
+      statusCode?: number;
+    };
+
+    let message = err.message ?? err.error ?? `OSS request failed: ${res.status}`;
+    if (err.nextActions) {
+      message += `\n${err.nextActions}`;
+    }
+
+    // Feature not available on this backend version
+    if (res.status === 404 && path.startsWith('/api/compute')) {
+      message = 'Compute services are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin to enable compute.';
+    }
+
+    throw new CLIError(message);
   }
 
   return res;

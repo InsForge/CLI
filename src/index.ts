@@ -57,6 +57,16 @@ import { registerSchedulesUpdateCommand } from './commands/schedules/update.js';
 import { registerSchedulesDeleteCommand } from './commands/schedules/delete.js';
 import { registerSchedulesLogsCommand } from './commands/schedules/logs.js';
 
+import { registerComputeListCommand } from './commands/compute/list.js';
+import { registerComputeGetCommand } from './commands/compute/get.js';
+import { registerComputeCreateCommand } from './commands/compute/create.js';
+import { registerComputeUpdateCommand } from './commands/compute/update.js';
+import { registerComputeDeleteCommand } from './commands/compute/delete.js';
+import { registerComputeStartCommand } from './commands/compute/start.js';
+import { registerComputeStopCommand } from './commands/compute/stop.js';
+import { registerComputeLogsCommand } from './commands/compute/logs.js';
+import { registerComputeDeployCommand } from './commands/compute/deploy.js';
+
 import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
@@ -168,6 +178,18 @@ registerMetadataCommand(program);
 // Diagnose commands
 const diagnoseCmd = program.command('diagnose');
 registerDiagnoseCommands(diagnoseCmd);
+
+// Compute commands
+const computeCmd = program.command('compute').description('Manage compute services (Docker containers on Fly.io)');
+registerComputeListCommand(computeCmd);
+registerComputeGetCommand(computeCmd);
+registerComputeCreateCommand(computeCmd);
+registerComputeDeployCommand(computeCmd);
+registerComputeUpdateCommand(computeCmd);
+registerComputeDeleteCommand(computeCmd);
+registerComputeStartCommand(computeCmd);
+registerComputeStopCommand(computeCmd);
+registerComputeLogsCommand(computeCmd);
 
 // Schedules commands
 const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');
