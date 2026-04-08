@@ -26,6 +26,13 @@ export function captureEvent(
   }
 }
 
+export function trackCommand(command: string, distinctId: string, properties?: Record<string, unknown>): void {
+  captureEvent(distinctId, 'cli_command_invoked', {
+    command,
+    ...properties,
+  });
+}
+
 export function trackDiagnose(subcommand: string, config: ProjectConfig): void {
   captureEvent(config.project_id, 'cli_diagnose_invoked', {
     subcommand,

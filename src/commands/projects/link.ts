@@ -12,6 +12,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { installSkills, reportCliUsage } from '../../lib/skills.js';
+import { trackCommand, shutdownAnalytics } from '../../lib/analytics.js';
 import type { ProjectConfig } from '../../types.js';
 
 function buildOssHost(appkey: string, region: string): string {
@@ -59,6 +60,8 @@ export function registerProjectLinkCommand(program: Command): void {
             } else {
               outputSuccess(`Linked to direct project at ${projectConfig.oss_host}`);
             }
+
+            trackCommand('link', 'oss-org', { direct: true });
 
             // Install agent skills
             await installSkills(json);
@@ -160,6 +163,8 @@ export function registerProjectLinkCommand(program: Command): void {
 
         saveProjectConfig(projectConfig);
 
+        trackCommand('link', project.organization_id);
+
         if (json) {
           outputJson({ success: true, project: { id: project.id, name: project.name, region: project.region } });
         } else {
@@ -177,6 +182,8 @@ export function registerProjectLinkCommand(program: Command): void {
       } catch (err) {
         await reportCliUsage('cli.link', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

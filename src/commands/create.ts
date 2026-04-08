@@ -18,7 +18,7 @@ import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
 import { readEnvFile } from '../lib/env.js';
 import { installSkills, reportCliUsage } from '../lib/skills.js';
-import { captureEvent, shutdownAnalytics } from '../lib/analytics.js';
+import { captureEvent, trackCommand, shutdownAnalytics } from '../lib/analytics.js';
 import { deployProject } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
 
@@ -324,6 +324,7 @@ export function registerCreateCommand(program: Command): void {
 
         // Install agent skills
         await installSkills(json);
+        trackCommand('create', orgId);
         await reportCliUsage('cli.create', true, 6);
 
         // 7. Install npm dependencies (template projects only)
