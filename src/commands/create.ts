@@ -193,8 +193,6 @@ export function registerCreateCommand(program: Command): void {
         globalConfig.default_org_id = orgId;
         saveGlobalConfig(globalConfig);
 
-        trackCommand('create', orgId);
-
         // 2. Project name (pre-filled from directory name)
         let projectName = opts.name;
         if (!projectName) {
@@ -326,6 +324,7 @@ export function registerCreateCommand(program: Command): void {
 
         // Install agent skills
         await installSkills(json);
+        trackCommand('create', orgId);
         await reportCliUsage('cli.create', true, 6);
 
         // 7. Install npm dependencies (template projects only)

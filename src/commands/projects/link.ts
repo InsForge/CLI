@@ -61,9 +61,10 @@ export function registerProjectLinkCommand(program: Command): void {
               outputSuccess(`Linked to direct project at ${projectConfig.oss_host}`);
             }
 
+            trackCommand('link', 'oss-org', { direct: true });
+
             // Install agent skills
             await installSkills(json);
-            trackCommand('link', 'oss-org', { direct: true });
             await reportCliUsage('cli.link_direct', true, 6);
 
             // Report agent-connected event (best-effort)
