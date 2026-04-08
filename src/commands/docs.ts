@@ -3,7 +3,6 @@ import { ossFetch } from '../lib/api/oss.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts } from '../lib/errors.js';
 import { outputJson, outputTable } from '../lib/output.js';
-import { reportCliUsage } from '../lib/skills.js';
 
 const FEATURES = ['db', 'storage', 'functions', 'auth', 'ai', 'realtime'] as const;
 const LANGUAGES = ['typescript', 'swift', 'kotlin', 'rest-api'] as const;
@@ -27,7 +26,6 @@ Examples:
       try {
         await requireAuth();
 
-        await reportCliUsage('cli.docs', true);
         // No args → list all docs
         if (!feature) {
           await listDocs(json);
