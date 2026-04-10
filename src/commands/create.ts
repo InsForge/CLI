@@ -24,7 +24,7 @@ import type { ProjectConfig } from '../types.js';
 
 const execAsync = promisify(exec);
 
-type Framework = 'react' | 'nextjs';
+export type Framework = 'react' | 'nextjs';
 
 function buildOssHost(appkey: string, region: string): string {
   return `https://${appkey}.${region}.insforge.app`;
@@ -135,7 +135,7 @@ function getDefaultProjectName(): string {
   return sanitized.length >= 2 ? sanitized : '';
 }
 
-async function copyDir(src: string, dest: string): Promise<void> {
+export async function copyDir(src: string, dest: string): Promise<void> {
   const entries = await fs.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
@@ -409,7 +409,7 @@ export function registerCreateCommand(program: Command): void {
     });
 }
 
-async function downloadTemplate(
+export async function downloadTemplate(
   framework: Framework,
   projectConfig: ProjectConfig,
   projectName: string,
@@ -467,7 +467,7 @@ async function downloadTemplate(
   }
 }
 
-async function downloadGitHubTemplate(
+export async function downloadGitHubTemplate(
   templateName: string,
   projectConfig: ProjectConfig,
   json: boolean,
