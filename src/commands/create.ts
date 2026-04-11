@@ -167,7 +167,7 @@ export function registerCreateCommand(program: Command): void {
           clack.intro("Let's build something great");
         }
 
-        // 1. Select organization
+        // 1. Select organization (auto-select if only one)
         let orgId = opts.orgId;
         if (!orgId) {
           const orgs = await listOrganizations(apiUrl);
@@ -177,15 +177,20 @@ export function registerCreateCommand(program: Command): void {
           if (json) {
             throw new CLIError('Specify --org-id in JSON mode.');
           }
-          const selected = await clack.select({
-            message: 'Select an organization:',
-            options: orgs.map((o) => ({
-              value: o.id,
-              label: o.name,
-            })),
-          });
-          if (clack.isCancel(selected)) process.exit(0);
-          orgId = selected as string;
+          if (orgs.length === 1) {
+            orgId = orgs[0].id;
+            clack.log.info(`Using organization: ${orgs[0].name}`);
+          } else {
+            const selected = await clack.select({
+              message: 'Select an organization:',
+              options: orgs.map((o) => ({
+                value: o.id,
+                label: o.name,
+              })),
+            });
+            if (clack.isCancel(selected)) process.exit(0);
+            orgId = selected as string;
+          }
         }
 
         // Save default org
@@ -260,7 +265,28 @@ export function registerCreateCommand(program: Command): void {
           approach: template === 'empty' ? 'blank' : 'template',
         });
 
-        // 4. Create project via Platform API
+        // 4. Choose directory name for the project
+        let dirName = projectName;
+        if (!json) {
+          const inputDir = await clack.text({
+            message: 'Directory name:',
+            initialValue: projectName,
+            validate: (v) => {
+              if (v.length < 1) return 'Directory name is required';
+              if (v === '.' || v === '..') return 'Invalid directory name';
+              return undefined;
+            },
+          });
+          if (clack.isCancel(inputDir)) process.exit(0);
+          dirName = path.basename(inputDir as string).replace(/[^a-zA-Z0-9._-]/g, '-');
+        }
+
+        // Create the project directory and switch into it
+        const projectDir = path.resolve(process.cwd(), dirName);
+        await fs.mkdir(projectDir, { recursive: true });
+        process.chdir(projectDir);
+
+        // 5. Create project via Platform API
         const s = !json ? clack.spinner() : null;
         s?.start('Creating project...');
 
@@ -269,7 +295,7 @@ export function registerCreateCommand(program: Command): void {
         s?.message('Waiting for project to become active...');
         await waitForProjectActive(project.id, apiUrl);
 
-        // 5. Fetch API key and link project
+        // 6. Fetch API key and link project
         const apiKey = await getProjectApiKey(project.id, apiUrl);
         const projectConfig: ProjectConfig = {
           project_id: project.id,
@@ -284,7 +310,7 @@ export function registerCreateCommand(program: Command): void {
 
         s?.stop(`Project "${project.name}" created and linked`);
 
-        // 6. Download template or seed env for blank projects
+        // 7. Download template or seed env for blank projects
         const hasTemplate = template !== 'empty';
         const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react'];
         if (githubTemplates.includes(template!)) {
@@ -327,7 +353,7 @@ export function registerCreateCommand(program: Command): void {
         trackCommand('create', orgId);
         await reportCliUsage('cli.create', true, 6);
 
-        // 7. Install npm dependencies (template projects only)
+        // 8. Install npm dependencies (template projects only)
         if (hasTemplate) {
           const installSpinner = !json ? clack.spinner() : null;
           installSpinner?.start('Installing dependencies...');
@@ -343,7 +369,7 @@ export function registerCreateCommand(program: Command): void {
           }
         }
 
-        // 8. Offer to deploy (template projects, interactive mode only)
+        // 9. Offer to deploy (template projects, interactive mode only)
         let liveUrl: string | null = null;
         if (hasTemplate && !json) {
           const shouldDeploy = await clack.confirm({
@@ -381,7 +407,7 @@ export function registerCreateCommand(program: Command): void {
           }
         }
 
-        // 9. Show links
+        // 10. Show links and next steps
         const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
 
         if (json) {
@@ -389,6 +415,7 @@ export function registerCreateCommand(program: Command): void {
             success: true,
             project: { id: project.id, name: project.name, appkey: project.appkey, region: project.region },
             template,
+            directory: dirName,
             urls: {
               dashboard: dashboardUrl,
               ...(liveUrl ? { liveSite: liveUrl } : {}),
@@ -398,6 +425,37 @@ export function registerCreateCommand(program: Command): void {
           clack.log.step(`Dashboard: ${dashboardUrl}`);
           if (liveUrl) {
             clack.log.success(`Live site: ${liveUrl}`);
+          }
+
+          // Next steps
+          if (hasTemplate) {
+            const steps = [
+              `cd ${dirName}`,
+              'npm run dev',
+            ];
+            clack.note(steps.join('\n'), 'Next steps');
+
+            const prompts = [
+              'Add an admin dashboard with analytics charts',
+              'Add a Stripe checkout flow for premium plans',
+              'Add real-time notifications with InsForge Realtime',
+            ];
+            clack.note(
+              `Open your agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
+              'Keep building',
+            );
+          } else {
+            clack.note(`cd ${dirName}`, 'Next steps');
+
+            const prompts = [
+              'Build a todo app with Google OAuth sign-in',
+              'Build an Instagram clone where users can upload photos, like, and comment',
+              'Build an AI chatbot with conversation history and streaming responses',
+            ];
+            clack.note(
+              `Open your agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
+              'Start building',
+            );
           }
           clack.outro('Done!');
         }
