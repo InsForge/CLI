@@ -157,7 +157,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
           }, (event) => {
             // Capture sessionId and errors before any early return
             if (event.type === 'done') {
-              sessionId = event.data.sessionId as string | undefined;
+              sessionId = event.data.session_id as string | undefined;
             }
             if (event.type === 'error') {
               streamError = new CLIError(String(event.data.message ?? 'Unknown diagnostic error'));
@@ -174,7 +174,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
                 fullText += String(event.data.text ?? '');
                 break;
               case 'tool_call':
-                console.log(`\n  [calling ${event.data.toolName}...]`);
+                console.log(`\n  [calling ${event.data.tool_name}...]`);
                 break;
               case 'tool_result':
                 // silently consume tool results
