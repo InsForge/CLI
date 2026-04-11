@@ -11,40 +11,16 @@ import {
   getProjectApiKey,
   reportAgentConnected,
 } from '../../lib/api/platform.js';
-import { getAnonKey } from '../../lib/api/oss.js';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
-import { readEnvFile } from '../../lib/env.js';
 import { installSkills, reportCliUsage } from '../../lib/skills.js';
 import { captureEvent, trackCommand, shutdownAnalytics } from '../../lib/analytics.js';
-import { deployProject } from '../deployments/deploy.js';
 import { downloadGitHubTemplate, downloadTemplate, type Framework } from '../create.js';
 import type { ProjectConfig } from '../../types.js';
 
 const execAsync = promisify(exec);
-
-/** Files that indicate real project content exists */
-const PROJECT_MARKERS = new Set([
-  'package.json',
-  'index.html',
-  'tsconfig.json',
-  'next.config.js',
-  'next.config.ts',
-  'next.config.mjs',
-  'vite.config.ts',
-  'vite.config.js',
-  'src',
-  'app',
-  'pages',
-  'public',
-]);
-
-async function isDirEmpty(dir: string): Promise<boolean> {
-  const entries = await fs.readdir(dir);
-  return !entries.some((e) => PROJECT_MARKERS.has(e));
-}
 
 function buildOssHost(appkey: string, region: string): string {
   return `https://${appkey}.${region}.insforge.app`;
@@ -56,6 +32,7 @@ export function registerProjectLinkCommand(program: Command): void {
     .description('Link current directory to an InsForge project')
     .option('--project-id <id>', 'Project ID to link')
     .option('--org-id <id>', 'Organization ID')
+    .option('--template <template>', 'Download a template after linking: react, nextjs, chatbot, crm, e-commerce')
     .option('--api-base-url <url>', 'API Base URL for direct linking (OSS/Self-hosted)')
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
     .action(async (opts, cmd) => {
@@ -117,24 +94,29 @@ export function registerProjectLinkCommand(program: Command): void {
         let orgId = opts.orgId;
         let projectId = opts.projectId;
 
-        // Show organization selection
+        // Show organization selection (auto-select if only one)
         if (!orgId && !projectId) {
           const orgs = await listOrganizations(apiUrl);
           if (orgs.length === 0) {
             throw new CLIError('No organizations found.');
           }
-          if (json) {
-            throw new CLIError('Specify --org-id in JSON mode.');
+          if (orgs.length === 1) {
+            orgId = orgs[0].id;
+            if (!json) clack.log.info(`Using organization: ${orgs[0].name}`);
+          } else {
+            if (json) {
+              throw new CLIError('Multiple organizations found. Specify --org-id.');
+            }
+            const selected = await clack.select({
+              message: 'Select an organization:',
+              options: orgs.map((o) => ({
+                value: o.id,
+                label: o.name,
+              })),
+            });
+            if (clack.isCancel(selected)) process.exit(0);
+            orgId = selected as string;
           }
-          const selected = await clack.select({
-            message: 'Select an organization:',
-            options: orgs.map((o) => ({
-              value: o.id,
-              label: o.name,
-            })),
-          });
-          if (clack.isCancel(selected)) process.exit(0);
-          orgId = selected as string;
         }
 
         // Save default org
@@ -211,132 +193,82 @@ export function registerProjectLinkCommand(program: Command): void {
           await reportAgentConnected({ project_id: project.id }, apiUrl);
         } catch { /* ignore */ }
 
-        // Smart template & deploy prompts (interactive mode only)
-        if (!json) {
-          const cwd = process.cwd();
-          let templateApplied = false;
+        // Template download (only when --template flag is passed)
+        const template = opts.template as string | undefined;
+        if (template) {
+          const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce'];
+          if (!validTemplates.includes(template)) {
+            throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
+          }
 
-          // Template prompt: offer if directory is empty
-          if (await isDirEmpty(cwd)) {
-            const approach = await clack.select({
-              message: 'How would you like to start?',
-              options: [
-                { value: 'blank', label: 'Blank project', hint: 'Start from scratch with .env.local ready' },
-                { value: 'template', label: 'Start from a template', hint: 'Pre-built starter apps' },
-              ],
+          // Ask for directory name
+          let dirName = project.name;
+          if (!json) {
+            const inputDir = await clack.text({
+              message: 'Directory name:',
+              initialValue: project.name,
+              validate: (v) => {
+                if (v.length < 1) return 'Directory name is required';
+                const normalized = path.basename(v).replace(/[^a-zA-Z0-9._-]/g, '-');
+                if (!normalized || normalized === '.' || normalized === '..') return 'Invalid directory name';
+                return undefined;
+              },
             });
-            if (clack.isCancel(approach)) process.exit(0);
+            if (clack.isCancel(inputDir)) process.exit(0);
+            dirName = path.basename(inputDir as string).replace(/[^a-zA-Z0-9._-]/g, '-');
+          }
 
-            captureEvent(orgId ?? project.organization_id, 'link_approach_selected', { approach: approach as string });
+          if (!dirName || dirName === '.' || dirName === '..') {
+            throw new CLIError('Invalid directory name.');
+          }
 
-            if (approach === 'template') {
-              const selected = await clack.select({
-                message: 'Choose a starter template:',
-                options: [
-                  { value: 'react', label: 'Web app template with React' },
-                  { value: 'nextjs', label: 'Web app template with Next.js' },
-                  { value: 'chatbot', label: 'AI Chatbot with Next.js' },
-                  { value: 'crm', label: 'CRM with Next.js' },
-                  { value: 'e-commerce', label: 'E-Commerce store with Next.js' },
-                ],
-              });
-              if (clack.isCancel(selected)) process.exit(0);
-              const template = selected as string;
+          const templateDir = path.resolve(process.cwd(), dirName);
+          const dirExists = await fs.stat(templateDir).catch(() => null);
+          if (dirExists) {
+            throw new CLIError(`Directory "${dirName}" already exists.`);
+          }
+          await fs.mkdir(templateDir);
+          process.chdir(templateDir);
 
-              captureEvent(orgId ?? project.organization_id, 'template_selected', { template, source: 'link' });
+          // Save project config in the new directory
+          saveProjectConfig(projectConfig);
 
-              // Download template
-              const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react'];
-              if (githubTemplates.includes(template)) {
-                await downloadGitHubTemplate(template, projectConfig, json);
-              } else {
-                await downloadTemplate(template as Framework, projectConfig, project.name, json, apiUrl);
-              }
+          captureEvent(orgId ?? project.organization_id, 'template_selected', { template, source: 'link' });
 
-              // Only mark as applied if files were actually downloaded
-              templateApplied = !(await isDirEmpty(cwd));
+          // Download template
+          const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react'];
+          if (githubTemplates.includes(template)) {
+            await downloadGitHubTemplate(template, projectConfig, json);
+          } else {
+            await downloadTemplate(template as Framework, projectConfig, project.name, json, apiUrl);
+          }
 
-              // Install npm dependencies
-              const installSpinner = clack.spinner();
-              installSpinner.start('Installing dependencies...');
-              try {
-                await execAsync('npm install', { cwd, maxBuffer: 10 * 1024 * 1024 });
-                installSpinner.stop('Dependencies installed');
-              } catch (err) {
-                installSpinner.stop('Failed to install dependencies');
-                clack.log.warn(`npm install failed: ${(err as Error).message}`);
-                clack.log.info('Run `npm install` manually to install dependencies.');
-              }
-            } else {
-              // Blank project: seed .env.local
-              try {
-                const anonKey = await getAnonKey();
-                if (!anonKey) {
-                  clack.log.warn('Could not retrieve anon key. You can add it to .env.local manually.');
-                } else {
-                  const envPath = path.join(cwd, '.env.local');
-                  const envContent = [
-                    '# InsForge',
-                    `NEXT_PUBLIC_INSFORGE_URL=${projectConfig.oss_host}`,
-                    `NEXT_PUBLIC_INSFORGE_ANON_KEY=${anonKey}`,
-                    '',
-                  ].join('\n');
-                  await fs.writeFile(envPath, envContent, { flag: 'wx' });
-                  clack.log.success('Created .env.local with your InsForge credentials');
-                }
-              } catch (err) {
-                const error = err as NodeJS.ErrnoException;
-                if (error.code === 'EEXIST') {
-                  clack.log.warn('.env.local already exists; skipping InsForge key seeding.');
-                } else {
-                  clack.log.warn(`Failed to create .env.local: ${error.message}`);
-                }
-              }
+          // Install npm dependencies
+          if (!json) {
+            const installSpinner = clack.spinner();
+            installSpinner.start('Installing dependencies...');
+            try {
+              await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
+              installSpinner.stop('Dependencies installed');
+            } catch (err) {
+              installSpinner.stop('Failed to install dependencies');
+              clack.log.warn(`npm install failed: ${(err as Error).message}`);
+              clack.log.info('Run `npm install` manually to install dependencies.');
             }
           }
 
-          // Deploy prompt: only offer when a template was applied
-          if (templateApplied) {
-            const shouldDeploy = await clack.confirm({
-              message: 'Would you like to deploy now?',
-            });
-
-            if (!clack.isCancel(shouldDeploy) && shouldDeploy) {
-              try {
-                const envVars = await readEnvFile(cwd);
-                const startBody: { envVars?: Array<{ key: string; value: string }> } = {};
-                if (envVars.length > 0) {
-                  startBody.envVars = envVars;
-                }
-
-                const deploySpinner = clack.spinner();
-                const result = await deployProject({
-                  sourceDir: cwd,
-                  startBody,
-                  spinner: deploySpinner,
-                });
-
-                if (result.isReady) {
-                  deploySpinner.stop('Deployment complete');
-                  const liveUrl = result.liveUrl;
-                  if (liveUrl) {
-                    clack.log.success(`Live site: ${liveUrl}`);
-                  }
-                } else {
-                  deploySpinner.stop('Deployment is still building');
-                  clack.log.info(`Deployment ID: ${result.deploymentId}`);
-                  clack.log.warn('Deployment did not finish within 5 minutes.');
-                  clack.log.info(`Check status with: npx @insforge/cli deployments status ${result.deploymentId}`);
-                }
-              } catch (err) {
-                clack.log.warn(`Deploy failed: ${(err as Error).message}`);
-              }
-            }
+          if (!json) {
+            const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
+            clack.log.step(`Dashboard: ${dashboardUrl}`);
+            const steps = [`cd ${dirName}`, 'npm run dev'];
+            clack.note(steps.join('\n'), 'Next steps');
+            clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
           }
-
-          // Show dashboard link
+        } else if (!json) {
+          // No template — just show dashboard link
           const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
           clack.log.step(`Dashboard: ${dashboardUrl}`);
+          clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to start building.', 'Start building');
         }
       } catch (err) {
         await reportCliUsage('cli.link', false);

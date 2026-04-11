@@ -265,37 +265,43 @@ export function registerCreateCommand(program: Command): void {
           approach: template === 'empty' ? 'blank' : 'template',
         });
 
-        // 4. Choose directory name for the project
-        let dirName = projectName;
-        if (!json) {
-          const inputDir = await clack.text({
-            message: 'Directory name:',
-            initialValue: projectName,
-            validate: (v) => {
-              if (v.length < 1) return 'Directory name is required';
-              const normalized = path.basename(v).replace(/[^a-zA-Z0-9._-]/g, '-');
-              if (!normalized || normalized === '.' || normalized === '..') return 'Invalid directory name';
-              return undefined;
-            },
-          });
-          if (clack.isCancel(inputDir)) process.exit(0);
-          dirName = path.basename(inputDir as string).replace(/[^a-zA-Z0-9._-]/g, '-');
-        }
-
-        // Validate normalized dirName
-        if (!dirName || dirName === '.' || dirName === '..') {
-          throw new CLIError('Invalid directory name.');
-        }
-
-        // Create the project directory and switch into it
+        // 4. Choose directory (templates need a subdirectory, blank uses cwd)
+        const hasTemplate = template !== 'empty';
+        let dirName: string | null = null;
         const originalCwd = process.cwd();
-        const projectDir = path.resolve(originalCwd, dirName);
-        const dirExists = await fs.stat(projectDir).catch(() => null);
-        if (dirExists) {
-          throw new CLIError(`Directory "${dirName}" already exists.`);
+        let projectDir = originalCwd;
+
+        if (hasTemplate) {
+          dirName = projectName;
+          if (!json) {
+            const inputDir = await clack.text({
+              message: 'Directory name:',
+              initialValue: projectName,
+              validate: (v) => {
+                if (v.length < 1) return 'Directory name is required';
+                const normalized = path.basename(v).replace(/[^a-zA-Z0-9._-]/g, '-');
+                if (!normalized || normalized === '.' || normalized === '..') return 'Invalid directory name';
+                return undefined;
+              },
+            });
+            if (clack.isCancel(inputDir)) process.exit(0);
+            dirName = path.basename(inputDir as string).replace(/[^a-zA-Z0-9._-]/g, '-');
+          }
+
+          // Validate normalized dirName
+          if (!dirName || dirName === '.' || dirName === '..') {
+            throw new CLIError('Invalid directory name.');
+          }
+
+          // Create the project directory and switch into it
+          projectDir = path.resolve(originalCwd, dirName);
+          const dirExists = await fs.stat(projectDir).catch(() => null);
+          if (dirExists) {
+            throw new CLIError(`Directory "${dirName}" already exists.`);
+          }
+          await fs.mkdir(projectDir);
+          process.chdir(projectDir);
         }
-        await fs.mkdir(projectDir);
-        process.chdir(projectDir);
 
         // 5. Create project via Platform API
         let projectLinked = false;
@@ -325,7 +331,6 @@ export function registerCreateCommand(program: Command): void {
         s?.stop(`Project "${project.name}" created and linked`);
 
         // 7. Download template or seed env for blank projects
-        const hasTemplate = template !== 'empty';
         const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react'];
         if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
@@ -429,7 +434,7 @@ export function registerCreateCommand(program: Command): void {
             success: true,
             project: { id: project.id, name: project.name, appkey: project.appkey, region: project.region },
             template,
-            directory: dirName,
+            ...(dirName ? { directory: dirName } : {}),
             urls: {
               dashboard: dashboardUrl,
               ...(liveUrl ? { liveSite: liveUrl } : {}),
@@ -450,8 +455,6 @@ export function registerCreateCommand(program: Command): void {
             clack.note(steps.join('\n'), 'Next steps');
             clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
           } else {
-            clack.note(`cd ${dirName}`, 'Next steps');
-
             const prompts = [
               'Build a todo app with Google OAuth sign-in',
               'Build an Instagram clone where users can upload photos, like, and comment',
@@ -466,7 +469,7 @@ export function registerCreateCommand(program: Command): void {
         }
         } catch (err) {
           // Clean up the project directory if it was created but linking failed
-          if (!projectLinked) {
+          if (!projectLinked && hasTemplate && projectDir !== originalCwd) {
             process.chdir(originalCwd);
             await fs.rm(projectDir, { recursive: true, force: true }).catch(() => {});
           }
