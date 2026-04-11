@@ -174,13 +174,13 @@ export function registerCreateCommand(program: Command): void {
           if (orgs.length === 0) {
             throw new CLIError('No organizations found.');
           }
-          if (json) {
-            throw new CLIError('Specify --org-id in JSON mode.');
-          }
           if (orgs.length === 1) {
             orgId = orgs[0].id;
-            clack.log.info(`Using organization: ${orgs[0].name}`);
+            if (!json) clack.log.info(`Using organization: ${orgs[0].name}`);
           } else {
+            if (json) {
+              throw new CLIError('Multiple organizations found. Specify --org-id.');
+            }
             const selected = await clack.select({
               message: 'Select an organization:',
               options: orgs.map((o) => ({
@@ -273,7 +273,8 @@ export function registerCreateCommand(program: Command): void {
             initialValue: projectName,
             validate: (v) => {
               if (v.length < 1) return 'Directory name is required';
-              if (v === '.' || v === '..') return 'Invalid directory name';
+              const normalized = path.basename(v).replace(/[^a-zA-Z0-9._-]/g, '-');
+              if (!normalized || normalized === '.' || normalized === '..') return 'Invalid directory name';
               return undefined;
             },
           });
@@ -281,9 +282,18 @@ export function registerCreateCommand(program: Command): void {
           dirName = path.basename(inputDir as string).replace(/[^a-zA-Z0-9._-]/g, '-');
         }
 
+        // Validate normalized dirName
+        if (!dirName || dirName === '.' || dirName === '..') {
+          throw new CLIError('Invalid directory name.');
+        }
+
         // Create the project directory and switch into it
         const projectDir = path.resolve(process.cwd(), dirName);
-        await fs.mkdir(projectDir, { recursive: true });
+        const dirExists = await fs.stat(projectDir).catch(() => null);
+        if (dirExists) {
+          throw new CLIError(`Directory "${dirName}" already exists.`);
+        }
+        await fs.mkdir(projectDir);
         process.chdir(projectDir);
 
         // 5. Create project via Platform API
