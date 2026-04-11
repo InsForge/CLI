@@ -172,17 +172,16 @@ export async function streamDiagnosticAnalysis(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  let currentEvent: DiagnosticSSEEvent['type'] = 'delta';
+  let currentEvent: DiagnosticSSEEvent['type'] | null = 'delta';
 
   const VALID_EVENTS = new Set<string>(['delta', 'tool_call', 'tool_result', 'done', 'error']);
 
   const processLine = (line: string): void => {
     if (line.startsWith('event:')) {
       const evt = line.slice(6).trim();
-      if (VALID_EVENTS.has(evt)) {
-        currentEvent = evt as DiagnosticSSEEvent['type'];
-      }
+      currentEvent = VALID_EVENTS.has(evt) ? evt as DiagnosticSSEEvent['type'] : null;
     } else if (line.startsWith('data:')) {
+      if (!currentEvent) return;
       const raw = line.slice(5).trim();
       if (!raw) return;
       try {
