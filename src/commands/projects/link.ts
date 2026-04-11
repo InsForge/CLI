@@ -265,10 +265,19 @@ export function registerProjectLinkCommand(program: Command): void {
             clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
           }
         } else if (!json) {
-          // No template — just show dashboard link
+          // No template — show dashboard link and suggest prompts
           const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
           clack.log.step(`Dashboard: ${dashboardUrl}`);
-          clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to start building.', 'Start building');
+
+          const prompts = [
+            'Build a todo app with Google OAuth sign-in',
+            'Build an Instagram clone where users can upload photos, like, and comment',
+            'Build an AI chatbot with conversation history',
+          ];
+          clack.note(
+            `Open your coding agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
+            'Start building',
+          );
         }
       } catch (err) {
         await reportCliUsage('cli.link', false);
