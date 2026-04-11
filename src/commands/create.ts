@@ -288,7 +288,8 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // Create the project directory and switch into it
-        const projectDir = path.resolve(process.cwd(), dirName);
+        const originalCwd = process.cwd();
+        const projectDir = path.resolve(originalCwd, dirName);
         const dirExists = await fs.stat(projectDir).catch(() => null);
         if (dirExists) {
           throw new CLIError(`Directory "${dirName}" already exists.`);
@@ -297,8 +298,10 @@ export function registerCreateCommand(program: Command): void {
         process.chdir(projectDir);
 
         // 5. Create project via Platform API
+        let projectLinked = false;
         const s = !json ? clack.spinner() : null;
-        s?.start('Creating project...');
+        try {
+          s?.start('Creating project...');
 
         const project = await createProject(orgId, projectName, opts.region, apiUrl);
 
@@ -317,6 +320,7 @@ export function registerCreateCommand(program: Command): void {
           oss_host: buildOssHost(project.appkey, project.region),
         };
         saveProjectConfig(projectConfig);
+        projectLinked = true;
 
         s?.stop(`Project "${project.name}" created and linked`);
 
@@ -459,6 +463,14 @@ export function registerCreateCommand(program: Command): void {
             );
           }
           clack.outro('Done!');
+        }
+        } catch (err) {
+          // Clean up the project directory if it was created but linking failed
+          if (!projectLinked) {
+            process.chdir(originalCwd);
+            await fs.rm(projectDir, { recursive: true, force: true }).catch(() => {});
+          }
+          throw err;
         }
       } catch (err) {
         handleError(err, json);
