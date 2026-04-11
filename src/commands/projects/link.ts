@@ -174,7 +174,10 @@ export function registerProjectLinkCommand(program: Command): void {
           oss_host: buildOssHost(project.appkey, project.region),
         };
 
-        saveProjectConfig(projectConfig);
+        // Save config in cwd only if not using --template (template flow saves in subdirectory)
+        if (!opts.template) {
+          saveProjectConfig(projectConfig);
+        }
 
         trackCommand('link', project.organization_id);
 
@@ -243,8 +246,10 @@ export function registerProjectLinkCommand(program: Command): void {
             await downloadTemplate(template as Framework, projectConfig, project.name, json, apiUrl);
           }
 
-          // Install npm dependencies
-          if (!json) {
+          // Only proceed with install/next steps if template actually downloaded
+          const templateDownloaded = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
+
+          if (templateDownloaded && !json) {
             const installSpinner = clack.spinner();
             installSpinner.start('Installing dependencies...');
             try {
@@ -260,9 +265,13 @@ export function registerProjectLinkCommand(program: Command): void {
           if (!json) {
             const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
             clack.log.step(`Dashboard: ${dashboardUrl}`);
-            const steps = [`cd ${dirName}`, 'npm run dev'];
-            clack.note(steps.join('\n'), 'Next steps');
-            clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
+            if (templateDownloaded) {
+              const steps = [`cd ${dirName}`, 'npm run dev'];
+              clack.note(steps.join('\n'), 'Next steps');
+              clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
+            } else {
+              clack.log.warn('Template download failed. You can retry or set up manually.');
+            }
           }
         } else if (!json) {
           // No template — show dashboard link and suggest prompts

@@ -372,8 +372,12 @@ export function registerCreateCommand(program: Command): void {
         trackCommand('create', orgId);
         await reportCliUsage('cli.create', true, 6);
 
-        // 8. Install npm dependencies (template projects only)
-        if (hasTemplate) {
+        // 8. Install npm dependencies (template projects only, if download succeeded)
+        const templateDownloaded = hasTemplate
+          ? await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null)
+          : null;
+
+        if (templateDownloaded) {
           const installSpinner = !json ? clack.spinner() : null;
           installSpinner?.start('Installing dependencies...');
           try {
@@ -390,7 +394,7 @@ export function registerCreateCommand(program: Command): void {
 
         // 9. Offer to deploy (template projects, interactive mode only)
         let liveUrl: string | null = null;
-        if (hasTemplate && !json) {
+        if (templateDownloaded && !json) {
           const shouldDeploy = await clack.confirm({
             message: 'Would you like to deploy now?',
           });
@@ -447,13 +451,15 @@ export function registerCreateCommand(program: Command): void {
           }
 
           // Next steps
-          if (hasTemplate) {
+          if (templateDownloaded) {
             const steps = [
               `cd ${dirName}`,
               'npm run dev',
             ];
             clack.note(steps.join('\n'), 'Next steps');
             clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
+          } else if (hasTemplate && !templateDownloaded) {
+            clack.log.warn('Template download failed. You can retry or set up manually.');
           } else {
             const prompts = [
               'Build a todo app with Google OAuth sign-in',
