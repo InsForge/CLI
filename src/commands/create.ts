@@ -444,26 +444,17 @@ export function registerCreateCommand(program: Command): void {
               'npm run dev',
             ];
             clack.note(steps.join('\n'), 'Next steps');
-
-            const prompts = [
-              'Add an admin dashboard with analytics charts',
-              'Add a Stripe checkout flow for premium plans',
-              'Add real-time notifications with InsForge Realtime',
-            ];
-            clack.note(
-              `Open your agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
-              'Keep building',
-            );
+            clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
           } else {
             clack.note(`cd ${dirName}`, 'Next steps');
 
             const prompts = [
               'Build a todo app with Google OAuth sign-in',
               'Build an Instagram clone where users can upload photos, like, and comment',
-              'Build an AI chatbot with conversation history and streaming responses',
+              'Build an AI chatbot with conversation history',
             ];
             clack.note(
-              `Open your agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
+              `Open your coding agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
               'Start building',
             );
           }
