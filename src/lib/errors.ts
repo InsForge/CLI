@@ -36,6 +36,53 @@ export class PermissionError extends CLIError {
 }
 
 /**
+ * Format a Node fetch error with actionable context.
+ *
+ * Node's undici-based fetch throws a generic Error with `message: 'fetch failed'`
+ * for any network-layer failure (DNS, connect, TLS, reset, timeout). The real
+ * reason sits on `err.cause` with a `code` like ENOTFOUND / ECONNREFUSED /
+ * ETIMEDOUT / UND_ERR_CONNECT_TIMEOUT / CERT_HAS_EXPIRED, etc. Unpack it so
+ * users see something actionable instead of "fetch failed".
+ */
+export function formatFetchError(err: unknown, url: string): string {
+  if (!(err instanceof Error)) return `Network request to ${url} failed: ${String(err)}`;
+  if (err.message !== 'fetch failed') return err.message;
+
+  const cause = (err as { cause?: unknown }).cause;
+  const code =
+    (cause as { code?: string } | undefined)?.code ??
+    (cause as { errno?: string } | undefined)?.errno;
+  const causeMsg =
+    cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : undefined;
+
+  let host = url;
+  try { host = new URL(url).host; } catch { /* url may already be a host */ }
+
+  switch (code) {
+    case 'ENOTFOUND':
+    case 'EAI_AGAIN':
+      return `Cannot resolve ${host} (DNS lookup failed: ${code}). Check your internet connection or DNS settings.`;
+    case 'ECONNREFUSED':
+      return `Connection to ${host} refused. The server may be down or blocked by a firewall.`;
+    case 'ETIMEDOUT':
+    case 'UND_ERR_CONNECT_TIMEOUT':
+      return `Connection to ${host} timed out. Check your network, VPN, or proxy settings.`;
+    case 'ECONNRESET':
+    case 'UND_ERR_SOCKET':
+      return `Connection to ${host} was reset. A proxy, VPN, or firewall may be interfering.`;
+    case 'CERT_HAS_EXPIRED':
+    case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
+    case 'SELF_SIGNED_CERT_IN_CHAIN':
+    case 'DEPTH_ZERO_SELF_SIGNED_CERT':
+      return `TLS certificate error contacting ${host} (${code}). Your network may be intercepting HTTPS (corporate proxy / VPN).`;
+  }
+
+  if (code) return `Network error contacting ${host}: ${code}${causeMsg ? ` — ${causeMsg}` : ''}`;
+  if (causeMsg) return `Network error contacting ${host}: ${causeMsg}`;
+  return `Network error contacting ${host}.`;
+}
+
+/**
  * Extract error message from a deployment's metadata field.
  * DeploymentSchema stores errors in metadata.error.errorMessage rather than a top-level field.
  */

@@ -19,7 +19,8 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run lint
+      - name: Test & lint
+        run: npm run lint
 
       - run: npm run build
         env:

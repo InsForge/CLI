@@ -73,7 +73,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
             // Install agent skills
             await installSkills(json);
-            await reportCliUsage('cli.link_direct', true, 6);
+            await reportCliUsage('cli.link_direct', true, 6, projectConfig);
 
             // Report agent-connected event (best-effort)
             try {
@@ -189,7 +189,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
         // Install agent skills
         await installSkills(json);
-        await reportCliUsage('cli.link', true, 6);
+        await reportCliUsage('cli.link', true, 6, projectConfig);
 
         // Report agent-connected event (best-effort)
         try {

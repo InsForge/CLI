@@ -4,6 +4,7 @@ import { URL } from 'node:url';
 import * as clack from '@clack/prompts';
 import { getGlobalConfig, getPlatformApiUrl, saveCredentials } from './config.js';
 import { getProfile } from './api/platform.js';
+import { formatFetchError } from './errors.js';
 import type { StoredCredentials } from '../types.js';
 
 // Default OAuth client for InsForge CLI (pre-registered on the platform)
@@ -68,21 +69,27 @@ export async function exchangeCodeForTokens(params: {
   clientId: string;
   codeVerifier: string;
 }): Promise<{ access_token: string; refresh_token: string; expires_in: number; scope: string }> {
-  const res = await fetch(`${params.platformUrl}/api/oauth/v1/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      code: params.code,
-      redirect_uri: params.redirectUri,
-      client_id: params.clientId,
-      code_verifier: params.codeVerifier,
-    }),
-  });
+  const tokenUrl = `${params.platformUrl}/api/oauth/v1/token`;
+  let res: Response;
+  try {
+    res = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        code: params.code,
+        redirect_uri: params.redirectUri,
+        client_id: params.clientId,
+        code_verifier: params.codeVerifier,
+      }),
+    });
+  } catch (err) {
+    throw new Error(`Token exchange failed — ${formatFetchError(err, tokenUrl)}`, { cause: err });
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error_description?: string; error?: string };
-    throw new Error(err.error_description ?? err.error ?? 'Token exchange failed');
+    throw new Error(err.error_description ?? err.error ?? `Token exchange failed (HTTP ${res.status})`);
   }
 
   return await res.json() as { access_token: string; refresh_token: string; expires_in: number; scope: string };
@@ -96,19 +103,25 @@ export async function refreshOAuthToken(params: {
   refreshToken: string;
   clientId: string;
 }): Promise<{ access_token: string; refresh_token?: string; expires_in: number }> {
-  const res = await fetch(`${params.platformUrl}/api/oauth/v1/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'refresh_token',
-      refresh_token: params.refreshToken,
-      client_id: params.clientId,
-    }),
-  });
+  const tokenUrl = `${params.platformUrl}/api/oauth/v1/token`;
+  let res: Response;
+  try {
+    res = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'refresh_token',
+        refresh_token: params.refreshToken,
+        client_id: params.clientId,
+      }),
+    });
+  } catch (err) {
+    throw new Error(`Token refresh failed — ${formatFetchError(err, tokenUrl)}`, { cause: err });
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error_description?: string; error?: string };
-    throw new Error(err.error_description ?? err.error ?? 'Token refresh failed');
+    throw new Error(err.error_description ?? err.error ?? `Token refresh failed (HTTP ${res.status})`);
   }
 
   return await res.json() as { access_token: string; refresh_token?: string; expires_in: number };
