@@ -1,7 +1,7 @@
 {
   "name": "@insforge/cli",
 
-  "version": "0.1.45",
+  "version": "0.1.46",
   "description": "InsForge CLI - Command line tool for InsForge platform",
   "type": "module",
   "bin": {
@@ -13,7 +13,7 @@
     "dev": "tsup --watch",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "prepublishOnly": "npm run lint && npm run build",
+    "prepublishOnly": "npm run lint && npm run test:unit && npm run build",
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --passWithNoTests",
     "test:integration:real": "npm run build && vitest run src/integration/real-project.test.ts"

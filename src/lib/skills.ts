@@ -9,7 +9,7 @@ const execAsync = promisify(exec);
 
 const SKILL_INSTALL_TIMEOUT_MS = 60_000;
 
-function describeExecError(err: unknown): string {
+export function describeExecError(err: unknown): string {
   const e = err as {
     killed?: boolean;
     signal?: string;
