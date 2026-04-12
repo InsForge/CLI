@@ -75,11 +75,11 @@ export function registerProjectLinkCommand(program: Command): void {
 
             // Direct OSS/Self-hosted linking bypasses OAuth
             const projectConfig: ProjectConfig = {
-              project_id: 'oss-project',
+              project_id: 'fa4e0000-1234-5678-90ab-0e02b2c3d479',
               project_name: 'oss-project',
-              org_id: 'oss-org',
-              appkey: 'oss',
-              region: 'local',
+              org_id: 'fa4e0001-1234-5678-90ab-0e02b2c3d479',
+              appkey: 'ossfkey',
+              region: 'us-test',
               api_key: opts.apiKey,
               oss_host: opts.apiBaseUrl.replace(/\/$/, ''), // remove trailing slash if any
             };
