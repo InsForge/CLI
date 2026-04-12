@@ -156,7 +156,7 @@ export function registerCreateCommand(program: Command): void {
     .option('--name <name>', 'Project name')
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
-    .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, or empty')
+    .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, todo, or empty')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -219,7 +219,7 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 3. Select template (two-step: blank vs template, then pick template)
-        const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'empty'];
+        const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo', 'empty'];
         let template = opts.template as string | undefined;
         if (template && !validTemplates.includes(template)) {
           throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
@@ -252,6 +252,7 @@ export function registerCreateCommand(program: Command): void {
                   { value: 'chatbot', label: 'AI Chatbot with Next.js' },
                   { value: 'crm', label: 'CRM with Next.js' },
                   { value: 'e-commerce', label: 'E-Commerce store with Next.js' },
+                  { value: 'todo', label: 'Todo app with Next.js' },
                 ],
               });
               if (clack.isCancel(selected)) process.exit(0);
@@ -331,7 +332,7 @@ export function registerCreateCommand(program: Command): void {
         s?.stop(`Project "${project.name}" created and linked`);
 
         // 7. Download template or seed env for blank projects
-        const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react'];
+        const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
         if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {

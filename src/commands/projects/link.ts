@@ -32,7 +32,7 @@ export function registerProjectLinkCommand(program: Command): void {
     .description('Link current directory to an InsForge project')
     .option('--project-id <id>', 'Project ID to link')
     .option('--org-id <id>', 'Organization ID')
-    .option('--template <template>', 'Download a template after linking: react, nextjs, chatbot, crm, e-commerce')
+    .option('--template <template>', 'Download a template after linking: react, nextjs, chatbot, crm, e-commerce, todo')
     .option('--api-base-url <url>', 'API Base URL for direct linking (OSS/Self-hosted)')
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
     .action(async (opts, cmd) => {
@@ -199,7 +199,7 @@ export function registerProjectLinkCommand(program: Command): void {
         // Template download (only when --template flag is passed)
         const template = opts.template as string | undefined;
         if (template) {
-          const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce'];
+          const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo'];
           if (!validTemplates.includes(template)) {
             throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
           }
@@ -239,7 +239,7 @@ export function registerProjectLinkCommand(program: Command): void {
           captureEvent(orgId ?? project.organization_id, 'template_selected', { template, source: 'link' });
 
           // Download template
-          const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react'];
+          const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
           if (githubTemplates.includes(template)) {
             await downloadGitHubTemplate(template, projectConfig, json);
           } else {
