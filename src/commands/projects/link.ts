@@ -285,7 +285,7 @@ export function registerProjectLinkCommand(program: Command): void {
             const prompts = [
               'Build a todo app with Google OAuth sign-in',
               'Build an Instagram clone where users can upload photos, like, and comment',
-              'Build an AI chatbot with conversation history',
+              'Build an AI chatbot with conversation history and deploy it to a live URL',
             ];
             clack.note(
               `Open your coding agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
