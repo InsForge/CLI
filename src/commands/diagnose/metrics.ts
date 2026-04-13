@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { platformFetch } from '../../lib/api/platform.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
-import { getProjectConfig } from '../../lib/config.js';
+import { getProjectConfig, FAKE_PROJECT_ID } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import { trackDiagnose, shutdownAnalytics } from '../../lib/analytics.js';
@@ -113,7 +113,7 @@ export function registerDiagnoseMetricsCommand(diagnoseCmd: Command): void {
         await requireAuth(apiUrl);
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
-        if (config.project_id === 'oss-project') {
+        if (config.project_id === FAKE_PROJECT_ID) {
           throw new CLIError(
             'Metrics requires InsForge Platform login. Not available when linked via --api-key.',
           );

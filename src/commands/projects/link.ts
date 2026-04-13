@@ -12,7 +12,7 @@ import {
   getProjectApiKey,
   reportAgentConnected,
 } from '../../lib/api/platform.js';
-import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../../lib/config.js';
+import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl, FAKE_PROJECT_ID, FAKE_ORG_ID } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
@@ -53,11 +53,11 @@ export function registerProjectLinkCommand(program: Command): void {
 
             // Direct OSS/Self-hosted linking bypasses OAuth
             const projectConfig: ProjectConfig = {
-              project_id: 'oss-project',
+              project_id: FAKE_PROJECT_ID,
               project_name: 'oss-project',
-              org_id: 'oss-org',
-              appkey: 'oss',
-              region: 'local',
+              org_id: FAKE_ORG_ID,
+              appkey: 'ossfkey',
+              region: 'us-test',
               api_key: opts.apiKey,
               oss_host: opts.apiBaseUrl.replace(/\/$/, ''), // remove trailing slash if any
             };

@@ -1,4 +1,4 @@
-import { getCredentials, getGlobalConfig, getPlatformApiUrl, saveCredentials, getProjectConfig } from './config.js';
+import { getCredentials, getGlobalConfig, getPlatformApiUrl, saveCredentials, getProjectConfig, FAKE_PROJECT_ID } from './config.js';
 import { AuthError } from './errors.js';
 import { refreshOAuthToken, DEFAULT_CLIENT_ID, performOAuthLogin } from './auth.js';
 import * as clack from '@clack/prompts';
@@ -6,7 +6,7 @@ import type { StoredCredentials } from '../types.js';
 
 export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promise<StoredCredentials> {
   const projConfig = getProjectConfig();
-  if (allowOssBypass && projConfig?.project_id === 'oss-project') {
+  if (allowOssBypass && projConfig?.project_id === FAKE_PROJECT_ID) {
     return {
       access_token: 'oss-token',
       refresh_token: 'oss-refresh',

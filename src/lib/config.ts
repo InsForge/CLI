@@ -10,6 +10,10 @@ const CONFIG_FILE = join(GLOBAL_DIR, 'config.json');
 const DEFAULT_PLATFORM_URL = 'https://api.insforge.dev';
 const DEFAULT_FRONTEND_URL = 'https://insforge.dev';
 
+/** Sentinel project ID for OSS/self-hosted linking (valid UUID, never matches a real project). */
+export const FAKE_PROJECT_ID = 'fa4e0000-1234-5678-90ab-cd1234567890';
+export const FAKE_ORG_ID = 'fa4e0001-1234-5678-90ab-cd1234567890';
+
 function ensureGlobalDir(): void {
   if (!existsSync(GLOBAL_DIR)) {
     mkdirSync(GLOBAL_DIR, { recursive: true });

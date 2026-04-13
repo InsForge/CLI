@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts, ProjectNotLinkedError, CLIError } from '../../lib/errors.js';
+import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';

@@ -1,5 +1,6 @@
 import { PostHog } from 'posthog-node';
 import type { ProjectConfig } from '../types.js';
+import { FAKE_PROJECT_ID } from './config.js';
 
 const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
@@ -40,7 +41,7 @@ export function trackDiagnose(subcommand: string, config: ProjectConfig): void {
     project_name: config.project_name,
     org_id: config.org_id,
     region: config.region,
-    oss_mode: config.project_id === 'oss-project',
+    oss_mode: config.project_id === FAKE_PROJECT_ID,
   });
 }
 
