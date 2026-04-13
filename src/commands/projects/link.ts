@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as clack from '@clack/prompts';
+import pc from 'picocolors';
 import {
   listOrganizations,
   listProjects,
@@ -264,11 +265,14 @@ export function registerProjectLinkCommand(program: Command): void {
 
           if (!json) {
             const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
-            clack.log.step(`Dashboard: ${dashboardUrl}`);
+            clack.log.step(`Dashboard: ${pc.underline(dashboardUrl)}`);
             if (templateDownloaded) {
-              const steps = [`cd ${dirName}`, 'npm run dev'];
-              clack.note(steps.join('\n'), 'Next steps');
-              clack.note('Open your coding agent (Claude Code, Codex, Cursor, etc.) to add new features.', 'Keep building');
+              const runCommand = `${pc.cyan('cd')} ${pc.green(dirName)} ${pc.dim('&&')} ${pc.cyan('npm run dev')}`;
+              const steps = [
+                `${pc.bold('1.')} ${runCommand}`,
+                `${pc.bold('2.')} Open ${pc.cyan('Claude Code')} or ${pc.cyan('Cursor')} and prompt your agent to add more features`,
+              ];
+              clack.note(steps.join('\n'), "What's next");
             } else {
               clack.log.warn('Template download failed. You can retry or set up manually.');
             }

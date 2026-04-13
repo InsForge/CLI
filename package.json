@@ -1,7 +1,6 @@
 {
   "name": "@insforge/cli",
-
-  "version": "0.1.47",
+  "version": "0.1.48",
   "description": "InsForge CLI - Command line tool for InsForge platform",
   "type": "module",
   "bin": {
@@ -40,6 +39,7 @@
     "cli-table3": "^0.6.5",
     "commander": "^13.1.0",
     "open": "^10.1.0",
+    "picocolors": "^1.1.1",
     "posthog-node": "^5.28.9"
   },
   "devDependencies": {
