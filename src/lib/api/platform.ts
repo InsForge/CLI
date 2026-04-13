@@ -34,7 +34,12 @@ export async function platformFetch(
     }
   }
 
-  const res = await fetch(fullUrl, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(fullUrl, { ...options, headers });
+  } catch (err) {
+    throw new CLIError(formatFetchError(err, fullUrl));
+  }
 
   // Auto-refresh on 401
   if (res.status === 401) {
