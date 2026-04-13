@@ -187,10 +187,6 @@ export function registerProjectLinkCommand(program: Command): void {
           outputSuccess(`Linked to project "${project.name}" (${project.appkey}.${project.region})`);
         }
 
-        // Install agent skills
-        await installSkills(json);
-        await reportCliUsage('cli.link', true, 6, projectConfig);
-
         // Report agent-connected event (best-effort)
         try {
           await reportAgentConnected({ project_id: project.id }, apiUrl);
@@ -262,6 +258,10 @@ export function registerProjectLinkCommand(program: Command): void {
             }
           }
 
+          // Install agent skills inside the project directory
+          await installSkills(json);
+          await reportCliUsage('cli.link', true, 6, projectConfig);
+
           if (!json) {
             const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
             clack.log.step(`Dashboard: ${dashboardUrl}`);
@@ -273,20 +273,25 @@ export function registerProjectLinkCommand(program: Command): void {
               clack.log.warn('Template download failed. You can retry or set up manually.');
             }
           }
-        } else if (!json) {
-          // No template — show dashboard link and suggest prompts
-          const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
-          clack.log.step(`Dashboard: ${dashboardUrl}`);
+        } else {
+          // No template — install agent skills in the current directory
+          await installSkills(json);
+          await reportCliUsage('cli.link', true, 6, projectConfig);
 
-          const prompts = [
-            'Build a todo app with Google OAuth sign-in',
-            'Build an Instagram clone where users can upload photos, like, and comment',
-            'Build an AI chatbot with conversation history',
-          ];
-          clack.note(
-            `Open your coding agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
-            'Start building',
-          );
+          if (!json) {
+            const dashboardUrl = `${getFrontendUrl()}/dashboard/project/${project.id}`;
+            clack.log.step(`Dashboard: ${dashboardUrl}`);
+
+            const prompts = [
+              'Build a todo app with Google OAuth sign-in',
+              'Build an Instagram clone where users can upload photos, like, and comment',
+              'Build an AI chatbot with conversation history and deploy it to a live URL',
+            ];
+            clack.note(
+              `Open your coding agent (Claude Code, Codex, Cursor, etc.) and try:\n\n${prompts.map((p) => `• "${p}"`).join('\n')}`,
+              'Start building',
+            );
+          }
         }
       } catch (err) {
         await reportCliUsage('cli.link', false);
