@@ -2,6 +2,8 @@ import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import * as clack from '@clack/prompts';
+import pc from 'picocolors';
+import { isInteractive } from './prompts.js';
 import { getGlobalConfig, getPlatformApiUrl, saveCredentials } from './config.js';
 import { getProfile } from './api/platform.js';
 import { formatFetchError } from './errors.js';
@@ -221,20 +223,26 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
     scopes: OAUTH_SCOPES,
   });
 
-  clack.log.info('Opening browser for authentication...');
-  clack.log.info(`If browser doesn't open, visit:\n${authUrl}`);
+  if (isInteractive) {
+    clack.log.info('Opening browser for authentication...');
+    clack.log.info(`If browser doesn't open, visit:\n${authUrl}`);
+  } else {
+    // Non-TTY (agent shell): surface the URL prominently so the agent can relay it to the human
+    process.stdout.write(`\nTo sign in, open this URL in your browser:\n\n  ${pc.cyan(pc.underline(authUrl))}\n\n`);
+  }
 
-  // 4. Open browser
+  // 4. Open browser (best effort — often works even from agent shells since we're on the same machine)
   try {
     const open = (await import('open')).default;
     await open(authUrl);
   } catch {
-    clack.log.warn('Could not open browser. Please visit the URL above.');
+    if (isInteractive) clack.log.warn('Could not open browser. Please visit the URL above.');
   }
 
-  // 5. Wait for callback
-  const s = clack.spinner();
-  s.start('Waiting for authentication...');
+  // 5. Wait for callback — use clack spinner only in TTY (non-TTY spinner renders garbage)
+  const s = isInteractive ? clack.spinner() : null;
+  s?.start('Waiting for authentication...');
+  if (!isInteractive) process.stdout.write('Waiting for authentication...\n');
 
   try {
     const callbackResult = await result;
@@ -242,12 +250,12 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
 
     // Verify state
     if (callbackResult.state !== state) {
-      s.stop('Authentication failed');
+      s?.stop('Authentication failed');
       throw new Error('State mismatch. Possible CSRF attack.');
     }
 
     // 6. Exchange code for tokens
-    s.message('Exchanging authorization code...');
+    s?.message('Exchanging authorization code...');
     const tokens = await exchangeCodeForTokens({
       platformUrl,
       code: callbackResult.code,
@@ -268,15 +276,18 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
       const profile = await getProfile(apiUrl);
       creds.user = profile;
       saveCredentials(creds);
-      s.stop(`Authenticated as ${profile.email}`);
+      s?.stop(`Authenticated as ${profile.email}`);
+      if (!isInteractive) process.stdout.write(`Authenticated as ${profile.email}\n`);
     } catch {
-      s.stop('Authenticated successfully');
+      s?.stop('Authenticated successfully');
+      if (!isInteractive) process.stdout.write('Authenticated successfully\n');
     }
 
     return creds;
   } catch (err) {
     close();
-    s.stop('Authentication failed');
+    s?.stop('Authentication failed');
+    if (!isInteractive) process.stdout.write('Authentication failed\n');
     throw err;
   }
 }

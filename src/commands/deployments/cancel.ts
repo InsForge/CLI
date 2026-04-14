@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import * as clack from '@clack/prompts';
+import * as prompts from '../../lib/prompts.js';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
@@ -17,10 +17,10 @@ export function registerDeploymentsCancelCommand(deploymentsCmd: Command): void 
         if (!getProjectConfig()) throw new ProjectNotLinkedError();
 
         if (!yes && !json) {
-          const confirmed = await clack.confirm({
+          const confirmed = await prompts.confirm({
             message: `Cancel deployment ${id}?`,
           });
-          if (clack.isCancel(confirmed) || !confirmed) process.exit(0);
+          if (prompts.isCancel(confirmed) || !confirmed) process.exit(0);
         }
 
         const res = await ossFetch(`/api/deployments/${id}/cancel`, { method: 'POST' });

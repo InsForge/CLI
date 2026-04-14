@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as clack from '@clack/prompts';
+import * as prompts from '../lib/prompts.js';
 import {
   listOrganizations,
   createProject,
@@ -181,15 +182,15 @@ export function registerCreateCommand(program: Command): void {
             if (json) {
               throw new CLIError('Multiple organizations found. Specify --org-id.');
             }
-            const selected = await clack.select({
+            const selected = await prompts.select<string>({
               message: 'Select an organization:',
               options: orgs.map((o) => ({
                 value: o.id,
                 label: o.name,
               })),
             });
-            if (clack.isCancel(selected)) process.exit(0);
-            orgId = selected as string;
+            if (prompts.isCancel(selected)) process.exit(0);
+            orgId = selected;
           }
         }
 
@@ -203,13 +204,13 @@ export function registerCreateCommand(program: Command): void {
         if (!projectName) {
           if (json) throw new CLIError('--name is required in JSON mode.');
           const defaultName = getDefaultProjectName();
-          const name = await clack.text({
+          const name = await prompts.text({
             message: 'Project name:',
             ...(defaultName ? { initialValue: defaultName } : {}),
             validate: (v) => (v.length >= 2 ? undefined : 'Name must be at least 2 characters'),
           });
-          if (clack.isCancel(name)) process.exit(0);
-          projectName = name as string;
+          if (prompts.isCancel(name)) process.exit(0);
+          projectName = name;
         }
 
         // Sanitize project name to prevent path traversal
@@ -228,23 +229,23 @@ export function registerCreateCommand(program: Command): void {
           if (json) {
             template = 'empty';
           } else {
-            const approach = await clack.select({
+            const approach = await prompts.select<string>({
               message: 'How would you like to start?',
               options: [
                 { value: 'blank', label: 'Blank project', hint: 'Start from scratch with .env.local ready' },
                 { value: 'template', label: 'Start from a template', hint: 'Pre-built starter apps' },
               ],
             });
-            if (clack.isCancel(approach)) process.exit(0);
+            if (prompts.isCancel(approach)) process.exit(0);
 
             captureEvent(orgId, 'create_approach_selected', {
-              approach: approach as string,
+              approach,
             });
 
             if (approach === 'blank') {
               template = 'empty';
             } else {
-              const selected = await clack.select({
+              const selected = await prompts.select<string>({
                 message: 'Choose a starter template:',
                 options: [
                   { value: 'react', label: 'Web app template with React' },
@@ -255,8 +256,8 @@ export function registerCreateCommand(program: Command): void {
                   { value: 'todo', label: 'Todo app with Next.js' },
                 ],
               });
-              if (clack.isCancel(selected)) process.exit(0);
-              template = selected as string;
+              if (prompts.isCancel(selected)) process.exit(0);
+              template = selected;
             }
           }
         }
@@ -275,7 +276,7 @@ export function registerCreateCommand(program: Command): void {
         if (hasTemplate) {
           dirName = projectName;
           if (!json) {
-            const inputDir = await clack.text({
+            const inputDir = await prompts.text({
               message: 'Directory name:',
               initialValue: projectName,
               validate: (v) => {
@@ -285,8 +286,8 @@ export function registerCreateCommand(program: Command): void {
                 return undefined;
               },
             });
-            if (clack.isCancel(inputDir)) process.exit(0);
-            dirName = path.basename(inputDir as string).replace(/[^a-zA-Z0-9._-]/g, '-');
+            if (prompts.isCancel(inputDir)) process.exit(0);
+            dirName = path.basename(inputDir).replace(/[^a-zA-Z0-9._-]/g, '-');
           }
 
           // Validate normalized dirName
@@ -396,11 +397,11 @@ export function registerCreateCommand(program: Command): void {
         // 9. Offer to deploy (template projects, interactive mode only)
         let liveUrl: string | null = null;
         if (templateDownloaded && !json) {
-          const shouldDeploy = await clack.confirm({
+          const shouldDeploy = await prompts.confirm({
             message: 'Would you like to deploy now?',
           });
 
-          if (!clack.isCancel(shouldDeploy) && shouldDeploy) {
+          if (!prompts.isCancel(shouldDeploy) && shouldDeploy) {
             try {
               // Read env vars from .env.local or .env to pass to deployment
               const envVars = await readEnvFile(process.cwd());

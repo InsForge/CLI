@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import * as os from 'node:os';
 import * as clack from '@clack/prompts';
+import * as prompts from '../../lib/prompts.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
 import { getProjectConfig, FAKE_PROJECT_ID } from '../../lib/config.js';
@@ -255,7 +256,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
 
           // Optional rating prompt (interactive only)
           if (!json && sessionId) {
-            const ratingChoice = await clack.select({
+            const ratingChoice = await prompts.select<string>({
               message: 'Was this analysis helpful?',
               options: [
                 { value: 'skip', label: 'Skip', hint: 'no rating' },
@@ -265,7 +266,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
               ],
             });
 
-            if (!clack.isCancel(ratingChoice) && ratingChoice !== 'skip') {
+            if (!prompts.isCancel(ratingChoice) && ratingChoice !== 'skip') {
               try {
                 await rateDiagnosticSession(
                   sessionId,

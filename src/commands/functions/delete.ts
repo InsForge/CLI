@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
+import * as prompts from '../../lib/prompts.js';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
@@ -17,10 +18,10 @@ export function registerFunctionsDeleteCommand(functionsCmd: Command): void {
         await requireAuth();
 
         if (!yes && !json) {
-          const confirmed = await clack.confirm({
+          const confirmed = await prompts.confirm({
             message: `Delete function "${slug}"? This cannot be undone.`,
           });
-          if (clack.isCancel(confirmed) || !confirmed) {
+          if (prompts.isCancel(confirmed) || !confirmed) {
             clack.log.info('Cancelled.');
             return;
           }

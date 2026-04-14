@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import * as clack from '@clack/prompts';
+import * as prompts from '../../lib/prompts.js';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
@@ -15,10 +15,10 @@ export function registerSchedulesDeleteCommand(schedulesCmd: Command): void {
         await requireAuth();
 
         if (!yes && !json) {
-          const confirm = await clack.confirm({
+          const confirm = await prompts.confirm({
             message: `Delete schedule "${id}"? This cannot be undone.`,
           });
-          if (!confirm || clack.isCancel(confirm)) {
+          if (prompts.isCancel(confirm) || !confirm) {
             process.exit(0);
           }
         }

@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import * as clack from '@clack/prompts';
+import * as prompts from './lib/prompts.js';
 import { getCredentials, getProjectConfig } from './lib/config.js';
 import { registerLoginCommand } from './commands/login.js';
 import { registerLogoutCommand } from './commands/logout.js';
@@ -242,12 +243,12 @@ async function showInteractiveMenu(): Promise<void> {
     { value: 'help', label: 'Show all commands' },
   );
 
-  const action = await clack.select({
+  const action = await prompts.select<string>({
     message: 'What would you like to do?',
     options,
   });
 
-  if (clack.isCancel(action)) {
+  if (prompts.isCancel(action)) {
     clack.cancel('Bye!');
     process.exit(0);
   }

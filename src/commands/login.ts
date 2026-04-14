@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
+import * as prompts from '../lib/prompts.js';
 import { saveCredentials } from '../lib/config.js';
 import { login as platformLogin } from '../lib/api/platform.js';
 import { performOAuthLogin } from '../lib/auth.js';
@@ -37,23 +38,23 @@ async function loginWithEmail(json: boolean, apiUrl?: string): Promise<void> {
 
   const email = json
     ? process.env.INSFORGE_EMAIL
-    : await clack.text({
+    : await prompts.text({
         message: 'Email:',
         validate: (v) => (v.includes('@') ? undefined : 'Please enter a valid email'),
       });
 
-  if (clack.isCancel(email)) {
+  if (prompts.isCancel(email)) {
     clack.cancel('Login cancelled.');
     throw new Error('cancelled');
   }
 
   const password = json
     ? process.env.INSFORGE_PASSWORD
-    : await clack.password({
+    : await prompts.password({
         message: 'Password:',
       });
 
-  if (clack.isCancel(password)) {
+  if (prompts.isCancel(password)) {
     clack.cancel('Login cancelled.');
     throw new Error('cancelled');
   }

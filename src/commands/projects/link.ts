@@ -5,6 +5,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
+import * as prompts from '../../lib/prompts.js';
 import {
   listOrganizations,
   listProjects,
@@ -108,15 +109,15 @@ export function registerProjectLinkCommand(program: Command): void {
             if (json) {
               throw new CLIError('Multiple organizations found. Specify --org-id.');
             }
-            const selected = await clack.select({
+            const selected = await prompts.select<string>({
               message: 'Select an organization:',
               options: orgs.map((o) => ({
                 value: o.id,
                 label: o.name,
               })),
             });
-            if (clack.isCancel(selected)) process.exit(0);
-            orgId = selected as string;
+            if (prompts.isCancel(selected)) process.exit(0);
+            orgId = selected;
           }
         }
 
@@ -134,15 +135,15 @@ export function registerProjectLinkCommand(program: Command): void {
           if (json) {
             throw new CLIError('Specify --project-id in JSON mode.');
           }
-          const selected = await clack.select({
+          const selected = await prompts.select<string>({
             message: 'Select a project to link:',
             options: projects.map((p) => ({
               value: p.id,
               label: `${p.name} (${p.region}, ${p.status})`,
             })),
           });
-          if (clack.isCancel(selected)) process.exit(0);
-          projectId = selected as string;
+          if (prompts.isCancel(selected)) process.exit(0);
+          projectId = selected;
         }
 
         // Fetch project details and API key
@@ -204,7 +205,7 @@ export function registerProjectLinkCommand(program: Command): void {
           // Ask for directory name
           let dirName = project.name;
           if (!json) {
-            const inputDir = await clack.text({
+            const inputDir = await prompts.text({
               message: 'Directory name:',
               initialValue: project.name,
               validate: (v) => {
@@ -214,8 +215,8 @@ export function registerProjectLinkCommand(program: Command): void {
                 return undefined;
               },
             });
-            if (clack.isCancel(inputDir)) process.exit(0);
-            dirName = path.basename(inputDir as string).replace(/[^a-zA-Z0-9._-]/g, '-');
+            if (prompts.isCancel(inputDir)) process.exit(0);
+            dirName = path.basename(inputDir).replace(/[^a-zA-Z0-9._-]/g, '-');
           }
 
           if (!dirName || dirName === '.' || dirName === '..') {

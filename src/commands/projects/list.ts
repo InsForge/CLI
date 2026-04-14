@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import * as clack from '@clack/prompts';
+import * as prompts from '../../lib/prompts.js';
 import { listOrganizations, listProjects } from '../../lib/api/platform.js';
 import { getGlobalConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
@@ -27,17 +27,17 @@ export function registerProjectsCommands(projectsCmd: Command): void {
           if (orgs.length === 1) {
             orgId = orgs[0].id;
           } else if (!json) {
-            const selected = await clack.select({
+            const selected = await prompts.select<string>({
               message: 'Select an organization:',
               options: orgs.map((o) => ({
                 value: o.id,
                 label: o.name,
               })),
             });
-            if (clack.isCancel(selected)) {
+            if (prompts.isCancel(selected)) {
               process.exit(0);
             }
-            orgId = selected as string;
+            orgId = selected;
           } else {
             throw new CLIError('Multiple organizations found. Specify --org-id.');
           }

@@ -2,6 +2,7 @@ import { getCredentials, getGlobalConfig, getPlatformApiUrl, saveCredentials, ge
 import { AuthError } from './errors.js';
 import { refreshOAuthToken, DEFAULT_CLIENT_ID, performOAuthLogin } from './auth.js';
 import * as clack from '@clack/prompts';
+import * as prompts from './prompts.js';
 import type { StoredCredentials } from '../types.js';
 
 export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promise<StoredCredentials> {
@@ -34,8 +35,8 @@ export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promi
       const msg = err instanceof Error ? err.message : 'Unknown error';
       clack.log.error(`Login failed: ${msg}`);
 
-      const retry = await clack.confirm({ message: 'Would you like to try again?' });
-      if (clack.isCancel(retry) || !retry) {
+      const retry = await prompts.confirm({ message: 'Would you like to try again?' });
+      if (prompts.isCancel(retry) || !retry) {
         throw new AuthError('Authentication required. Run `npx @insforge/cli login` to authenticate.');
       }
     }
