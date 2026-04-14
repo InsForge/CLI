@@ -67,6 +67,13 @@ describe('nonTtyText', () => {
     h.end();
     expect(await p).toBe(CANCEL);
   });
+
+  it('preserves whitespace when trim is false (for passwords)', async () => {
+    const h = harness();
+    const p = nonTtyText({ message: 'Secret?', trim: false }, { reader: h.reader, stderr: h.stderr });
+    h.write('  spaces matter  \n');
+    expect(await p).toBe('  spaces matter  ');
+  });
 });
 
 describe('nonTtySelect', () => {
@@ -147,6 +154,16 @@ describe('nonTtySelect', () => {
     );
     h.end();
     expect(await p).toBe(CANCEL);
+  });
+
+  it('throws when options list is empty (no infinite loop)', async () => {
+    const h = harness();
+    await expect(
+      nonTtySelect<string>(
+        { message: 'Pick:', options: [] },
+        { reader: h.reader, stdout: h.stdout, stderr: h.stderr },
+      ),
+    ).rejects.toThrow(/No options available/);
   });
 });
 

@@ -137,21 +137,24 @@ export async function password(opts: { message: string }): Promise<string | Canc
     if (clack.isCancel(result)) return CANCEL;
     return result;
   }
-  // Non-TTY: can't mask input over a pipe, just read it
-  return nonTtyText({ message: opts.message });
+  // Non-TTY: can't mask input over a pipe, just read the line. Preserve whitespace
+  // since it can be valid in passwords.
+  return nonTtyText({ message: opts.message, trim: false });
 }
 
 export async function nonTtyText(
-  opts: TextOptions,
+  opts: TextOptions & { trim?: boolean },
   io: { reader?: LineReader; stderr?: NodeJS.WritableStream } = {},
 ): Promise<string | CancelSymbol> {
   const reader = io.reader ?? getReader();
   const stderr = io.stderr ?? process.stderr;
+  const shouldTrim = opts.trim ?? true;
   const defaultHint = opts.initialValue ? ` [${opts.initialValue}]` : '';
   for (;;) {
     const raw = await reader.readLine(`? ${opts.message}${defaultHint} `);
     if (raw === null) return CANCEL;
-    const value = raw.trim() === '' ? (opts.initialValue ?? '') : raw.trim();
+    const normalized = shouldTrim ? raw.trim() : raw;
+    const value = normalized === '' ? (opts.initialValue ?? '') : normalized;
     if (opts.validate) {
       const err = opts.validate(value);
       if (err) {
@@ -167,6 +170,9 @@ export async function nonTtySelect<T>(
   opts: SelectOptions<T>,
   io: { reader?: LineReader; stdout?: NodeJS.WritableStream; stderr?: NodeJS.WritableStream } = {},
 ): Promise<T | CancelSymbol> {
+  if (opts.options.length === 0) {
+    throw new Error(`No options available for prompt "${opts.message}".`);
+  }
   const reader = io.reader ?? getReader();
   const stdout = io.stdout ?? process.stdout;
   const stderr = io.stderr ?? process.stderr;

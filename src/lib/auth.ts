@@ -227,8 +227,9 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
     clack.log.info('Opening browser for authentication...');
     clack.log.info(`If browser doesn't open, visit:\n${authUrl}`);
   } else {
-    // Non-TTY (agent shell): surface the URL prominently so the agent can relay it to the human
-    process.stdout.write(`\nTo sign in, open this URL in your browser:\n\n  ${pc.cyan(pc.underline(authUrl))}\n\n`);
+    // Non-TTY (agent shell): surface the URL prominently via stderr so it stays out of
+    // any JSON stdout stream but is still visible to agents and humans.
+    process.stderr.write(`\nTo sign in, open this URL in your browser:\n\n  ${pc.cyan(pc.underline(authUrl))}\n\n`);
   }
 
   // 4. Open browser (best effort — often works even from agent shells since we're on the same machine)
@@ -242,7 +243,7 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
   // 5. Wait for callback — use clack spinner only in TTY (non-TTY spinner renders garbage)
   const s = isInteractive ? clack.spinner() : null;
   s?.start('Waiting for authentication...');
-  if (!isInteractive) process.stdout.write('Waiting for authentication...\n');
+  if (!isInteractive) process.stderr.write('Waiting for authentication...\n');
 
   try {
     const callbackResult = await result;
@@ -277,17 +278,17 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
       creds.user = profile;
       saveCredentials(creds);
       s?.stop(`Authenticated as ${profile.email}`);
-      if (!isInteractive) process.stdout.write(`Authenticated as ${profile.email}\n`);
+      if (!isInteractive) process.stderr.write(`Authenticated as ${profile.email}\n`);
     } catch {
       s?.stop('Authenticated successfully');
-      if (!isInteractive) process.stdout.write('Authenticated successfully\n');
+      if (!isInteractive) process.stderr.write('Authenticated successfully\n');
     }
 
     return creds;
   } catch (err) {
     close();
     s?.stop('Authentication failed');
-    if (!isInteractive) process.stdout.write('Authentication failed\n');
+    if (!isInteractive) process.stderr.write('Authentication failed\n');
     throw err;
   }
 }
