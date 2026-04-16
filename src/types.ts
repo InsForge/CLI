@@ -108,8 +108,9 @@ export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsRespons
   DatabaseFunctionsResponse, DatabaseIndexesResponse, DatabasePoliciesResponse, DatabaseTriggersResponse,
   CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
   ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse,
-  CreateDeploymentResponse, StartDeploymentRequest, DeploymentSchema,
-  DeploymentMetadataResponse
+  CreateDeploymentResponse, CreateDirectDeploymentRequest, CreateDirectDeploymentResponse,
+  DeploymentManifestFileEntry, DeploymentManifestFile, UploadDeploymentFileResponse,
+  StartDeploymentRequest, DeploymentSchema, DeploymentMetadataResponse
  } from '@insforge/shared-schemas';
 
 // Function types (kept local: shared-schemas source defines FunctionResponse and
