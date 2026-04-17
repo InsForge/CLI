@@ -70,8 +70,8 @@ function updateGitignore(): void {
 
 export async function installSkills(json: boolean): Promise<void> {
   try {
-    if (!json) clack.log.info('Installing InsForge agent skills...');
-    await execAsync('npx skills add insforge/agent-skills -y -a antigravity -a augment -a claude-code -a cline -a codex -a cursor -a gemini-cli -a github-copilot -a kilo -a qoder -a qwen-code -a roo -a trae -a windsurf', {
+    if (!json) clack.log.info('Installing InsForge agent skills (global)...');
+    await execAsync('npx skills add insforge/agent-skills -g -y -a antigravity -a augment -a claude-code -a cline -a codex -a cursor -a gemini-cli -a github-copilot -a kilo -a qoder -a qwen-code -a roo -a trae -a windsurf', {
       cwd: process.cwd(),
       timeout: SKILL_INSTALL_TIMEOUT_MS,
     });
@@ -85,8 +85,8 @@ export async function installSkills(json: boolean): Promise<void> {
 
   // Install find-skills from vercel-labs for skill discovery
   try {
-    if (!json) clack.log.info('Installing find-skills...');
-    await execAsync('npx skills add https://github.com/vercel-labs/skills --skill find-skills -y', {
+    if (!json) clack.log.info('Installing find-skills (global)...');
+    await execAsync('npx skills add https://github.com/vercel-labs/skills --skill find-skills -g -y', {
       cwd: process.cwd(),
       timeout: SKILL_INSTALL_TIMEOUT_MS,
     });
