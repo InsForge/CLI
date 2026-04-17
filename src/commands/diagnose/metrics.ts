@@ -162,6 +162,7 @@ export function registerDiagnoseMetricsCommand(diagnoseCmd: Command): void {
         await reportCliUsage('cli.diagnose.metrics', true);
       } catch (err) {
         await reportCliUsage('cli.diagnose.metrics', false);
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();

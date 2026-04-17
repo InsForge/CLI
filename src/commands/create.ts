@@ -484,6 +484,7 @@ export function registerCreateCommand(program: Command): void {
           throw err;
         }
       } catch (err) {
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();

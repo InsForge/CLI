@@ -363,6 +363,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
         await reportCliUsage(usageEvent, true);
       } catch (err) {
         await reportCliUsage(usageEvent, false);
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();

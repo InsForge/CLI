@@ -87,6 +87,7 @@ export function registerProjectLinkCommand(program: Command): void {
             return;
           } catch (err) {
             await reportCliUsage('cli.link_direct', false);
+            await shutdownAnalytics();
             handleError(err, json);
           }
         }
@@ -300,6 +301,7 @@ export function registerProjectLinkCommand(program: Command): void {
         }
       } catch (err) {
         await reportCliUsage('cli.link', false);
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();

@@ -207,6 +207,7 @@ export function registerDiagnoseDbCommand(diagnoseCmd: Command): void {
         await reportCliUsage('cli.diagnose.db', true);
       } catch (err) {
         await reportCliUsage('cli.diagnose.db', false);
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();

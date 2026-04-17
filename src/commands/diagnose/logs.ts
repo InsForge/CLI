@@ -121,6 +121,7 @@ export function registerDiagnoseLogsCommand(diagnoseCmd: Command): void {
         await reportCliUsage('cli.diagnose.logs', true);
       } catch (err) {
         await reportCliUsage('cli.diagnose.logs', false);
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();
