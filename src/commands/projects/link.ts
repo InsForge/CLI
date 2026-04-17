@@ -202,6 +202,9 @@ export function registerProjectLinkCommand(program: Command): void {
             throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
           }
 
+          // Install agent skills in the current directory before creating the project subdir
+          await installSkills(json);
+
           // Ask for directory name
           let dirName = project.name;
           if (!json) {
@@ -260,8 +263,6 @@ export function registerProjectLinkCommand(program: Command): void {
             }
           }
 
-          // Install agent skills inside the project directory
-          await installSkills(json);
           await reportCliUsage('cli.link', true, 6, projectConfig);
 
           if (!json) {
