@@ -8,6 +8,8 @@ export interface ParsedMigrationFile {
   name: string;
 }
 
+export type RemoteMigrationVersionStatus = 'already-applied' | 'older-than-head' | 'pending';
+
 const MIGRATION_FILENAME_REGEX = /^(\d{14})_([a-z0-9-]+)\.sql$/;
 
 export function parseMigrationFilename(filename: string): ParsedMigrationFile | null {
@@ -25,6 +27,25 @@ export function parseMigrationFilename(filename: string): ParsedMigrationFile | 
 
 export function compareMigrationVersions(left: string, right: string): number {
   return left.localeCompare(right);
+}
+
+export function getRemoteMigrationVersionStatus(
+  version: string,
+  appliedVersions: ReadonlySet<string>,
+  latestRemoteVersion: string | null,
+): RemoteMigrationVersionStatus {
+  if (appliedVersions.has(version)) {
+    return 'already-applied';
+  }
+
+  if (
+    latestRemoteVersion &&
+    compareMigrationVersions(version, latestRemoteVersion) < 0
+  ) {
+    return 'older-than-head';
+  }
+
+  return 'pending';
 }
 
 function formatMigrationVersion(date: Date): string {
@@ -131,6 +152,21 @@ export function formatMigrationSql(statements: string[]): string {
     .filter(Boolean)
     .join(';\n\n')
     .concat(statements.length > 0 ? ';\n' : '');
+}
+
+export function findOlderThanHeadLocalMigrations(
+  migrations: ParsedMigrationFile[],
+  appliedVersions: ReadonlySet<string>,
+  latestRemoteVersion: string | null,
+): ParsedMigrationFile[] {
+  return migrations.filter(
+    (migration) =>
+      getRemoteMigrationVersionStatus(
+        migration.version,
+        appliedVersions,
+        latestRemoteVersion,
+      ) === 'older-than-head',
+  );
 }
 
 export function findLocalMigrationByVersion(

@@ -7,9 +7,11 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import {
   compareMigrationVersions,
   ensureMigrationsDir,
+  findOlderThanHeadLocalMigrations,
   formatMigrationSql,
   getMigrationsDir,
   getNextLocalMigrationVersion,
+  getRemoteMigrationVersionStatus,
   listLocalMigrationFilenames,
   parseMigrationFilename,
   parseStrictLocalMigrations,
@@ -36,6 +38,15 @@ function getLatestRemoteVersion(migrations: Migration[]): string | null {
 
 function buildMigrationFilename(version: string, name: string): string {
   return `${version}_${name}.sql`;
+}
+
+function buildOlderThanHeadError(
+  migrationLabel: string,
+  latestRemoteVersion: string,
+): CLIError {
+  return new CLIError(
+    `Migration ${migrationLabel} is older than the current remote head (${latestRemoteVersion}) and is not applied remotely. Rename it with a newer timestamp, or delete it locally if it is stale.`,
+  );
 }
 
 function formatCreatedAt(createdAt: string): string {
@@ -220,6 +231,9 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
 
         const migrations = await fetchRemoteMigrations();
         const latestRemoteVersion = getLatestRemoteVersion(migrations);
+        const appliedRemoteVersions = new Set(
+          migrations.map((migration) => migration.version),
+        );
         const filenames = listLocalMigrationFilenames();
 
         const requestedModes = [Boolean(target), Boolean(options.all), Boolean(options.to)].filter(Boolean);
@@ -236,13 +250,18 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
             .filter((migration): migration is NonNullable<typeof migration> => migration !== null)
             .sort((left, right) => compareMigrationVersions(left.version, right.version));
 
-          if (
-            latestRemoteVersion &&
-            compareMigrationVersions(targetMigration.version, latestRemoteVersion) <= 0
-          ) {
-            throw new CLIError(
-              `Migration ${targetMigration.filename} is already applied remotely.`,
-            );
+          const targetRemoteStatus = getRemoteMigrationVersionStatus(
+            targetMigration.version,
+            appliedRemoteVersions,
+            latestRemoteVersion,
+          );
+
+          if (targetRemoteStatus === 'already-applied') {
+            throw new CLIError(`Migration ${targetMigration.filename} is already applied remotely.`);
+          }
+
+          if (targetRemoteStatus === 'older-than-head' && latestRemoteVersion) {
+            throw buildOlderThanHeadError(targetMigration.filename, latestRemoteVersion);
           }
 
           const earlierPendingMigration = validLocalMigrations.find(
@@ -255,7 +274,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
 
           if (earlierPendingMigration) {
             throw new CLIError(
-              `Migration ${targetMigration.filename} is not the next pending local migration. Apply ${earlierPendingMigration.filename} first.`,
+              `Migration ${targetMigration.filename} is not the next pending local migration. Apply ${earlierPendingMigration.filename} first, or fix/delete it locally if it is invalid or no longer needed.`,
             );
           }
 
@@ -278,11 +297,26 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
           appliedMigrations = [await applySingleTarget(target)];
         } else {
           const localMigrations = parseStrictLocalMigrations(filenames);
+          const olderThanHeadMigrations = findOlderThanHeadLocalMigrations(
+            localMigrations,
+            appliedRemoteVersions,
+            latestRemoteVersion,
+          );
           const pendingMigrations = localMigrations.filter(
             (migration) =>
-              !latestRemoteVersion ||
-              compareMigrationVersions(migration.version, latestRemoteVersion) > 0,
+              getRemoteMigrationVersionStatus(
+                migration.version,
+                appliedRemoteVersions,
+                latestRemoteVersion,
+              ) === 'pending',
           );
+
+          if (olderThanHeadMigrations.length > 0 && latestRemoteVersion) {
+            throw buildOlderThanHeadError(
+              olderThanHeadMigrations[0].filename,
+              latestRemoteVersion,
+            );
+          }
 
           if (pendingMigrations.length === 0) {
             if (json) {
@@ -302,11 +336,18 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
               ? options.to
               : resolveMigrationTarget(options.to, filenames).version;
 
-            if (
-              latestRemoteVersion &&
-              compareMigrationVersions(targetVersion, latestRemoteVersion) <= 0
-            ) {
+            const targetRemoteStatus = getRemoteMigrationVersionStatus(
+              targetVersion,
+              appliedRemoteVersions,
+              latestRemoteVersion,
+            );
+
+            if (targetRemoteStatus === 'already-applied') {
               throw new CLIError(`Migration ${options.to} is already applied remotely.`);
+            }
+
+            if (targetRemoteStatus === 'older-than-head' && latestRemoteVersion) {
+              throw buildOlderThanHeadError(options.to, latestRemoteVersion);
             }
 
             migrationsToApply = pendingMigrations.filter(

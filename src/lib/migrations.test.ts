@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   compareMigrationVersions,
   findLocalMigrationByVersion,
+  findOlderThanHeadLocalMigrations,
   formatMigrationSql,
   getNextLocalMigrationVersion,
+  getRemoteMigrationVersionStatus,
   incrementMigrationVersion,
   parseStrictLocalMigrations,
   parseMigrationFilename,
@@ -30,6 +32,38 @@ describe('parseMigrationFilename', () => {
 describe('compareMigrationVersions', () => {
   it('orders versions lexicographically by time', () => {
     expect(compareMigrationVersions('20260418091500', '20260418091501')).toBeLessThan(0);
+  });
+});
+
+describe('getRemoteMigrationVersionStatus', () => {
+  it('treats exact remote matches as already applied', () => {
+    expect(
+      getRemoteMigrationVersionStatus(
+        '20260418091500',
+        new Set(['20260418091500', '20260418091600']),
+        '20260418091600',
+      ),
+    ).toBe('already-applied');
+  });
+
+  it('treats versions older than remote head as older-than-head when not applied', () => {
+    expect(
+      getRemoteMigrationVersionStatus(
+        '19990101000000',
+        new Set(['20260418091500', '20260418091600']),
+        '20260418091600',
+      ),
+    ).toBe('older-than-head');
+  });
+
+  it('treats newer versions as pending', () => {
+    expect(
+      getRemoteMigrationVersionStatus(
+        '20260418091700',
+        new Set(['20260418091500', '20260418091600']),
+        '20260418091600',
+      ),
+    ).toBe('pending');
   });
 });
 
@@ -80,6 +114,29 @@ describe('formatMigrationSql', () => {
   it('serializes stored statements into readable SQL', () => {
     expect(formatMigrationSql(['CREATE TABLE posts (id bigint)', 'CREATE INDEX posts_id_idx ON posts (id)']))
       .toBe('CREATE TABLE posts (id bigint);\n\nCREATE INDEX posts_id_idx ON posts (id);\n');
+  });
+});
+
+describe('findOlderThanHeadLocalMigrations', () => {
+  it('finds local migrations older than remote head that are not applied', () => {
+    const migrations = parseStrictLocalMigrations([
+      '19990101000000_legacy-file.sql',
+      '20260418091700_add-user-index.sql',
+    ]);
+
+    expect(
+      findOlderThanHeadLocalMigrations(
+        migrations,
+        new Set(['20260418091500', '20260418091600']),
+        '20260418091600',
+      ),
+    ).toEqual([
+      {
+        filename: '19990101000000_legacy-file.sql',
+        version: '19990101000000',
+        name: 'legacy-file',
+      },
+    ]);
   });
 });
 
