@@ -142,6 +142,8 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         for (const migration of [...migrations].sort(
           (left, right) => compareMigrationVersions(left.version, right.version),
         )) {
+          assertValidMigrationName(migration.name);
+
           const filename = buildMigrationFilename(
             migration.version,
             migration.name,

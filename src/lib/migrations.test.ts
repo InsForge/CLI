@@ -115,6 +115,10 @@ describe('formatMigrationSql', () => {
     expect(formatMigrationSql(['CREATE TABLE posts (id bigint)', 'CREATE INDEX posts_id_idx ON posts (id)']))
       .toBe('CREATE TABLE posts (id bigint);\n\nCREATE INDEX posts_id_idx ON posts (id);\n');
   });
+
+  it('returns an empty string when all statements are blank', () => {
+    expect(formatMigrationSql(['   ', '\n\t'])).toBe('');
+  });
 });
 
 describe('findOlderThanHeadLocalMigrations', () => {
@@ -176,6 +180,19 @@ describe('resolveMigrationTarget', () => {
         '20260418091500_create-accounts.sql',
       ])
     ).toThrow(/multiple local migration files/i);
+  });
+
+  it('uses the exact filename target even when another file shares the version', () => {
+    expect(
+      resolveMigrationTarget('20260418091500_create-accounts.sql', [
+        '20260418091500_create-users.sql',
+        '20260418091500_create-accounts.sql',
+      ])
+    ).toEqual({
+      filename: '20260418091500_create-accounts.sql',
+      version: '20260418091500',
+      name: 'create-accounts',
+    });
   });
 });
 

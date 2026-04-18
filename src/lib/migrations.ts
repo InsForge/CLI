@@ -147,11 +147,13 @@ export function getNextLocalMigrationVersion(
 }
 
 export function formatMigrationSql(statements: string[]): string {
-  return statements
+  const normalizedStatements = statements
     .map((statement) => statement.trim().replace(/;\s*$/u, ''))
-    .filter(Boolean)
+    .filter(Boolean);
+
+  return normalizedStatements
     .join(';\n\n')
-    .concat(statements.length > 0 ? ';\n' : '');
+    .concat(normalizedStatements.length > 0 ? ';\n' : '');
 }
 
 export function findOlderThanHeadLocalMigrations(
@@ -212,5 +214,5 @@ export function resolveMigrationTarget(
     throw new CLIError(`Local migration file not found: ${target}`);
   }
 
-  return findLocalMigrationByVersion(parsedTarget.version, filenames);
+  return parsedTarget;
 }
