@@ -5,11 +5,13 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import {
+  compareMigrationVersions,
   ensureMigrationsDir,
   formatMigrationSql,
   getMigrationsDir,
-  getNextLocalMigrationSequence,
+  getNextLocalMigrationVersion,
   listLocalMigrationFilenames,
+  parseMigrationFilename,
   parseStrictLocalMigrations,
   resolveMigrationTarget,
 } from '../../lib/migrations.js';
@@ -22,16 +24,18 @@ import type {
   Migration,
 } from '../../types.js';
 
-function getLatestRemoteSequenceNumber(migrations: Migration[]): number {
+function getLatestRemoteVersion(migrations: Migration[]): string | null {
   return migrations.reduce(
-    (latestSequenceNumber, migration) =>
-      Math.max(latestSequenceNumber, migration.sequenceNumber),
-    0,
+    (latestVersion, migration) =>
+      !latestVersion || compareMigrationVersions(migration.version, latestVersion) > 0
+        ? migration.version
+        : latestVersion,
+    null as string | null,
   );
 }
 
-function buildMigrationFilename(sequenceNumber: number, name: string): string {
-  return `${sequenceNumber}_${name}.sql`;
+function buildMigrationFilename(version: string, name: string): string {
+  return `${version}_${name}.sql`;
 }
 
 function formatCreatedAt(createdAt: string): string {
@@ -49,6 +53,31 @@ function assertValidMigrationName(name: string): void {
   if (!/^[a-z0-9-]+$/u.test(name)) {
     throw new CLIError('Migration name must use lowercase letters, numbers, and hyphens only.');
   }
+}
+
+async function applyMigration(
+  targetMigration: Pick<Migration, 'version' | 'name'>,
+  sql: string,
+): Promise<CreateMigrationResponse> {
+  const body: CreateMigrationRequest = {
+    version: targetMigration.version,
+    name: targetMigration.name,
+    sql,
+  };
+
+  const res = await ossFetch('/api/database/migrations', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  const createdMigration = (await res.json()) as CreateMigrationResponse;
+
+  if (createdMigration.version !== targetMigration.version) {
+    throw new CLIError(
+      `Applied migration version mismatch. Expected ${targetMigration.version}, received ${createdMigration.version}.`,
+    );
+  }
+
+  return createdMigration;
 }
 
 export function registerDbMigrationsCommand(dbCmd: Command): void {
@@ -70,9 +99,9 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
           console.log('No database migrations found.');
         } else {
           outputTable(
-            ['Sequence', 'Name', 'Created At'],
+            ['Version', 'Name', 'Created At'],
             migrations.map((migration) => [
-              String(migration.sequenceNumber),
+              migration.version,
               migration.name,
               formatCreatedAt(migration.createdAt),
             ]),
@@ -100,10 +129,10 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         const skippedFiles: string[] = [];
 
         for (const migration of [...migrations].sort(
-          (left, right) => left.sequenceNumber - right.sequenceNumber,
+          (left, right) => compareMigrationVersions(left.version, right.version),
         )) {
           const filename = buildMigrationFilename(
-            migration.sequenceNumber,
+            migration.version,
             migration.name,
           );
           const filePath = join(migrationsDir, filename);
@@ -149,14 +178,14 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         assertValidMigrationName(migrationName);
 
         const migrations = await fetchRemoteMigrations();
-        const latestRemoteSequenceNumber = getLatestRemoteSequenceNumber(migrations);
+        const latestRemoteVersion = getLatestRemoteVersion(migrations);
         const localMigrations = parseStrictLocalMigrations(listLocalMigrationFilenames());
-        const nextSequenceNumber = getNextLocalMigrationSequence(
+        const nextVersion = getNextLocalMigrationVersion(
           localMigrations,
-          latestRemoteSequenceNumber,
+          latestRemoteVersion,
         );
 
-        const filename = buildMigrationFilename(nextSequenceNumber, migrationName);
+        const filename = buildMigrationFilename(nextVersion, migrationName);
         const migrationsDir = ensureMigrationsDir();
         const filePath = join(migrationsDir, filename);
 
@@ -167,7 +196,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         writeFileSync(filePath, '');
 
         if (json) {
-          outputJson({ filename, path: filePath, sequenceNumber: nextSequenceNumber });
+          outputJson({ filename, path: filePath, version: nextVersion });
         } else {
           outputSuccess(`Created migration file ${filename}`);
         }
@@ -180,61 +209,142 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
     });
 
   migrationsCmd
-    .command('up <target>')
-    .description('Apply exactly one local migration file')
-    .action(async (target: string, _opts, cmd) => {
+    .command('up [target]')
+    .description('Apply one or more local migration files')
+    .option('--all', 'Apply all pending local migration files')
+    .option('--to <version-or-filename>', 'Apply pending local migrations up to a version or file')
+    .action(async (target: string | undefined, options, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
         await requireAuth();
 
         const migrations = await fetchRemoteMigrations();
-        const latestRemoteSequenceNumber = getLatestRemoteSequenceNumber(migrations);
+        const latestRemoteVersion = getLatestRemoteVersion(migrations);
         const filenames = listLocalMigrationFilenames();
-        const targetMigration = resolveMigrationTarget(target, filenames);
 
-        if (targetMigration.sequenceNumber <= latestRemoteSequenceNumber) {
+        const requestedModes = [Boolean(target), Boolean(options.all), Boolean(options.to)].filter(Boolean);
+        if (requestedModes.length !== 1) {
           throw new CLIError(
-            `Migration ${targetMigration.filename} is already applied remotely.`,
+            'Use exactly one apply mode: `up <target>`, `up --to <version-or-filename>`, or `up --all`.',
           );
         }
 
-        if (targetMigration.sequenceNumber !== latestRemoteSequenceNumber + 1) {
-          throw new CLIError(
-            `Migration ${targetMigration.filename} is not the next remote sequence. Expected ${latestRemoteSequenceNumber + 1}.`,
+        const applySingleTarget = async (targetMigrationFilenameOrVersion: string) => {
+          const targetMigration = resolveMigrationTarget(targetMigrationFilenameOrVersion, filenames);
+          const validLocalMigrations = filenames
+            .map((filename) => parseMigrationFilename(filename))
+            .filter((migration): migration is NonNullable<typeof migration> => migration !== null)
+            .sort((left, right) => compareMigrationVersions(left.version, right.version));
+
+          if (
+            latestRemoteVersion &&
+            compareMigrationVersions(targetMigration.version, latestRemoteVersion) <= 0
+          ) {
+            throw new CLIError(
+              `Migration ${targetMigration.filename} is already applied remotely.`,
+            );
+          }
+
+          const earlierPendingMigration = validLocalMigrations.find(
+            (migration) =>
+              migration.version !== targetMigration.version &&
+              (!latestRemoteVersion ||
+                compareMigrationVersions(migration.version, latestRemoteVersion) > 0) &&
+              compareMigrationVersions(migration.version, targetMigration.version) < 0,
           );
-        }
 
-        const filePath = join(getMigrationsDir(), targetMigration.filename);
-        if (!existsSync(filePath)) {
-          throw new CLIError(`Local migration file not found: ${targetMigration.filename}`);
-        }
+          if (earlierPendingMigration) {
+            throw new CLIError(
+              `Migration ${targetMigration.filename} is not the next pending local migration. Apply ${earlierPendingMigration.filename} first.`,
+            );
+          }
 
-        const sql = readFileSync(filePath, 'utf-8');
-        if (!sql.trim()) {
-          throw new CLIError(`Migration file is empty: ${targetMigration.filename}`);
-        }
+          const filePath = join(getMigrationsDir(), targetMigration.filename);
+          if (!existsSync(filePath)) {
+            throw new CLIError(`Local migration file not found: ${targetMigration.filename}`);
+          }
 
-        const body: CreateMigrationRequest = {
-          name: targetMigration.name,
-          sql,
+          const sql = readFileSync(filePath, 'utf-8');
+          if (!sql.trim()) {
+            throw new CLIError(`Migration file is empty: ${targetMigration.filename}`);
+          }
+
+          return applyMigration(targetMigration, sql);
         };
 
-        const res = await ossFetch('/api/database/migrations', {
-          method: 'POST',
-          body: JSON.stringify(body),
-        });
-        const createdMigration = (await res.json()) as CreateMigrationResponse;
+        let appliedMigrations: CreateMigrationResponse[] = [];
 
-        if (createdMigration.sequenceNumber !== targetMigration.sequenceNumber) {
-          throw new CLIError(
-            `Applied migration sequence mismatch. Expected ${targetMigration.sequenceNumber}, received ${createdMigration.sequenceNumber}.`,
+        if (target) {
+          appliedMigrations = [await applySingleTarget(target)];
+        } else {
+          const localMigrations = parseStrictLocalMigrations(filenames);
+          const pendingMigrations = localMigrations.filter(
+            (migration) =>
+              !latestRemoteVersion ||
+              compareMigrationVersions(migration.version, latestRemoteVersion) > 0,
           );
+
+          if (pendingMigrations.length === 0) {
+            if (json) {
+              outputJson({ appliedMigrations: [] });
+            } else {
+              outputSuccess('No pending local migrations to apply.');
+            }
+
+            await reportCliUsage('cli.db.migrations.up', true);
+            return;
+          }
+
+          let migrationsToApply = pendingMigrations;
+
+          if (options.to) {
+            const targetVersion = /^\d{14}$/u.test(options.to)
+              ? options.to
+              : resolveMigrationTarget(options.to, filenames).version;
+
+            if (
+              latestRemoteVersion &&
+              compareMigrationVersions(targetVersion, latestRemoteVersion) <= 0
+            ) {
+              throw new CLIError(`Migration ${options.to} is already applied remotely.`);
+            }
+
+            migrationsToApply = pendingMigrations.filter(
+              (migration) => compareMigrationVersions(migration.version, targetVersion) <= 0,
+            );
+
+            if (
+              migrationsToApply.length === 0 ||
+              migrationsToApply[migrationsToApply.length - 1]?.version !== targetVersion
+            ) {
+              throw new CLIError(
+                `Pending local migration not found for target ${options.to}.`,
+              );
+            }
+          }
+
+          for (const migration of migrationsToApply) {
+            const filePath = join(getMigrationsDir(), migration.filename);
+            if (!existsSync(filePath)) {
+              throw new CLIError(`Local migration file not found: ${migration.filename}`);
+            }
+
+            const sql = readFileSync(filePath, 'utf-8');
+            if (!sql.trim()) {
+              throw new CLIError(`Migration file is empty: ${migration.filename}`);
+            }
+
+            appliedMigrations.push(await applyMigration(migration, sql));
+          }
         }
 
         if (json) {
-          outputJson(createdMigration);
+          outputJson({ appliedMigrations });
         } else {
-          outputSuccess(`Applied migration ${targetMigration.filename}`);
+          outputSuccess(`Applied ${appliedMigrations.length} migration file(s).`);
+          for (const migration of appliedMigrations) {
+            console.log(`- ${buildMigrationFilename(migration.version, migration.name)}`);
+          }
         }
 
         await reportCliUsage('cli.db.migrations.up', true);

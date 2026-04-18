@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  findLocalMigrationBySequence,
+  compareMigrationVersions,
+  findLocalMigrationByVersion,
   formatMigrationSql,
-  getNextLocalMigrationSequence,
+  getNextLocalMigrationVersion,
+  incrementMigrationVersion,
   parseStrictLocalMigrations,
   parseMigrationFilename,
   resolveMigrationTarget,
@@ -10,60 +12,67 @@ import {
 
 describe('parseMigrationFilename', () => {
   it('parses a valid migration filename', () => {
-    expect(parseMigrationFilename('12_add-post-index.sql')).toEqual({
-      filename: '12_add-post-index.sql',
-      sequenceNumber: 12,
+    expect(parseMigrationFilename('20260418091500_add-post-index.sql')).toEqual({
+      filename: '20260418091500_add-post-index.sql',
+      version: '20260418091500',
       name: 'add-post-index',
     });
   });
 
   it('rejects invalid migration filenames', () => {
-    expect(parseMigrationFilename('01_add-post-index.sql')).toBeNull();
-    expect(parseMigrationFilename('1_add_post_index.sql')).toBeNull();
-    expect(parseMigrationFilename('1_AddPostIndex.sql')).toBeNull();
-    expect(parseMigrationFilename('1 add-post-index.sql')).toBeNull();
+    expect(parseMigrationFilename('20260418_add-post-index.sql')).toBeNull();
+    expect(parseMigrationFilename('20260418091500_add_post_index.sql')).toBeNull();
+    expect(parseMigrationFilename('20260418091500_AddPostIndex.sql')).toBeNull();
+    expect(parseMigrationFilename('20260418091500 add-post-index.sql')).toBeNull();
   });
 });
 
-describe('getNextLocalMigrationSequence', () => {
-  it('returns remote latest plus one when there are no local files', () => {
-    expect(getNextLocalMigrationSequence([], 5)).toBe(6);
+describe('compareMigrationVersions', () => {
+  it('orders versions lexicographically by time', () => {
+    expect(compareMigrationVersions('20260418091500', '20260418091501')).toBeLessThan(0);
   });
+});
 
-  it('extends a contiguous pending local chain', () => {
+describe('getNextLocalMigrationVersion', () => {
+  it('uses the current time when it is newer than local and remote migrations', () => {
     expect(
-      getNextLocalMigrationSequence(
-        ['6_create-users.sql', '7_add-user-index.sql'].map((filename) =>
+      getNextLocalMigrationVersion(
+        ['20260418091500_create-users.sql', '20260418091600_add-user-index.sql'].map((filename) =>
           parseMigrationFilename(filename)
         ).filter((migration): migration is NonNullable<typeof migration> => migration !== null),
-        5
+        '20260418091400',
+        new Date('2026-04-18T09:17:30.000Z')
       )
-    ).toBe(8);
+    ).toBe('20260418091730');
   });
 
-  it('fails when local pending migrations are not contiguous', () => {
-    expect(() =>
-      getNextLocalMigrationSequence(
-        ['6_create-users.sql', '8_add-user-index.sql'].map((filename) =>
+  it('bumps the highest known version when needed', () => {
+    expect(
+      getNextLocalMigrationVersion(
+        ['20260418091500_create-users.sql', '20260418091600_add-user-index.sql'].map((filename) =>
           parseMigrationFilename(filename)
         ).filter((migration): migration is NonNullable<typeof migration> => migration !== null),
-        5
+        '20260418091600',
+        new Date('2026-04-18T09:16:00.000Z')
       )
-    ).toThrow(/contiguous/i);
+    ).toBe('20260418091601');
   });
 });
 
 describe('parseStrictLocalMigrations', () => {
   it('rejects invalid filenames', () => {
     expect(() =>
-      parseStrictLocalMigrations(['6_create-users.sql', 'bad-file.sql'])
+      parseStrictLocalMigrations(['20260418091500_create-users.sql', 'bad-file.sql'])
     ).toThrow(/invalid migration filename/i);
   });
 
-  it('rejects duplicate sequence numbers', () => {
+  it('rejects duplicate versions', () => {
     expect(() =>
-      parseStrictLocalMigrations(['6_create-users.sql', '6_create-accounts.sql'])
-    ).toThrow(/duplicate local migration sequence/i);
+      parseStrictLocalMigrations([
+        '20260418091500_create-users.sql',
+        '20260418091500_create-accounts.sql',
+      ])
+    ).toThrow(/duplicate local migration version/i);
   });
 });
 
@@ -74,41 +83,55 @@ describe('formatMigrationSql', () => {
   });
 });
 
+describe('incrementMigrationVersion', () => {
+  it('increments to the next second', () => {
+    expect(incrementMigrationVersion('20260418235959')).toBe('20260419000000');
+  });
+});
+
 describe('resolveMigrationTarget', () => {
-  const filenames = ['6_create-users.sql', '7_add-user-index.sql'];
+  const filenames = ['20260418091500_create-users.sql', '20260418091600_add-user-index.sql'];
 
   it('resolves an exact filename target', () => {
-    expect(resolveMigrationTarget('7_add-user-index.sql', filenames)).toEqual({
-      filename: '7_add-user-index.sql',
-      sequenceNumber: 7,
+    expect(resolveMigrationTarget('20260418091600_add-user-index.sql', filenames)).toEqual({
+      filename: '20260418091600_add-user-index.sql',
+      version: '20260418091600',
       name: 'add-user-index',
     });
   });
 
-  it('resolves a sequence-number target', () => {
-    expect(resolveMigrationTarget('6', filenames)).toEqual({
-      filename: '6_create-users.sql',
-      sequenceNumber: 6,
+  it('resolves a version target', () => {
+    expect(resolveMigrationTarget('20260418091500', filenames)).toEqual({
+      filename: '20260418091500_create-users.sql',
+      version: '20260418091500',
       name: 'create-users',
     });
   });
 
-  it('fails when a sequence number has no match', () => {
-    expect(() => resolveMigrationTarget('9', filenames)).toThrow(/not found/i);
+  it('fails when a version has no match', () => {
+    expect(() => resolveMigrationTarget('20260418091700', filenames)).toThrow(/not found/i);
   });
 
-  it('fails when a sequence number is ambiguous', () => {
+  it('fails when a version is ambiguous', () => {
     expect(() =>
-      resolveMigrationTarget('6', ['6_create-users.sql', '6_create-accounts.sql'])
+      resolveMigrationTarget('20260418091500', [
+        '20260418091500_create-users.sql',
+        '20260418091500_create-accounts.sql',
+      ])
     ).toThrow(/multiple local migration files/i);
   });
 });
 
-describe('findLocalMigrationBySequence', () => {
-  it('returns the unique match for a sequence number', () => {
-    expect(findLocalMigrationBySequence(6, ['6_create-users.sql', '7_add-user-index.sql'])).toEqual({
-      filename: '6_create-users.sql',
-      sequenceNumber: 6,
+describe('findLocalMigrationByVersion', () => {
+  it('returns the unique match for a version', () => {
+    expect(
+      findLocalMigrationByVersion('20260418091500', [
+        '20260418091500_create-users.sql',
+        '20260418091600_add-user-index.sql',
+      ])
+    ).toEqual({
+      filename: '20260418091500_create-users.sql',
+      version: '20260418091500',
       name: 'create-users',
     });
   });

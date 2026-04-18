@@ -4,11 +4,11 @@ import { CLIError } from './errors.js';
 
 export interface ParsedMigrationFile {
   filename: string;
-  sequenceNumber: number;
+  version: string;
   name: string;
 }
 
-const MIGRATION_FILENAME_REGEX = /^([1-9][0-9]*)_([a-z0-9-]+)\.sql$/;
+const MIGRATION_FILENAME_REGEX = /^(\d{14})_([a-z0-9-]+)\.sql$/;
 
 export function parseMigrationFilename(filename: string): ParsedMigrationFile | null {
   const match = MIGRATION_FILENAME_REGEX.exec(filename);
@@ -18,9 +18,36 @@ export function parseMigrationFilename(filename: string): ParsedMigrationFile | 
 
   return {
     filename,
-    sequenceNumber: Number(match[1]),
+    version: match[1],
     name: match[2],
   };
+}
+
+export function compareMigrationVersions(left: string, right: string): number {
+  return left.localeCompare(right);
+}
+
+function formatMigrationVersion(date: Date): string {
+  const year = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hour = String(date.getUTCHours()).padStart(2, '0');
+  const minute = String(date.getUTCMinutes()).padStart(2, '0');
+  const second = String(date.getUTCSeconds()).padStart(2, '0');
+
+  return `${year}${month}${day}${hour}${minute}${second}`;
+}
+
+export function incrementMigrationVersion(version: string): string {
+  const year = Number(version.slice(0, 4));
+  const month = Number(version.slice(4, 6)) - 1;
+  const day = Number(version.slice(6, 8));
+  const hour = Number(version.slice(8, 10));
+  const minute = Number(version.slice(10, 12));
+  const second = Number(version.slice(12, 14));
+  const nextTimestamp = Date.UTC(year, month, day, hour, minute, second + 1);
+
+  return formatMigrationVersion(new Date(nextTimestamp));
 }
 
 export function getMigrationsDir(cwd: string = process.cwd()): string {
@@ -49,51 +76,53 @@ export function parseStrictLocalMigrations(filenames: string[]): ParsedMigration
     const parsedMigration = parseMigrationFilename(filename);
     if (!parsedMigration) {
       throw new CLIError(
-        `Invalid migration filename: ${filename}. Expected <sequence_number>_<migration-name>.sql.`,
+        `Invalid migration filename: ${filename}. Expected <migration_version>_<migration-name>.sql.`,
       );
     }
     return parsedMigration;
   });
 
-  assertNoDuplicateMigrationSequences(migrations);
-  return migrations.sort((left, right) => left.sequenceNumber - right.sequenceNumber);
+  assertNoDuplicateMigrationVersions(migrations);
+  return migrations.sort((left, right) => compareMigrationVersions(left.version, right.version));
 }
 
-export function assertNoDuplicateMigrationSequences(migrations: ParsedMigrationFile[]): void {
-  const seen = new Set<number>();
+export function assertNoDuplicateMigrationVersions(migrations: ParsedMigrationFile[]): void {
+  const seen = new Set<string>();
 
   for (const migration of migrations) {
-    if (seen.has(migration.sequenceNumber)) {
-      throw new CLIError(`Duplicate local migration sequence found: ${migration.sequenceNumber}`);
+    if (seen.has(migration.version)) {
+      throw new CLIError(`Duplicate local migration version found: ${migration.version}`);
     }
-    seen.add(migration.sequenceNumber);
+    seen.add(migration.version);
   }
 }
 
-export function getNextLocalMigrationSequence(
+export function getNextLocalMigrationVersion(
   migrations: ParsedMigrationFile[],
-  latestRemoteSequenceNumber: number,
-): number {
-  const orderedMigrations = [...migrations].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
-  assertNoDuplicateMigrationSequences(orderedMigrations);
+  latestRemoteVersion: string | null,
+  now: Date = new Date(),
+): string {
+  const orderedMigrations = [...migrations].sort((left, right) =>
+    compareMigrationVersions(left.version, right.version),
+  );
+  assertNoDuplicateMigrationVersions(orderedMigrations);
 
-  let expectedSequenceNumber = latestRemoteSequenceNumber + 1;
+  const latestKnownVersion = orderedMigrations.reduce<string | null>(
+    (latestVersion, migration) => {
+      if (!latestVersion || compareMigrationVersions(migration.version, latestVersion) > 0) {
+        return migration.version;
+      }
+      return latestVersion;
+    },
+    latestRemoteVersion,
+  );
 
-  for (const migration of orderedMigrations) {
-    if (migration.sequenceNumber <= latestRemoteSequenceNumber) {
-      continue;
-    }
-
-    if (migration.sequenceNumber !== expectedSequenceNumber) {
-      throw new CLIError(
-        `Local pending migrations must be contiguous after remote sequence ${latestRemoteSequenceNumber}.`,
-      );
-    }
-
-    expectedSequenceNumber += 1;
+  const currentVersion = formatMigrationVersion(now);
+  if (!latestKnownVersion || compareMigrationVersions(currentVersion, latestKnownVersion) > 0) {
+    return currentVersion;
   }
 
-  return expectedSequenceNumber;
+  return incrementMigrationVersion(latestKnownVersion);
 }
 
 export function formatMigrationSql(statements: string[]): string {
@@ -104,24 +133,24 @@ export function formatMigrationSql(statements: string[]): string {
     .concat(statements.length > 0 ? ';\n' : '');
 }
 
-export function findLocalMigrationBySequence(
-  sequenceNumber: number,
+export function findLocalMigrationByVersion(
+  version: string,
   filenames: string[],
 ): ParsedMigrationFile {
   const matches = filenames
     .map((filename) => parseMigrationFilename(filename))
     .filter(
       (migration): migration is ParsedMigrationFile =>
-        migration !== null && migration.sequenceNumber === sequenceNumber,
+        migration !== null && migration.version === version,
     );
 
   if (matches.length === 0) {
-    throw new CLIError(`Local migration for sequence ${sequenceNumber} not found.`);
+    throw new CLIError(`Local migration for version ${version} not found.`);
   }
 
   if (matches.length > 1) {
     throw new CLIError(
-      `Multiple local migration files found for sequence ${sequenceNumber}.`,
+      `Multiple local migration files found for version ${version}.`,
     );
   }
 
@@ -132,14 +161,14 @@ export function resolveMigrationTarget(
   target: string,
   filenames: string[],
 ): ParsedMigrationFile {
-  if (/^[1-9][0-9]*$/u.test(target)) {
-    return findLocalMigrationBySequence(Number(target), filenames);
+  if (/^\d{14}$/u.test(target)) {
+    return findLocalMigrationByVersion(target, filenames);
   }
 
   const parsedTarget = parseMigrationFilename(target);
   if (!parsedTarget) {
     throw new CLIError(
-      'Migration file names must match <sequence_number>_<migration-name>.sql.',
+      'Migration file names must match <migration_version>_<migration-name>.sql.',
     );
   }
 
@@ -147,5 +176,5 @@ export function resolveMigrationTarget(
     throw new CLIError(`Local migration file not found: ${target}`);
   }
 
-  return findLocalMigrationBySequence(parsedTarget.sequenceNumber, filenames);
+  return findLocalMigrationByVersion(parsedTarget.version, filenames);
 }
