@@ -72,6 +72,11 @@ import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
 
+import { registerSkillsListCommand } from './commands/skills/list.js';
+import { registerSkillsInstallCommand } from './commands/skills/install.js';
+import { registerSkillsUpdateCommand } from './commands/skills/update.js';
+import { registerSkillsUninstallCommand } from './commands/skills/uninstall.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
 
@@ -191,6 +196,13 @@ registerComputeDeleteCommand(computeCmd);
 registerComputeStartCommand(computeCmd);
 registerComputeStopCommand(computeCmd);
 registerComputeLogsCommand(computeCmd);
+
+// Skills commands (bundled InsForge agent skills — see docs/specs/2026-04-18-bundled-skills-install.md)
+const skillsCmd = program.command('skills').description('Manage bundled InsForge agent skills');
+registerSkillsListCommand(skillsCmd);
+registerSkillsInstallCommand(skillsCmd);
+registerSkillsUpdateCommand(skillsCmd);
+registerSkillsUninstallCommand(skillsCmd);
 
 // Schedules commands
 const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');
