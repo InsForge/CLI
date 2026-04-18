@@ -549,6 +549,41 @@ It also installs [`find-skills`](https://github.com/vercel-labs/skills) so agent
 
 Skill files are written to per-agent directories (e.g. `.claude/`, `.cursor/`, `.windsurf/`) and are automatically added to your `.gitignore`. You can re-run `npx @insforge/cli link` at any time to reinstall or update skills.
 
+### `insforge skills` — manage bundled Claude skills
+
+In addition to the `npx skills add …` flow above (which covers a wide set of agents), `@insforge/cli` ships a small set of InsForge skill files bundled directly inside the npm package. You can manage them with the `insforge skills` command family:
+
+```bash
+# Show installed + bundled-but-not-installed skills
+npx @insforge/cli skills list
+
+# Install every bundled skill into ~/.claude/skills/insforge-<slug>/
+npx @insforge/cli skills install
+
+# Install one specific skill (by slug)
+npx @insforge/cli skills install database
+
+# Re-copy from the bundle, overwriting any local edits
+npx @insforge/cli skills update
+
+# Keep local edits; update only the ones you haven't touched
+npx @insforge/cli skills update --keep-local
+
+# Remove an installed skill
+npx @insforge/cli skills uninstall database
+```
+
+By default skills are installed to `~/.claude/skills/insforge-<slug>/`. You can override the target directory with either of the following environment variables (in precedence order):
+
+| Variable | Effect |
+|----------|--------|
+| `CLAUDE_CONFIG_DIR` | Installs under `<CLAUDE_CONFIG_DIR>/skills/` |
+| `XDG_CONFIG_HOME` | Installs under `<XDG_CONFIG_HOME>/claude/skills/` |
+
+If neither is set, the default `~/.claude/skills/` is used. All commands also accept `--target-dir <path>` as an explicit override.
+
+If you ran `npx @insforge/cli skills install` from a local source build and see a "No skills bundled" warning, run `npm run build:skills` (or install `@insforge/cli` from npm — the bundled skills ship in the published tarball).
+
 ## Analytics
 
 The CLI reports anonymous usage events to [PostHog](https://posthog.com) so we can understand which features are being used and prioritize improvements. 
