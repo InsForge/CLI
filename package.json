@@ -9,10 +9,11 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsup",
+    "build:skills": "bash scripts/build-skills.sh",
     "dev": "tsup --watch",
     "lint": "vitest run --passWithNoTests && eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "prepublishOnly": "npm run lint && npm run build",
+    "prepublishOnly": "npm run lint && npm run build && npm run build:skills",
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --passWithNoTests",
     "test:integration:real": "npm run build && vitest run src/integration/real-project.test.ts"
