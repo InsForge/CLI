@@ -13,7 +13,7 @@ import {
   getProjectApiKey,
   reportAgentConnected,
 } from '../../lib/api/platform.js';
-import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl, FAKE_PROJECT_ID, FAKE_ORG_ID } from '../../lib/config.js';
+import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl, getPlatformApiUrl, FAKE_PROJECT_ID, FAKE_ORG_ID } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
@@ -158,8 +158,9 @@ export function registerProjectLinkCommand(program: Command): void {
         } catch (err) {
           if (err instanceof CLIError && (err.exitCode === 5 || err.exitCode === 4 || err.message.includes('not found'))) {
             const identity = creds.user?.email ?? creds.user?.name ?? 'unknown user';
+            const currentApiUrl = getPlatformApiUrl(apiUrl);
             throw new CLIError(
-              `You're logged in as ${identity}, and you don't have access to project ${projectId}. Check that the project ID is correct and belongs to one of your organizations.`,
+              `You're logged in as ${identity} on ${currentApiUrl}, but can't access project ${projectId}. It's likely you're logged into the wrong account, or you don't own the project. Double-check the account and project ID, then run \`npx @insforge/cli logout\` and log in again to switch accounts.`,
               5,
               'PERMISSION_DENIED',
             );
