@@ -159,7 +159,7 @@ export function registerProjectLinkCommand(program: Command): void {
           if (err instanceof CLIError && (err.exitCode === 5 || err.exitCode === 4 || err.message.includes('not found'))) {
             const identity = creds.user?.email ?? creds.user?.name ?? 'unknown user';
             throw new CLIError(
-              `You're logged in as ${identity}, but can't access project ${projectId}. It's likely you're logged into the wrong account, or you don't own the project. Double-check the account and project ID, then run \`npx @insforge/cli logout\` and log in again to switch accounts.`,
+              `No access to project ${projectId} as ${identity}. Double-check the project ID, or run \`npx @insforge/cli logout\` to switch accounts.`,
               5,
               'PERMISSION_DENIED',
             );
