@@ -10,7 +10,14 @@ export interface ParsedMigrationFile {
 
 export type RemoteMigrationVersionStatus = 'already-applied' | 'older-than-head' | 'pending';
 
-const MIGRATION_FILENAME_REGEX = /^(\d{14})_([a-z0-9-]+)\.sql$/;
+const MIGRATION_VERSION_REGEX = /^\d{14}$/u;
+const MIGRATION_FILENAME_REGEX = /^(\d{14})_([a-z0-9-]+)\.sql$/u;
+
+export function assertValidMigrationVersion(version: string): void {
+  if (!MIGRATION_VERSION_REGEX.test(version)) {
+    throw new CLIError(`Invalid migration version: ${version}. Expected YYYYMMDDHHmmss.`);
+  }
+}
 
 export function parseMigrationFilename(filename: string): ParsedMigrationFile | null {
   const match = MIGRATION_FILENAME_REGEX.exec(filename);

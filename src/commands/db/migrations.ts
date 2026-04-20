@@ -5,6 +5,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import {
+  assertValidMigrationVersion,
   compareMigrationVersions,
   ensureMigrationsDir,
   findOlderThanHeadLocalMigrations,
@@ -57,7 +58,13 @@ function formatCreatedAt(createdAt: string): string {
 async function fetchRemoteMigrations(): Promise<Migration[]> {
   const res = await ossFetch('/api/database/migrations');
   const raw = (await res.json()) as DatabaseMigrationsResponse;
-  return Array.isArray(raw.migrations) ? raw.migrations : [];
+  const migrations = Array.isArray(raw.migrations) ? raw.migrations : [];
+
+  for (const migration of migrations) {
+    assertValidMigrationVersion(migration.version);
+  }
+
+  return migrations;
 }
 
 function assertValidMigrationName(name: string): void {
@@ -202,11 +209,14 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         const migrationsDir = ensureMigrationsDir();
         const filePath = join(migrationsDir, filename);
 
-        if (existsSync(filePath)) {
-          throw new CLIError(`Migration file already exists: ${filename}`);
+        try {
+          writeFileSync(filePath, '', { flag: 'wx' });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+            throw new CLIError(`Migration file already exists: ${filename}`);
+          }
+          throw error;
         }
-
-        writeFileSync(filePath, '');
 
         if (json) {
           outputJson({ filename, path: filePath, version: nextVersion });

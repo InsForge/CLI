@@ -70,6 +70,10 @@ export async function ossFetch(
       message = 'Compute services are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin to enable compute.';
     }
 
+    if (res.status === 404 && path === '/api/database/migrations') {
+      message = 'Database migrations are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin about database migration support.';
+    }
+
     throw new CLIError(message);
   }
 

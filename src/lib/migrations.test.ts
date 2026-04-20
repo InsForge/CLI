@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertValidMigrationVersion,
   compareMigrationVersions,
   findLocalMigrationByVersion,
   findOlderThanHeadLocalMigrations,
@@ -26,6 +27,19 @@ describe('parseMigrationFilename', () => {
     expect(parseMigrationFilename('20260418091500_add_post_index.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500_AddPostIndex.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500 add-post-index.sql')).toBeNull();
+  });
+});
+
+describe('assertValidMigrationVersion', () => {
+  it('accepts a timestamp-formatted migration version', () => {
+    expect(() => assertValidMigrationVersion('20260418091500')).not.toThrow();
+  });
+
+  it('rejects invalid migration versions', () => {
+    expect(() => assertValidMigrationVersion('20260418')).toThrow(/invalid migration version/i);
+    expect(() => assertValidMigrationVersion('../20260418091500')).toThrow(
+      /invalid migration version/i,
+    );
   });
 });
 
