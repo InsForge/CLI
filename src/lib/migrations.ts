@@ -79,7 +79,7 @@ export function incrementMigrationVersion(version: string): string {
 }
 
 export function getMigrationsDir(cwd: string = process.cwd()): string {
-  return join(cwd, '.insforge', 'migrations');
+  return join(cwd, 'migrations');
 }
 
 export function ensureMigrationsDir(cwd: string = process.cwd()): string {

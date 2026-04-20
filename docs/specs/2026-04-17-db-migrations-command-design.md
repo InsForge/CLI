@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add developer-facing database migration commands to the InsForge CLI in the sibling `CLI` repository. These commands work against the backend custom migrations API and manage local SQL migration files under `.insforge/migrations/`.
+Add developer-facing database migration commands to the InsForge CLI in the sibling `CLI` repository. These commands work against the backend custom migrations API and manage local SQL migration files under `migrations/`.
 
 The CLI surface is:
 
@@ -49,11 +49,11 @@ Behavior:
 
 ### `insforge db migrations fetch`
 
-Fetch remote migration history into local files under `.insforge/migrations/`.
+Fetch remote migration history into local files under `migrations/`.
 
 Behavior:
 
-- ensures `.insforge/migrations/` exists
+- ensures `migrations/` exists
 - calls `GET /api/database/migrations`
 - writes one file per remote migration using:
   - `<migration_version>_<migration-name>.sql`
@@ -73,7 +73,7 @@ Input rules:
 Version selection:
 
 - fetch remote migration history first
-- scan local `.insforge/migrations/`
+- scan local `migrations/`
 - validate local filenames against the strict migration filename format
 - choose the greater of:
   - current UTC timestamp formatted as `YYYYMMDDHHmmss`
@@ -141,7 +141,7 @@ Behavior:
 
 Migration directory:
 
-- `.insforge/migrations/`
+- `migrations/`
 
 Strict filename regex:
 

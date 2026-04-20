@@ -135,7 +135,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
 
   migrationsCmd
     .command('fetch')
-    .description('Fetch applied remote migrations into .insforge/migrations/')
+    .description('Fetch applied remote migrations into migrations/')
     .action(async (_opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {

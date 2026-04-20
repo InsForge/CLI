@@ -5,6 +5,7 @@ import {
   findLocalMigrationByVersion,
   findOlderThanHeadLocalMigrations,
   formatMigrationSql,
+  getMigrationsDir,
   getNextLocalMigrationVersion,
   getRemoteMigrationVersionStatus,
   incrementMigrationVersion,
@@ -46,6 +47,12 @@ describe('assertValidMigrationVersion', () => {
 describe('compareMigrationVersions', () => {
   it('orders versions lexicographically by time', () => {
     expect(compareMigrationVersions('20260418091500', '20260418091501')).toBeLessThan(0);
+  });
+});
+
+describe('getMigrationsDir', () => {
+  it('stores migration files in a top-level migrations directory', () => {
+    expect(getMigrationsDir('/tmp/project')).toBe('/tmp/project/migrations');
   });
 });
 
