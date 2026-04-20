@@ -106,6 +106,7 @@ export interface ApiError {
 
 export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsResponse,
   DatabaseFunctionsResponse, DatabaseIndexesResponse, DatabasePoliciesResponse, DatabaseTriggersResponse,
+  Migration, DatabaseMigrationsResponse, CreateMigrationRequest, CreateMigrationResponse,
   CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
   ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse,
   CreateDeploymentResponse, CreateDirectDeploymentRequest, CreateDirectDeploymentResponse,
@@ -139,4 +140,3 @@ export interface FunctionResponse {
   };
   deployment?: FunctionDeploymentResult | null;
 }
-
