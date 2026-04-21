@@ -19,7 +19,7 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { installSkills, reportCliUsage } from '../../lib/skills.js';
 import { captureEvent, trackCommand, shutdownAnalytics } from '../../lib/analytics.js';
-import { downloadGitHubTemplate, downloadTemplate, type Framework } from '../create.js';
+import { downloadGitHubTemplate } from '../create.js';
 import type { ProjectConfig } from '../../types.js';
 
 const execAsync = promisify(exec);
@@ -39,7 +39,17 @@ export function registerProjectLinkCommand(program: Command): void {
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
+
+      // Every template value accepted here is a directory in the InsForge
+      // templates repo, so validation and the download call reference the
+      // same single list.
+      const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo'];
+
       try {
+        if (opts.template && !validTemplates.includes(opts.template)) {
+          throw new CLIError(`Invalid template "${opts.template}". Valid options: ${validTemplates.join(', ')}`);
+        }
+
         if (opts.apiBaseUrl || opts.apiKey) {
           try {
             if (!opts.apiBaseUrl || !opts.apiKey) {
@@ -63,6 +73,100 @@ export function registerProjectLinkCommand(program: Command): void {
               oss_host: opts.apiBaseUrl.replace(/\/$/, ''), // remove trailing slash if any
             };
 
+            const template = opts.template as string | undefined;
+
+            // Template path: create a subdirectory, link inside it, download template,
+            // install deps. Mirrors the OAuth template flow below.
+            if (template) {
+              const defaultDir = `insforge-${template}`;
+              let dirName = defaultDir;
+              if (!json) {
+                const inputDir = await prompts.text({
+                  message: 'Directory name:',
+                  initialValue: defaultDir,
+                  validate: (v) => {
+                    if (v.length < 1) return 'Directory name is required';
+                    const normalized = path.basename(v).replace(/[^a-zA-Z0-9._-]/g, '-');
+                    if (!normalized || normalized === '.' || normalized === '..') return 'Invalid directory name';
+                    return undefined;
+                  },
+                });
+                if (prompts.isCancel(inputDir)) process.exit(0);
+                dirName = path.basename(inputDir).replace(/[^a-zA-Z0-9._-]/g, '-');
+              }
+
+              if (!dirName || dirName === '.' || dirName === '..') {
+                throw new CLIError('Invalid directory name.');
+              }
+
+              const templateDir = path.resolve(process.cwd(), dirName);
+              const dirExists = await fs.stat(templateDir).catch(() => null);
+              if (dirExists) {
+                throw new CLIError(`Directory "${dirName}" already exists.`);
+              }
+              await fs.mkdir(templateDir);
+              process.chdir(templateDir);
+
+              saveProjectConfig(projectConfig);
+
+              if (json) {
+                outputJson({
+                  success: true,
+                  project: { id: projectConfig.project_id, name: projectConfig.project_name, region: projectConfig.region },
+                  directory: dirName,
+                  template,
+                });
+              } else {
+                outputSuccess(`Linked to direct project at ${projectConfig.oss_host}`);
+              }
+
+              captureEvent(FAKE_ORG_ID, 'template_selected', { template, source: 'link_direct' });
+
+              await downloadGitHubTemplate(template, projectConfig, json);
+
+              const templateDownloaded = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
+
+              if (templateDownloaded && !json) {
+                const installSpinner = clack.spinner();
+                installSpinner.start('Installing dependencies...');
+                try {
+                  await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
+                  installSpinner.stop('Dependencies installed');
+                } catch (err) {
+                  installSpinner.stop('Failed to install dependencies');
+                  clack.log.warn(`npm install failed: ${(err as Error).message}`);
+                  clack.log.info('Run `npm install` manually to install dependencies.');
+                }
+              }
+
+              await installSkills(json);
+              trackCommand('link', 'oss-org', { direct: true, template });
+              await reportCliUsage('cli.link_direct', true, 6, projectConfig);
+
+              // Report agent-connected event (best-effort)
+              try {
+                const urlMatch = opts.apiBaseUrl.match(/^https?:\/\/([^.]+)\.[^.]+\.insforge\.app/);
+                if (urlMatch) {
+                  await reportAgentConnected({ app_key: urlMatch[1] }, apiUrl);
+                }
+              } catch { /* ignore */ }
+
+              if (!json) {
+                if (templateDownloaded) {
+                  const runCommand = `${pc.cyan('cd')} ${pc.green(dirName)} ${pc.dim('&&')} ${pc.cyan('npm run dev')}`;
+                  const steps = [
+                    `${pc.bold('1.')} ${runCommand}`,
+                    `${pc.bold('2.')} Open ${pc.cyan('Claude Code')} or ${pc.cyan('Cursor')} and prompt your agent to add more features`,
+                  ];
+                  clack.note(steps.join('\n'), "What's next");
+                } else {
+                  clack.log.warn('Template download failed. You can retry or set up manually.');
+                }
+              }
+              return;
+            }
+
+            // Non-template direct-link: save config in cwd and return.
             saveProjectConfig(projectConfig);
 
             if (json) {
@@ -195,14 +299,10 @@ export function registerProjectLinkCommand(program: Command): void {
           await reportAgentConnected({ project_id: project.id }, apiUrl);
         } catch { /* ignore */ }
 
-        // Template download (only when --template flag is passed)
+        // Template download (only when --template flag is passed).
+        // Validation already ran at the top of the action.
         const template = opts.template as string | undefined;
         if (template) {
-          const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo'];
-          if (!validTemplates.includes(template)) {
-            throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
-          }
-
           // Ask for directory name
           let dirName = project.name;
           if (!json) {
@@ -237,13 +337,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
           captureEvent(orgId ?? project.organization_id, 'template_selected', { template, source: 'link' });
 
-          // Download template
-          const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
-          if (githubTemplates.includes(template)) {
-            await downloadGitHubTemplate(template, projectConfig, json);
-          } else {
-            await downloadTemplate(template as Framework, projectConfig, project.name, json, apiUrl);
-          }
+          await downloadGitHubTemplate(template, projectConfig, json);
 
           // Only proceed with install/next steps if template actually downloaded
           const templateDownloaded = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
