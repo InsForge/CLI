@@ -19,7 +19,7 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { installSkills, reportCliUsage } from '../../lib/skills.js';
 import { captureEvent, trackCommand, shutdownAnalytics } from '../../lib/analytics.js';
-import { downloadGitHubTemplate, downloadTemplate, type Framework } from '../create.js';
+import { downloadGitHubTemplate } from '../create.js';
 import type { ProjectConfig } from '../../types.js';
 
 const execAsync = promisify(exec);
@@ -40,14 +40,16 @@ export function registerProjectLinkCommand(program: Command): void {
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
 
-      // Shared template validation — applies to both direct-link and OAuth paths.
+      // Every template value accepted here is a directory in the InsForge
+      // templates repo, so validation and the download call reference the
+      // same single list.
       const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo'];
-      const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
-      if (opts.template && !validTemplates.includes(opts.template)) {
-        throw new CLIError(`Invalid template "${opts.template}". Valid options: ${validTemplates.join(', ')}`);
-      }
 
       try {
+        if (opts.template && !validTemplates.includes(opts.template)) {
+          throw new CLIError(`Invalid template "${opts.template}". Valid options: ${validTemplates.join(', ')}`);
+        }
+
         if (opts.apiBaseUrl || opts.apiKey) {
           try {
             if (!opts.apiBaseUrl || !opts.apiKey) {
@@ -120,11 +122,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
               captureEvent(FAKE_ORG_ID, 'template_selected', { template, source: 'link_direct' });
 
-              if (githubTemplates.includes(template)) {
-                await downloadGitHubTemplate(template, projectConfig, json);
-              } else {
-                await downloadTemplate(template as Framework, projectConfig, dirName, json, apiUrl);
-              }
+              await downloadGitHubTemplate(template, projectConfig, json);
 
               const templateDownloaded = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
 
@@ -339,12 +337,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
           captureEvent(orgId ?? project.organization_id, 'template_selected', { template, source: 'link' });
 
-          // Download template (githubTemplates defined at the top of the action)
-          if (githubTemplates.includes(template)) {
-            await downloadGitHubTemplate(template, projectConfig, json);
-          } else {
-            await downloadTemplate(template as Framework, projectConfig, project.name, json, apiUrl);
-          }
+          await downloadGitHubTemplate(template, projectConfig, json);
 
           // Only proceed with install/next steps if template actually downloaded
           const templateDownloaded = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
