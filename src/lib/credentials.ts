@@ -46,7 +46,12 @@ export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promi
 export async function refreshAccessToken(apiUrl?: string): Promise<string> {
   const creds = getCredentials();
   if (!creds?.refresh_token) {
-    throw new AuthError('Refresh token not found. Run `npx @insforge/cli login` again.');
+    const isPat = creds?.access_token?.startsWith('uak_');
+    throw new AuthError(
+      isPat
+        ? 'API key is invalid or revoked. Run `npx @insforge/cli login --user-api-key <new-key>` again.'
+        : 'Refresh token not found. Run `npx @insforge/cli login` again.',
+    );
   }
 
   const platformUrl = getPlatformApiUrl(apiUrl);
