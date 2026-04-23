@@ -84,6 +84,7 @@ function formatMigrationVersion(date: Date): string {
 }
 
 export function incrementMigrationVersion(version: string): string {
+  assertValidMigrationVersion(version);
   if (!/^\d{14}$/u.test(version)) {
     return String(BigInt(version) + 1n);
   }

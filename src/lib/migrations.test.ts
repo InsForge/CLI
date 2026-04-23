@@ -228,6 +228,18 @@ describe('incrementMigrationVersion', () => {
   it('increments to the next second', () => {
     expect(incrementMigrationVersion('20260418235959')).toBe('20260419000000');
   });
+
+  it('increments a non-timestamp numeric version via BigInt', () => {
+    expect(incrementMigrationVersion('1')).toBe('2');
+    expect(incrementMigrationVersion('9')).toBe('10');
+  });
+
+  it('throws CLIError (not SyntaxError) on invalid input', () => {
+    expect(() => incrementMigrationVersion('abc')).toThrow(/invalid migration version/i);
+    expect(() => incrementMigrationVersion('9'.repeat(65))).toThrow(
+      /invalid migration version/i,
+    );
+  });
 });
 
 describe('resolveMigrationTarget', () => {
