@@ -73,6 +73,11 @@ export interface ConnectionStringResponse {
 // Stored credentials
 export interface StoredCredentials {
   access_token: string;
+  /**
+   * Either an OAuth refresh token (opaque string) or a user API key
+   * prefixed `uak_` (for PAT-based CLI logins). The `uak_` prefix is the
+   * discriminator — see `isPatLogin()` in `lib/credentials.ts`.
+   */
   refresh_token: string;
   user: User;
 }
