@@ -79,6 +79,13 @@ describe('assertValidMigrationVersion', () => {
     expect(() => assertValidMigrationVersion('abc')).toThrow(/invalid migration version/i);
     expect(() => assertValidMigrationVersion('')).toThrow(/invalid migration version/i);
   });
+
+  it('rejects versions longer than 64 digits', () => {
+    expect(() => assertValidMigrationVersion('9'.repeat(65))).toThrow(
+      /invalid migration version/i,
+    );
+    expect(() => assertValidMigrationVersion('9'.repeat(64))).not.toThrow();
+  });
 });
 
 describe('compareMigrationVersions', () => {

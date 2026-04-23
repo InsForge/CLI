@@ -10,12 +10,16 @@ export interface ParsedMigrationFile {
 
 export type RemoteMigrationVersionStatus = 'already-applied' | 'older-than-head' | 'pending';
 
-const MIGRATION_VERSION_REGEX = /^\d+$/u;
-const MIGRATION_FILENAME_REGEX = /^(\d+)_([a-z0-9-]+)\.sql$/u;
+// Cap at 64 digits so unbounded input can't DoS BigInt conversions or
+// the backend's `version::numeric` casts. 64 comfortably fits 4-digit
+// Drizzle sequences, 14-digit YYYYMMDDHHmmss timestamps, and anything
+// realistic in between.
+const MIGRATION_VERSION_REGEX = /^\d{1,64}$/u;
+const MIGRATION_FILENAME_REGEX = /^(\d{1,64})_([a-z0-9-]+)\.sql$/u;
 
 export function assertValidMigrationVersion(version: string): void {
   if (!MIGRATION_VERSION_REGEX.test(version)) {
-    throw new CLIError(`Invalid migration version: ${version}. Expected a numeric version (e.g. 0001 or 20260418091500).`);
+    throw new CLIError(`Invalid migration version: ${version}. Expected a numeric string of at most 64 digits (e.g. 0001 or 20260418091500).`);
   }
 }
 
@@ -41,7 +45,7 @@ export function parseMigrationFilename(filename: string): ParsedMigrationFile | 
 }
 
 export function compareMigrationVersions(left: string, right: string): number {
-  if (/^\d+$/u.test(left) && /^\d+$/u.test(right)) {
+  if (MIGRATION_VERSION_REGEX.test(left) && MIGRATION_VERSION_REGEX.test(right)) {
     const a = BigInt(left);
     const b = BigInt(right);
     return a < b ? -1 : a > b ? 1 : 0;
@@ -223,7 +227,7 @@ export function resolveMigrationTarget(
   target: string,
   filenames: string[],
 ): ParsedMigrationFile {
-  if (/^\d+$/u.test(target)) {
+  if (/^\d{1,64}$/u.test(target)) {
     return findLocalMigrationByVersion(target, filenames);
   }
 
