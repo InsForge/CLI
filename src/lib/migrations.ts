@@ -10,12 +10,12 @@ export interface ParsedMigrationFile {
 
 export type RemoteMigrationVersionStatus = 'already-applied' | 'older-than-head' | 'pending';
 
-const MIGRATION_VERSION_REGEX = /^\d{14}$/u;
-const MIGRATION_FILENAME_REGEX = /^(\d{14})_([a-z0-9-]+)\.sql$/u;
+const MIGRATION_VERSION_REGEX = /^\d+$/u;
+const MIGRATION_FILENAME_REGEX = /^(\d+)_([a-z0-9-]+)\.sql$/u;
 
 export function assertValidMigrationVersion(version: string): void {
   if (!MIGRATION_VERSION_REGEX.test(version)) {
-    throw new CLIError(`Invalid migration version: ${version}. Expected YYYYMMDDHHmmss.`);
+    throw new CLIError(`Invalid migration version: ${version}. Expected a numeric version (e.g. 0001 or 20260418091500).`);
   }
 }
 
@@ -33,6 +33,11 @@ export function parseMigrationFilename(filename: string): ParsedMigrationFile | 
 }
 
 export function compareMigrationVersions(left: string, right: string): number {
+  if (/^\d+$/u.test(left) && /^\d+$/u.test(right)) {
+    const a = BigInt(left);
+    const b = BigInt(right);
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
   return left.localeCompare(right);
 }
 
@@ -67,6 +72,9 @@ function formatMigrationVersion(date: Date): string {
 }
 
 export function incrementMigrationVersion(version: string): string {
+  if (!/^\d{14}$/u.test(version)) {
+    return String(BigInt(version) + 1n);
+  }
   const year = Number(version.slice(0, 4));
   const month = Number(version.slice(4, 6)) - 1;
   const day = Number(version.slice(6, 8));
@@ -206,7 +214,7 @@ export function resolveMigrationTarget(
   target: string,
   filenames: string[],
 ): ParsedMigrationFile {
-  if (/^\d{14}$/u.test(target)) {
+  if (/^\d+$/u.test(target)) {
     return findLocalMigrationByVersion(target, filenames);
   }
 

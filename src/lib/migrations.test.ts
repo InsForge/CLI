@@ -23,30 +23,57 @@ describe('parseMigrationFilename', () => {
     });
   });
 
+  it('accepts any numeric prefix (e.g. Drizzle-style)', () => {
+    expect(parseMigrationFilename('0001_add-post-index.sql')).toEqual({
+      filename: '0001_add-post-index.sql',
+      version: '0001',
+      name: 'add-post-index',
+    });
+    expect(parseMigrationFilename('42_add-post-index.sql')).toEqual({
+      filename: '42_add-post-index.sql',
+      version: '42',
+      name: 'add-post-index',
+    });
+  });
+
   it('rejects invalid migration filenames', () => {
-    expect(parseMigrationFilename('20260418_add-post-index.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500_add_post_index.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500_AddPostIndex.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500 add-post-index.sql')).toBeNull();
+    expect(parseMigrationFilename('abc_add-post-index.sql')).toBeNull();
+    expect(parseMigrationFilename('_add-post-index.sql')).toBeNull();
   });
 });
 
 describe('assertValidMigrationVersion', () => {
-  it('accepts a timestamp-formatted migration version', () => {
+  it('accepts any pure-digit migration version', () => {
     expect(() => assertValidMigrationVersion('20260418091500')).not.toThrow();
+    expect(() => assertValidMigrationVersion('20260418')).not.toThrow();
+    expect(() => assertValidMigrationVersion('0001')).not.toThrow();
+    expect(() => assertValidMigrationVersion('42')).not.toThrow();
   });
 
-  it('rejects invalid migration versions', () => {
-    expect(() => assertValidMigrationVersion('20260418')).toThrow(/invalid migration version/i);
+  it('rejects non-numeric or unsafe migration versions', () => {
     expect(() => assertValidMigrationVersion('../20260418091500')).toThrow(
       /invalid migration version/i,
     );
+    expect(() => assertValidMigrationVersion('abc')).toThrow(/invalid migration version/i);
+    expect(() => assertValidMigrationVersion('')).toThrow(/invalid migration version/i);
   });
 });
 
 describe('compareMigrationVersions', () => {
-  it('orders versions lexicographically by time', () => {
+  it('orders timestamp versions by time', () => {
     expect(compareMigrationVersions('20260418091500', '20260418091501')).toBeLessThan(0);
+  });
+
+  it('orders numeric versions of different widths numerically, not lexicographically', () => {
+    expect(compareMigrationVersions('2', '10')).toBeLessThan(0);
+    expect(compareMigrationVersions('0002', '0010')).toBeLessThan(0);
+  });
+
+  it('orders a short numeric prefix before a timestamp', () => {
+    expect(compareMigrationVersions('0001', '20260418091500')).toBeLessThan(0);
   });
 });
 
