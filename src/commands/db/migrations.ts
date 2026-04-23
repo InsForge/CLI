@@ -5,7 +5,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import {
-  assertValidMigrationVersion,
+  canonicalMigrationVersion,
   compareMigrationVersions,
   ensureMigrationsDir,
   findOlderThanHeadLocalMigrations,
@@ -61,7 +61,7 @@ async function fetchRemoteMigrations(): Promise<Migration[]> {
   const migrations = Array.isArray(raw.migrations) ? raw.migrations : [];
 
   for (const migration of migrations) {
-    assertValidMigrationVersion(migration.version);
+    migration.version = canonicalMigrationVersion(migration.version);
   }
 
   return migrations;

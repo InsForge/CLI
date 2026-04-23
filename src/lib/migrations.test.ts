@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertValidMigrationVersion,
+  canonicalMigrationVersion,
   compareMigrationVersions,
   findLocalMigrationByVersion,
   findOlderThanHeadLocalMigrations,
@@ -23,10 +24,10 @@ describe('parseMigrationFilename', () => {
     });
   });
 
-  it('accepts any numeric prefix (e.g. Drizzle-style)', () => {
+  it('accepts any numeric prefix (e.g. Drizzle-style) and canonicalizes the version', () => {
     expect(parseMigrationFilename('0001_add-post-index.sql')).toEqual({
       filename: '0001_add-post-index.sql',
-      version: '0001',
+      version: '1',
       name: 'add-post-index',
     });
     expect(parseMigrationFilename('42_add-post-index.sql')).toEqual({
@@ -42,6 +43,24 @@ describe('parseMigrationFilename', () => {
     expect(parseMigrationFilename('20260418091500 add-post-index.sql')).toBeNull();
     expect(parseMigrationFilename('abc_add-post-index.sql')).toBeNull();
     expect(parseMigrationFilename('_add-post-index.sql')).toBeNull();
+  });
+});
+
+describe('canonicalMigrationVersion', () => {
+  it('strips leading zeros so padded numeric prefixes match unpadded ones', () => {
+    expect(canonicalMigrationVersion('0001')).toBe('1');
+    expect(canonicalMigrationVersion('00042')).toBe('42');
+    expect(canonicalMigrationVersion('1')).toBe('1');
+    expect(canonicalMigrationVersion('0')).toBe('0');
+  });
+
+  it('leaves 14-digit timestamps unchanged', () => {
+    expect(canonicalMigrationVersion('20260418091500')).toBe('20260418091500');
+  });
+
+  it('throws on non-numeric input', () => {
+    expect(() => canonicalMigrationVersion('abc')).toThrow(/invalid migration version/i);
+    expect(() => canonicalMigrationVersion('../1')).toThrow(/invalid migration version/i);
   });
 });
 
@@ -156,6 +175,12 @@ describe('parseStrictLocalMigrations', () => {
       ])
     ).toThrow(/duplicate local migration version/i);
   });
+
+  it('treats padded and unpadded numeric prefixes of the same value as duplicates', () => {
+    expect(() =>
+      parseStrictLocalMigrations(['0001_create-users.sql', '1_create-accounts.sql'])
+    ).toThrow(/duplicate local migration version/i);
+  });
 });
 
 describe('formatMigrationSql', () => {
@@ -206,6 +231,19 @@ describe('resolveMigrationTarget', () => {
       filename: '20260418091600_add-user-index.sql',
       version: '20260418091600',
       name: 'add-user-index',
+    });
+  });
+
+  it('resolves a padded numeric target against an unpadded filename and vice versa', () => {
+    expect(resolveMigrationTarget('0001', ['1_create-users.sql'])).toEqual({
+      filename: '1_create-users.sql',
+      version: '1',
+      name: 'create-users',
+    });
+    expect(resolveMigrationTarget('1', ['0001_create-users.sql'])).toEqual({
+      filename: '0001_create-users.sql',
+      version: '1',
+      name: 'create-users',
     });
   });
 

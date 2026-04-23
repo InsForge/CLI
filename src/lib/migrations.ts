@@ -19,6 +19,14 @@ export function assertValidMigrationVersion(version: string): void {
   }
 }
 
+// Numeric prefixes like "0001" and "1" refer to the same migration. Strip
+// leading zeros so Set lookups, equality checks, and duplicate detection all
+// agree with the numeric ordering in compareMigrationVersions.
+export function canonicalMigrationVersion(version: string): string {
+  assertValidMigrationVersion(version);
+  return BigInt(version).toString();
+}
+
 export function parseMigrationFilename(filename: string): ParsedMigrationFile | null {
   const match = MIGRATION_FILENAME_REGEX.exec(filename);
   if (!match) {
@@ -27,7 +35,7 @@ export function parseMigrationFilename(filename: string): ParsedMigrationFile | 
 
   return {
     filename,
-    version: match[1],
+    version: canonicalMigrationVersion(match[1]),
     name: match[2],
   };
 }
@@ -190,11 +198,12 @@ export function findLocalMigrationByVersion(
   version: string,
   filenames: string[],
 ): ParsedMigrationFile {
+  const canonicalVersion = canonicalMigrationVersion(version);
   const matches = filenames
     .map((filename) => parseMigrationFilename(filename))
     .filter(
       (migration): migration is ParsedMigrationFile =>
-        migration !== null && migration.version === version,
+        migration !== null && migration.version === canonicalVersion,
     );
 
   if (matches.length === 0) {
