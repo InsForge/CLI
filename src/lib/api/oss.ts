@@ -65,12 +65,16 @@ export async function ossFetch(
       message += `\n${err.nextActions}`;
     }
 
-    // Feature not available on this backend version
-    if (res.status === 404 && path.startsWith('/api/compute')) {
+    // Feature not available on this backend version — ONLY when the 404 is a
+    // route-level miss (no structured error code), not a resource-level miss
+    // like COMPUTE_SERVICE_NOT_FOUND. Otherwise we'd hide real "service doesn't
+    // exist" errors behind a misleading "feature not enabled" message.
+    const isRouteLevel404 = !err.error || err.error === 'NOT_FOUND';
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/compute')) {
       message = 'Compute services are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin to enable compute.';
     }
 
-    if (res.status === 404 && path === '/api/database/migrations') {
+    if (res.status === 404 && isRouteLevel404 && path === '/api/database/migrations') {
       message = 'Database migrations are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin about database migration support.';
     }
 
