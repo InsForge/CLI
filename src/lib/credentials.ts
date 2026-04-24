@@ -72,20 +72,31 @@ export async function refreshAccessToken(apiUrl?: string): Promise<string> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: creds.refresh_token }),
       });
-    } catch (err) {
-      // This is a background refresh path — surface a network error clearly.
+    } catch {
+      // Background refresh path — surface a network error clearly.
       throw new AuthError(
         `Unable to reach auth server at ${platformUrl}. Check your network connection.`
       );
     }
     if (!res.ok) {
+      // Auth failures (401/403/404) mean the PAT is actually bad — ask the user
+      // to rotate. Everything else (5xx, 429, gateway errors) is transient and
+      // shouldn't instruct the user to rotate a healthy key.
+      if (res.status === 401 || res.status === 403 || res.status === 404) {
+        throw new AuthError(
+          'API key is invalid or revoked. Run `npx @insforge/cli login --user-api-key <new-key>` again.'
+        );
+      }
       throw new AuthError(
-        'API key is invalid or revoked. Run `npx @insforge/cli login --user-api-key <new-key>` again.'
+        `Auth server returned HTTP ${res.status} while refreshing session. Please retry shortly.`
       );
     }
-    const { token } = (await res.json()) as { token: string };
-    saveCredentials({ ...creds, access_token: token });
-    return token;
+    const data = (await res.json().catch(() => ({}))) as { token?: unknown };
+    if (typeof data.token !== 'string' || data.token.length === 0) {
+      throw new AuthError('Exchange endpoint returned an invalid response (missing token).');
+    }
+    saveCredentials({ ...creds, access_token: data.token });
+    return data.token;
   }
 
   if (!creds.refresh_token) {

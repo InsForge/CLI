@@ -183,7 +183,10 @@ async function exchangePatForJwt(
     throw new CLIError(`API key is invalid or revoked: ${msg}`);
   }
 
-  const data = (await res.json()) as { token: string };
+  const data = (await res.json().catch(() => ({}))) as { token?: unknown };
+  if (typeof data.token !== 'string' || data.token.length === 0) {
+    throw new CLIError('Exchange endpoint returned an invalid response (missing token).');
+  }
   const jwt = data.token;
 
   // The exchange endpoint returns only the JWT. Fetch the user via /auth/v1/profile
@@ -199,8 +202,14 @@ async function exchangePatForJwt(
   if (!profileRes.ok) {
     throw new CLIError(`Exchange succeeded but could not fetch profile: HTTP ${profileRes.status}`);
   }
-  const profile = (await profileRes.json()) as { user?: User } | User;
-  const user = ('user' in profile ? profile.user : (profile as User)) as User | undefined;
+  const profile = (await profileRes.json().catch(() => null)) as
+    | { user?: User }
+    | User
+    | null;
+  const user =
+    profile && typeof profile === 'object' && 'user' in profile
+      ? (profile as { user?: User }).user
+      : ((profile as User | null) ?? undefined);
   if (!user) {
     throw new CLIError('Exchange succeeded but profile response was empty');
   }
