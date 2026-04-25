@@ -6,21 +6,15 @@ import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
 // `compute deploy` deploys a pre-built Docker image as a compute service.
-//
-// Image-only by design. InsForge is a deployment platform; building images
-// is delegated to the user's own toolchain. Two paths to produce one:
-//   1. Local: `docker build -t ghcr.io/<you>/<app>:<tag> .` then push
-//   2. CI:    Use a GitHub Actions template that builds + pushes on commit
-//             (see https://github.com/InsForge/insforge-skills for a starter)
-// Then deploy via:
+// Image-only by design — build the image with your own toolchain (local
+// Docker), push to a registry, then deploy via:
 //   compute deploy --image ghcr.io/<you>/<app>:<tag> --name <app> --port <port>
 export function registerComputeDeployCommand(computeCmd: Command): void {
   computeCmd
     .command('deploy')
     .description(
       'Deploy a pre-built Docker image as a compute service. ' +
-        'Build the image with your own toolchain (local Docker, GitHub Actions, etc.), ' +
-        'push it to a registry, then deploy via --image.'
+        'Build the image locally with Docker, push it to a registry, then deploy via --image.'
     )
     .requiredOption('--name <name>', 'Service name (DNS-safe, e.g. my-api)')
     .requiredOption('--image <url>', 'Docker image URL (e.g. ghcr.io/you/app:v1, nginx:alpine)')
@@ -38,20 +32,34 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
       try {
         await requireAuth();
 
+        const port = Number(opts.port);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          throw new CLIError(`Invalid --port value: ${opts.port} (expected integer 1-65535)`);
+        }
+        const memory = Number(opts.memory);
+        if (!Number.isInteger(memory) || memory <= 0) {
+          throw new CLIError(`Invalid --memory value: ${opts.memory} (expected positive integer MB)`);
+        }
+
         const body: Record<string, unknown> = {
           name: opts.name,
           imageUrl: opts.image,
-          port: Number(opts.port),
+          port,
           cpu: opts.cpu,
-          memory: Number(opts.memory),
+          memory,
           region: opts.region,
         };
         if (opts.env) {
+          let parsedEnv: unknown;
           try {
-            body.envVars = JSON.parse(opts.env);
+            parsedEnv = JSON.parse(opts.env);
           } catch {
             throw new CLIError('Invalid JSON for --env');
           }
+          if (!parsedEnv || typeof parsedEnv !== 'object' || Array.isArray(parsedEnv)) {
+            throw new CLIError('Invalid --env: expected a JSON object like {"KEY":"value"}');
+          }
+          body.envVars = parsedEnv;
         }
 
         const res = await ossFetch('/api/compute/services', {
