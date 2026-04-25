@@ -95,17 +95,34 @@ function checkFlyctl(): void {
   }
 }
 
-function getFlyToken(): string {
-  // The backend knows the Fly token, but we need it for flyctl.
-  // Check env var first (user may have it set), then fall back to asking.
-  const token = process.env.FLY_API_TOKEN;
-  if (!token) {
+async function getFlyToken(serviceId: string): Promise<string> {
+  // Self-hosters with their own Fly account can still use their token.
+  // Cloud-managed users get a short-lived scoped token from the OSS
+  // backend (which proxies to the cloud, which mints it via Fly).
+  // Either way, the user doesn't have to manage Fly credentials manually.
+  const envToken = process.env.FLY_API_TOKEN;
+  if (envToken) return envToken;
+
+  try {
+    const res = await ossFetch(
+      `/api/compute/services/${encodeURIComponent(serviceId)}/deploy-token`,
+      { method: 'POST' },
+    );
+    const body = (await res.json()) as { token?: string; expirySeconds?: number };
+    if (!body.token) {
+      throw new CLIError('OSS returned an empty deploy-token response');
+    }
+    return body.token;
+  } catch (err) {
+    if (err instanceof CLIError) throw err;
     throw new CLIError(
-      'FLY_API_TOKEN environment variable is required for compute deploy.\n' +
-      'Set it with: export FLY_API_TOKEN=<your-fly-token>',
+      'Could not fetch a Fly deploy token from your InsForge backend.\n' +
+        'Either:\n' +
+        '  - Set FLY_API_TOKEN with your own Fly token (self-hosted Fly account), or\n' +
+        '  - Make sure your InsForge backend is updated to a version that supports cloud-managed compute.\n' +
+        `Underlying error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  return token;
 }
 
 export function registerComputeDeployCommand(computeCmd: Command): void {
@@ -123,7 +140,9 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
       try {
         await requireAuth();
         checkFlyctl();
-        const flyToken = getFlyToken();
+        // NOTE: flyToken is fetched AFTER service creation below so we know
+        // the serviceId. Cloud-managed users get a short-lived scoped token
+        // from OSS; self-hosters still use FLY_API_TOKEN env var directly.
 
         const dir = directory ?? process.cwd();
         const dockerfilePath = join(dir, 'Dockerfile');
@@ -185,6 +204,10 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           serviceId = service.id as string;
           flyAppId = service.flyAppId as string;
         }
+
+        // Now that we have serviceId, fetch the deploy token (cloud mints
+        // a scoped one if no FLY_API_TOKEN env var is set).
+        const flyToken = await getFlyToken(serviceId);
 
         // Step 3: Generate fly.toml
         const existingTomlPath = join(dir, 'fly.toml');
