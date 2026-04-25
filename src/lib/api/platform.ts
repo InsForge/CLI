@@ -143,7 +143,7 @@ export async function reportAgentConnected(
   await fetch(`${baseUrl}/tracking/v1/agent-connected`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, client: 'cli' }),
   });
 }
 
