@@ -128,8 +128,12 @@ async function getFlyToken(serviceId: string): Promise<string> {
 export function registerComputeDeployCommand(computeCmd: Command): void {
   computeCmd
     .command('deploy [directory]')
-    .description('Build and deploy a Dockerfile as a compute service')
+    .description(
+      'Deploy a compute service. Either provide --image <url> for a pre-built image, ' +
+        'or pass a directory containing a Dockerfile (defaults to cwd) to build from source.'
+    )
     .requiredOption('--name <name>', 'Service name')
+    .option('--image <url>', 'Pre-built Docker image URL (e.g. nginx:alpine). Skip build.')
     .option('--port <port>', 'Container port')
     .option('--cpu <tier>', 'CPU tier (shared-1x, shared-2x, performance-1x, etc.)')
     .option('--memory <mb>', 'Memory in MB (256, 512, 1024, 2048, 4096, 8192)')
@@ -139,6 +143,52 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
       const { json } = getRootOpts(cmd);
       try {
         await requireAuth();
+
+        // ─── IMAGE MODE ────────────────────────────────────────────────
+        // --image given → no build, no flyctl, no Dockerfile. Hand the
+        // image URL to the backend and let Fly pull it.
+        if (opts.image) {
+          if (directory) {
+            throw new CLIError(
+              'Cannot pass both --image and a directory. Use one:\n' +
+                '  compute deploy --image nginx:alpine --name my-proxy\n' +
+                '  compute deploy ./my-app --name my-app'
+            );
+          }
+          const body: Record<string, unknown> = {
+            name: opts.name,
+            imageUrl: opts.image,
+            port: Number(opts.port) || 8080,
+            cpu: opts.cpu || 'shared-1x',
+            memory: Number(opts.memory) || 512,
+            region: opts.region || 'iad',
+          };
+          if (opts.env) {
+            try {
+              body.envVars = JSON.parse(opts.env);
+            } catch {
+              throw new CLIError('Invalid JSON for --env');
+            }
+          }
+          const res = await ossFetch('/api/compute/services', {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+          const service = (await res.json()) as Record<string, unknown>;
+          if (json) {
+            outputJson(service);
+          } else {
+            outputSuccess(`Service "${service.name}" deployed [${service.status}]`);
+            if (service.endpointUrl) {
+              console.log(`  Endpoint: ${service.endpointUrl}`);
+            }
+          }
+          await reportCliUsage('cli.compute.deploy.image', true);
+          return;
+        }
+
+        // ─── SOURCE MODE ───────────────────────────────────────────────
+        // No --image → build from a Dockerfile in the directory.
         checkFlyctl();
         // NOTE: flyToken is fetched AFTER service creation below so we know
         // the serviceId. Cloud-managed users get a short-lived scoped token
@@ -148,7 +198,12 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         const dockerfilePath = join(dir, 'Dockerfile');
 
         if (!existsSync(dockerfilePath)) {
-          throw new CLIError(`No Dockerfile found in ${dir}`);
+          throw new CLIError(
+            `No Dockerfile found in ${dir}.\n` +
+              'Either:\n' +
+              '  - Add a Dockerfile to the directory, or\n' +
+              '  - Use --image <url> to deploy a pre-built image (no build needed).'
+          );
         }
 
         // Parse existing fly.toml for defaults

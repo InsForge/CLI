@@ -29,9 +29,11 @@ describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
     expect(Array.isArray(payload)).toBe(true);
   });
 
-  it('compute create --json should create a service and return it', async () => {
+  it('compute deploy --image --json should deploy a pre-built image and return it', async () => {
+    // 'compute create' was unified into 'compute deploy --image' — same
+    // backend code path, just one CLI command instead of two.
     const result = await runCli([
-      '--json', 'compute', 'create',
+      '--json', 'compute', 'deploy',
       '--name', `cli-test-${Date.now()}`,
       '--image', 'nginx:alpine',
       '--port', '80',

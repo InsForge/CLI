@@ -61,7 +61,6 @@ import { registerSchedulesLogsCommand } from './commands/schedules/logs.js';
 
 import { registerComputeListCommand } from './commands/compute/list.js';
 import { registerComputeGetCommand } from './commands/compute/get.js';
-import { registerComputeCreateCommand } from './commands/compute/create.js';
 import { registerComputeUpdateCommand } from './commands/compute/update.js';
 import { registerComputeDeleteCommand } from './commands/compute/delete.js';
 import { registerComputeStartCommand } from './commands/compute/start.js';
@@ -186,7 +185,6 @@ registerDiagnoseCommands(diagnoseCmd);
 const computeCmd = program.command('compute').description('Manage compute services (Docker containers on Fly.io)');
 registerComputeListCommand(computeCmd);
 registerComputeGetCommand(computeCmd);
-registerComputeCreateCommand(computeCmd);
 registerComputeDeployCommand(computeCmd);
 registerComputeUpdateCommand(computeCmd);
 registerComputeDeleteCommand(computeCmd);
