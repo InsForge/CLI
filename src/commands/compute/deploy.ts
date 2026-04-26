@@ -148,17 +148,36 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           body.imageUrl = opts.image;
         }
 
-        // Create + deploy (cloud builds first if sourceKey present)
-        const res = await ossFetch('/api/compute/services', {
-          method: 'POST',
-          body: JSON.stringify(body),
-        });
+        // Look up existing service by name. If found → PATCH (update),
+        // else → POST (create). Same body shape (cloud builds first if
+        // sourceKey is present, regardless of POST vs PATCH).
+        const listRes = await ossFetch('/api/compute/services');
+        const existing = ((await listRes.json()) as Array<{ id: string; name: string }>)
+          .find((s) => s.name === opts.name);
+
+        let res;
+        if (existing) {
+          if (!json) outputInfo(`Found existing service "${opts.name}", updating...`);
+          // For PATCH, name is implicit (in the URL via id); body is the update payload
+          const { name: _omit, ...updateBody } = body;
+          void _omit;
+          res = await ossFetch(`/api/compute/services/${encodeURIComponent(existing.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updateBody),
+          });
+        } else {
+          res = await ossFetch('/api/compute/services', {
+            method: 'POST',
+            body: JSON.stringify(body),
+          });
+        }
         const service = (await res.json()) as Record<string, unknown>;
 
         if (json) {
           outputJson(service);
         } else {
-          outputSuccess(`Service "${service.name}" deployed [${service.status}]`);
+          const verb = existing ? 'updated' : 'deployed';
+          outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
           if (service.endpointUrl) {
             console.log(`  Endpoint: ${service.endpointUrl}`);
           }
