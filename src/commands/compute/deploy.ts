@@ -6,27 +6,30 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
-import { tarDir, uploadPresigned } from '../../lib/upload.js';
+import {
+  ensureDockerAvailable,
+  dockerBuild,
+  dockerLogin,
+  dockerPush,
+} from '../../lib/docker.js';
 
 // `compute deploy` has two modes:
 //
 //   1. Image mode (--image <url>):
 //      Deploy a pre-built image from any registry. Same as v1.
 //
-//   2. Source mode ([dir]):
-//      Tar the directory, upload source.tgz directly to InsForge's S3
-//      via a presigned PUT URL, cloud builds it on AWS CodeBuild, then
-//      deploys. NO local Docker required.
-//
-// Bytes never proxy through OSS or cloud — laptop -> S3 direct via the
-// presigned URL.
+//   2. Source mode ([dir]) — Path A (compute v3.1):
+//      CLI runs docker build + push to registry.fly.io using a per-app
+//      deploy token minted by the cloud. Cloud then launches the machine
+//      pointing at the freshly-pushed image. Requires Docker locally.
+//      Image bytes never proxy through OSS or cloud.
 export function registerComputeDeployCommand(computeCmd: Command): void {
   computeCmd
     .command('deploy [dir]')
     .description(
       'Deploy a compute service. Two modes:\n' +
-        '  compute deploy <dir> --name <name>             (source mode — tars dir, server builds Dockerfile)\n' +
-        '  compute deploy --image <url> --name <name>     (image mode — deploys pre-built image)'
+        '  compute deploy <dir> --name <name>             (source mode — local docker build + push, requires Docker)\n' +
+        '  compute deploy --image <url> --name <name>     (image mode — deploys pre-built image, no Docker required)'
     )
     .requiredOption('--name <name>', 'Service name (DNS-safe, e.g. my-api)')
     .option('--image <url>', 'Pre-built image URL (image mode)')
@@ -70,117 +73,153 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           } catch {
             throw new CLIError('Invalid JSON for --env');
           }
-          if (
-            !parsed ||
-            typeof parsed !== 'object' ||
-            Array.isArray(parsed)
-          ) {
-            throw new CLIError(
-              '--env must be a JSON object like {"KEY":"value"}'
-            );
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new CLIError('--env must be a JSON object like {"KEY":"value"}');
           }
           envVars = parsed as Record<string, string>;
         }
 
-        const body: Record<string, unknown> = {
+        const baseBody: Record<string, unknown> = {
           name: opts.name,
           port,
           cpu: opts.cpu,
           memory,
           region: opts.region,
         };
-        if (envVars) body.envVars = envVars;
+        if (envVars) baseBody.envVars = envVars;
 
-        if (dir) {
-          // ─── Source mode ─────────────────────────────────────────────
-          const absDir = resolve(dir);
-          const dockerfilePath = `${absDir}/Dockerfile`;
-          if (!existsSync(dockerfilePath)) {
-            throw new CLIError(
-              `No Dockerfile at ${dockerfilePath}.\n` +
-                `  Either:\n` +
-                `   • Create one (ask your AI agent — see the insforge-cli skill)\n` +
-                `   • Use --image <url> to deploy a pre-built image instead`
-            );
+        // ─── Image mode ─────────────────────────────────────────────────
+        if (!dir) {
+          const body: Record<string, unknown> = { ...baseBody, imageUrl: opts.image };
+
+          // List → find by name → POST or PATCH
+          const listRes = await ossFetch('/api/compute/services');
+          const existing = ((await listRes.json()) as Array<{ id: string; name: string }>).find(
+            (s) => s.name === opts.name
+          );
+
+          let res;
+          if (existing) {
+            if (!json) outputInfo(`Found existing service "${opts.name}", updating...`);
+            const { name: _omit, ...updateBody } = body;
+            void _omit;
+            res = await ossFetch(`/api/compute/services/${encodeURIComponent(existing.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify(updateBody),
+            });
+          } else {
+            res = await ossFetch('/api/compute/services', {
+              method: 'POST',
+              body: JSON.stringify(body),
+            });
           }
+          const service = (await res.json()) as Record<string, unknown>;
 
-          if (!json) outputInfo(`Detected Dockerfile at ${dockerfilePath}`);
-
-          // 1. Get presigned upload URL from cloud
-          if (!json) outputInfo('Requesting upload credentials...');
-          const credsRes = await ossFetch('/api/compute/services/build-creds', {
-            method: 'POST',
-            body: JSON.stringify({ name: opts.name }),
-          });
-          if (credsRes.status === 429) {
-            throw new CLIError(
-              'Another build for this project is already in progress. Try again shortly.'
-            );
+          if (json) {
+            outputJson(service);
+          } else {
+            const verb = existing ? 'updated' : 'deployed';
+            outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
+            if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
           }
-          const creds = (await credsRes.json()) as {
-            sourceKey: string;
-            uploadUrl: string;
-            imageTag: string;
-            expiresAt: string;
-          };
-
-          // 2. Tar the directory
-          if (!json) outputInfo('Tarring source...');
-          const tarball = await tarDir(absDir);
-          if (!json) {
-            outputInfo(
-              `Uploading source (${(tarball.length / 1024).toFixed(1)} KB)...`
-            );
-          }
-
-          // 3. Upload directly to S3 via presigned URL
-          await uploadPresigned(creds.uploadUrl, tarball);
-
-          body.sourceKey = creds.sourceKey;
-          body.imageTag = creds.imageTag;
-
-          if (!json) {
-            outputInfo(
-              'Source uploaded. Building on AWS CodeBuild + deploying (~60-120s)...'
-            );
-          }
-        } else {
-          body.imageUrl = opts.image;
+          await reportCliUsage('cli.compute.deploy', true);
+          return;
         }
 
-        // Look up existing service by name. If found → PATCH (update),
-        // else → POST (create). Same body shape (cloud builds first if
-        // sourceKey is present, regardless of POST vs PATCH).
+        // ─── Source mode (Path A) ───────────────────────────────────────
+        const absDir = resolve(dir);
+        const dockerfilePath = `${absDir}/Dockerfile`;
+        if (!existsSync(dockerfilePath)) {
+          throw new CLIError(
+            `No Dockerfile at ${dockerfilePath}.\n` +
+              `  Either:\n` +
+              `   • Create one (ask your AI agent — see the insforge-cli skill)\n` +
+              `   • Use --image <url> to deploy a pre-built image instead`
+          );
+        }
+        ensureDockerAvailable();
+
+        if (!json) outputInfo(`Detected Dockerfile at ${dockerfilePath}`);
+
+        // 1. Resolve service: list → find by name → /deploy if missing
         const listRes = await ossFetch('/api/compute/services');
-        const existing = ((await listRes.json()) as Array<{ id: string; name: string }>)
-          .find((s) => s.name === opts.name);
+        const existing = ((await listRes.json()) as Array<{
+          id: string;
+          name: string;
+          flyAppId?: string | null;
+        }>).find((s) => s.name === opts.name);
 
-        let res;
+        let serviceId: string;
+        let flyAppId: string;
         if (existing) {
-          if (!json) outputInfo(`Found existing service "${opts.name}", updating...`);
-          // For PATCH, name is implicit (in the URL via id); body is the update payload
-          const { name: _omit, ...updateBody } = body;
-          void _omit;
-          res = await ossFetch(`/api/compute/services/${encodeURIComponent(existing.id)}`, {
-            method: 'PATCH',
-            body: JSON.stringify(updateBody),
-          });
+          if (!existing.flyAppId) {
+            throw new CLIError(
+              `Service "${opts.name}" exists but has no Fly app yet. Delete it and redeploy.`
+            );
+          }
+          serviceId = existing.id;
+          flyAppId = existing.flyAppId;
+          if (!json) outputInfo(`Found existing service "${opts.name}" (${flyAppId}), updating...`);
         } else {
-          res = await ossFetch('/api/compute/services', {
+          if (!json) outputInfo(`Creating service "${opts.name}"...`);
+          const prepareRes = await ossFetch('/api/compute/services/deploy', {
             method: 'POST',
-            body: JSON.stringify(body),
+            body: JSON.stringify(baseBody),
           });
+          const prepared = (await prepareRes.json()) as {
+            id: string;
+            flyAppId: string;
+          };
+          serviceId = prepared.id;
+          flyAppId = prepared.flyAppId;
+          if (!json) outputInfo(`Created Fly app ${flyAppId}`);
         }
-        const service = (await res.json()) as Record<string, unknown>;
+
+        // 2. Mint per-app deploy token (20-min TTL, scoped to this app only)
+        if (!json) outputInfo('Requesting deploy token...');
+        const tokenRes = await ossFetch(
+          `/api/compute/services/${encodeURIComponent(serviceId)}/deploy-token`,
+          { method: 'POST' }
+        );
+        const tokenJson = (await tokenRes.json()) as { token: string; expirySeconds: number };
+
+        // 3. Build + push
+        const tag = `cli-${Date.now()}`;
+        const imageRef = `registry.fly.io/${flyAppId}:${tag}`;
+        if (!json) outputInfo(`Building image ${imageRef}...`);
+        dockerBuild({ dir: absDir, imageRef });
+
+        if (!json) outputInfo('Logging in to registry.fly.io...');
+        dockerLogin('registry.fly.io', tokenJson.token);
+
+        if (!json) outputInfo(`Pushing ${imageRef}...`);
+        dockerPush(imageRef);
+
+        // 4. Tell cloud the image is ready — launches new machine or
+        //    updates existing one. PATCH includes any deploy-affecting
+        //    field changes (port/cpu/memory/envVars/region) too.
+        if (!json) outputInfo('Launching machine...');
+        const updateBody: Record<string, unknown> = {
+          imageUrl: imageRef,
+          port,
+          cpu: opts.cpu,
+          memory,
+          region: opts.region,
+        };
+        if (envVars) updateBody.envVars = envVars;
+
+        const finalRes = await ossFetch(
+          `/api/compute/services/${encodeURIComponent(serviceId)}`,
+          { method: 'PATCH', body: JSON.stringify(updateBody) }
+        );
+        const service = (await finalRes.json()) as Record<string, unknown>;
 
         if (json) {
           outputJson(service);
         } else {
           const verb = existing ? 'updated' : 'deployed';
           outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
-          if (service.endpointUrl) {
-            console.log(`  Endpoint: ${service.endpointUrl}`);
-          }
+          if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
         }
 
         await reportCliUsage('cli.compute.deploy', true);
