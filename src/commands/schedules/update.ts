@@ -9,7 +9,10 @@ export function registerSchedulesUpdateCommand(schedulesCmd: Command): void {
     .command('update <id>')
     .description('Update a schedule')
     .option('--name <name>', 'New schedule name')
-    .option('--cron <expression>', 'New cron expression')
+    .option(
+      '--cron <expression>',
+      'New cron expression. 5-field cron or pg_cron interval syntax (e.g. "30 seconds").'
+    )
     .option('--url <url>', 'New URL to invoke')
     .option('--method <method>', 'New HTTP method')
     .option('--headers <json>', 'New HTTP headers as JSON')
