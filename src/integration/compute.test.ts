@@ -29,9 +29,9 @@ describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
     expect(Array.isArray(payload)).toBe(true);
   });
 
-  it('compute create --json should create a service and return it', async () => {
+  it('compute deploy --image --json should deploy a pre-built image and return it', async () => {
     const result = await runCli([
-      '--json', 'compute', 'create',
+      '--json', 'compute', 'deploy',
       '--name', `cli-test-${Date.now()}`,
       '--image', 'nginx:alpine',
       '--port', '80',
