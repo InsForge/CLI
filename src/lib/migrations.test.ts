@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertValidMigrationVersion,
+  canonicalMigrationVersion,
   compareMigrationVersions,
   findLocalMigrationByVersion,
   findOlderThanHeadLocalMigrations,
@@ -23,30 +24,82 @@ describe('parseMigrationFilename', () => {
     });
   });
 
+  it('accepts any numeric prefix (e.g. Drizzle-style) and canonicalizes the version', () => {
+    expect(parseMigrationFilename('0001_add-post-index.sql')).toEqual({
+      filename: '0001_add-post-index.sql',
+      version: '1',
+      name: 'add-post-index',
+    });
+    expect(parseMigrationFilename('42_add-post-index.sql')).toEqual({
+      filename: '42_add-post-index.sql',
+      version: '42',
+      name: 'add-post-index',
+    });
+  });
+
   it('rejects invalid migration filenames', () => {
-    expect(parseMigrationFilename('20260418_add-post-index.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500_add_post_index.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500_AddPostIndex.sql')).toBeNull();
     expect(parseMigrationFilename('20260418091500 add-post-index.sql')).toBeNull();
+    expect(parseMigrationFilename('abc_add-post-index.sql')).toBeNull();
+    expect(parseMigrationFilename('_add-post-index.sql')).toBeNull();
+  });
+});
+
+describe('canonicalMigrationVersion', () => {
+  it('strips leading zeros so padded numeric prefixes match unpadded ones', () => {
+    expect(canonicalMigrationVersion('0001')).toBe('1');
+    expect(canonicalMigrationVersion('00042')).toBe('42');
+    expect(canonicalMigrationVersion('1')).toBe('1');
+    expect(canonicalMigrationVersion('0')).toBe('0');
+  });
+
+  it('leaves 14-digit timestamps unchanged', () => {
+    expect(canonicalMigrationVersion('20260418091500')).toBe('20260418091500');
+  });
+
+  it('throws on non-numeric input', () => {
+    expect(() => canonicalMigrationVersion('abc')).toThrow(/invalid migration version/i);
+    expect(() => canonicalMigrationVersion('../1')).toThrow(/invalid migration version/i);
   });
 });
 
 describe('assertValidMigrationVersion', () => {
-  it('accepts a timestamp-formatted migration version', () => {
+  it('accepts any pure-digit migration version', () => {
     expect(() => assertValidMigrationVersion('20260418091500')).not.toThrow();
+    expect(() => assertValidMigrationVersion('20260418')).not.toThrow();
+    expect(() => assertValidMigrationVersion('0001')).not.toThrow();
+    expect(() => assertValidMigrationVersion('42')).not.toThrow();
   });
 
-  it('rejects invalid migration versions', () => {
-    expect(() => assertValidMigrationVersion('20260418')).toThrow(/invalid migration version/i);
+  it('rejects non-numeric or unsafe migration versions', () => {
     expect(() => assertValidMigrationVersion('../20260418091500')).toThrow(
       /invalid migration version/i,
     );
+    expect(() => assertValidMigrationVersion('abc')).toThrow(/invalid migration version/i);
+    expect(() => assertValidMigrationVersion('')).toThrow(/invalid migration version/i);
+  });
+
+  it('rejects versions longer than 64 digits', () => {
+    expect(() => assertValidMigrationVersion('9'.repeat(65))).toThrow(
+      /invalid migration version/i,
+    );
+    expect(() => assertValidMigrationVersion('9'.repeat(64))).not.toThrow();
   });
 });
 
 describe('compareMigrationVersions', () => {
-  it('orders versions lexicographically by time', () => {
+  it('orders timestamp versions by time', () => {
     expect(compareMigrationVersions('20260418091500', '20260418091501')).toBeLessThan(0);
+  });
+
+  it('orders numeric versions of different widths numerically, not lexicographically', () => {
+    expect(compareMigrationVersions('2', '10')).toBeLessThan(0);
+    expect(compareMigrationVersions('0002', '0010')).toBeLessThan(0);
+  });
+
+  it('orders a short numeric prefix before a timestamp', () => {
+    expect(compareMigrationVersions('0001', '20260418091500')).toBeLessThan(0);
   });
 });
 
@@ -129,6 +182,12 @@ describe('parseStrictLocalMigrations', () => {
       ])
     ).toThrow(/duplicate local migration version/i);
   });
+
+  it('treats padded and unpadded numeric prefixes of the same value as duplicates', () => {
+    expect(() =>
+      parseStrictLocalMigrations(['0001_create-users.sql', '1_create-accounts.sql'])
+    ).toThrow(/duplicate local migration version/i);
+  });
 });
 
 describe('formatMigrationSql', () => {
@@ -169,6 +228,18 @@ describe('incrementMigrationVersion', () => {
   it('increments to the next second', () => {
     expect(incrementMigrationVersion('20260418235959')).toBe('20260419000000');
   });
+
+  it('increments a non-timestamp numeric version via BigInt', () => {
+    expect(incrementMigrationVersion('1')).toBe('2');
+    expect(incrementMigrationVersion('9')).toBe('10');
+  });
+
+  it('throws CLIError (not SyntaxError) on invalid input', () => {
+    expect(() => incrementMigrationVersion('abc')).toThrow(/invalid migration version/i);
+    expect(() => incrementMigrationVersion('9'.repeat(65))).toThrow(
+      /invalid migration version/i,
+    );
+  });
 });
 
 describe('resolveMigrationTarget', () => {
@@ -179,6 +250,19 @@ describe('resolveMigrationTarget', () => {
       filename: '20260418091600_add-user-index.sql',
       version: '20260418091600',
       name: 'add-user-index',
+    });
+  });
+
+  it('resolves a padded numeric target against an unpadded filename and vice versa', () => {
+    expect(resolveMigrationTarget('0001', ['1_create-users.sql'])).toEqual({
+      filename: '1_create-users.sql',
+      version: '1',
+      name: 'create-users',
+    });
+    expect(resolveMigrationTarget('1', ['0001_create-users.sql'])).toEqual({
+      filename: '0001_create-users.sql',
+      version: '1',
+      name: 'create-users',
     });
   });
 

@@ -10,13 +10,25 @@ export interface ParsedMigrationFile {
 
 export type RemoteMigrationVersionStatus = 'already-applied' | 'older-than-head' | 'pending';
 
-const MIGRATION_VERSION_REGEX = /^\d{14}$/u;
-const MIGRATION_FILENAME_REGEX = /^(\d{14})_([a-z0-9-]+)\.sql$/u;
+// Cap at 64 digits so unbounded input can't DoS BigInt conversions or
+// the backend's `version::numeric` casts. 64 comfortably fits 4-digit
+// Drizzle sequences, 14-digit YYYYMMDDHHmmss timestamps, and anything
+// realistic in between.
+const MIGRATION_VERSION_REGEX = /^\d{1,64}$/u;
+const MIGRATION_FILENAME_REGEX = /^(\d{1,64})_([a-z0-9-]+)\.sql$/u;
 
 export function assertValidMigrationVersion(version: string): void {
   if (!MIGRATION_VERSION_REGEX.test(version)) {
-    throw new CLIError(`Invalid migration version: ${version}. Expected YYYYMMDDHHmmss.`);
+    throw new CLIError(`Invalid migration version: ${version}. Expected a numeric string of at most 64 digits (e.g. 0001 or 20260418091500).`);
   }
+}
+
+// Numeric prefixes like "0001" and "1" refer to the same migration. Strip
+// leading zeros so Set lookups, equality checks, and duplicate detection all
+// agree with the numeric ordering in compareMigrationVersions.
+export function canonicalMigrationVersion(version: string): string {
+  assertValidMigrationVersion(version);
+  return BigInt(version).toString();
 }
 
 export function parseMigrationFilename(filename: string): ParsedMigrationFile | null {
@@ -27,12 +39,17 @@ export function parseMigrationFilename(filename: string): ParsedMigrationFile | 
 
   return {
     filename,
-    version: match[1],
+    version: canonicalMigrationVersion(match[1]),
     name: match[2],
   };
 }
 
 export function compareMigrationVersions(left: string, right: string): number {
+  if (MIGRATION_VERSION_REGEX.test(left) && MIGRATION_VERSION_REGEX.test(right)) {
+    const a = BigInt(left);
+    const b = BigInt(right);
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
   return left.localeCompare(right);
 }
 
@@ -67,6 +84,10 @@ function formatMigrationVersion(date: Date): string {
 }
 
 export function incrementMigrationVersion(version: string): string {
+  assertValidMigrationVersion(version);
+  if (!/^\d{14}$/u.test(version)) {
+    return String(BigInt(version) + 1n);
+  }
   const year = Number(version.slice(0, 4));
   const month = Number(version.slice(4, 6)) - 1;
   const day = Number(version.slice(6, 8));
@@ -182,11 +203,12 @@ export function findLocalMigrationByVersion(
   version: string,
   filenames: string[],
 ): ParsedMigrationFile {
+  const canonicalVersion = canonicalMigrationVersion(version);
   const matches = filenames
     .map((filename) => parseMigrationFilename(filename))
     .filter(
       (migration): migration is ParsedMigrationFile =>
-        migration !== null && migration.version === version,
+        migration !== null && migration.version === canonicalVersion,
     );
 
   if (matches.length === 0) {
@@ -206,7 +228,7 @@ export function resolveMigrationTarget(
   target: string,
   filenames: string[],
 ): ParsedMigrationFile {
-  if (/^\d{14}$/u.test(target)) {
+  if (/^\d{1,64}$/u.test(target)) {
     return findLocalMigrationByVersion(target, filenames);
   }
 

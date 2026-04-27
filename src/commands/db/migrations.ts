@@ -5,7 +5,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import {
-  assertValidMigrationVersion,
+  canonicalMigrationVersion,
   compareMigrationVersions,
   ensureMigrationsDir,
   findOlderThanHeadLocalMigrations,
@@ -61,7 +61,7 @@ async function fetchRemoteMigrations(): Promise<Migration[]> {
   const migrations = Array.isArray(raw.migrations) ? raw.migrations : [];
 
   for (const migration of migrations) {
-    assertValidMigrationVersion(migration.version);
+    migration.version = canonicalMigrationVersion(migration.version);
   }
 
   return migrations;
@@ -143,6 +143,15 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
 
         const migrations = await fetchRemoteMigrations();
         const migrationsDir = ensureMigrationsDir();
+        // Skip by canonical version, not just filepath: a local `0001_foo.sql`
+        // and a remote `1_foo.sql` refer to the same migration, and writing
+        // both would fail parseStrictLocalMigrations' duplicate-version check.
+        const existingLocalVersions = new Set(
+          listLocalMigrationFilenames()
+            .map((filename) => parseMigrationFilename(filename))
+            .filter((migration): migration is NonNullable<typeof migration> => migration !== null)
+            .map((migration) => migration.version),
+        );
         const createdFiles: string[] = [];
         const skippedFiles: string[] = [];
 
@@ -157,13 +166,14 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
           );
           const filePath = join(migrationsDir, filename);
 
-          if (existsSync(filePath)) {
+          if (existingLocalVersions.has(migration.version) || existsSync(filePath)) {
             skippedFiles.push(filename);
             continue;
           }
 
           writeFileSync(filePath, formatMigrationSql(migration.statements));
           createdFiles.push(filename);
+          existingLocalVersions.add(migration.version);
         }
 
         if (json) {
