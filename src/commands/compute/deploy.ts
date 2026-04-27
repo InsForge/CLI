@@ -198,7 +198,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         //    attenuated FLY_API_TOKEN we just received.
         const imageLabel = `cli-${Date.now()}`;
         if (!json) outputInfo(`Building & pushing on Fly remote builder...`);
-        const { imageRef } = flyctlBuildAndPush({
+        const { imageRef } = await flyctlBuildAndPush({
           dir: absDir,
           appId: flyAppId,
           imageLabel,
