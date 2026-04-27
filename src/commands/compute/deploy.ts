@@ -7,29 +7,31 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import {
-  ensureDockerAvailable,
-  dockerBuild,
-  dockerLogin,
-  dockerPush,
-} from '../../lib/docker.js';
+  ensureFlyctlAvailable,
+  flyctlBuildAndPush,
+} from '../../lib/flyctl.js';
 
 // `compute deploy` has two modes:
 //
 //   1. Image mode (--image <url>):
-//      Deploy a pre-built image from any registry. Same as v1.
+//      Deploy a pre-built image from any registry. No flyctl/Docker needed.
 //
-//   2. Source mode ([dir]) — Path A (compute v3.1):
-//      CLI runs docker build + push to registry.fly.io using a per-app
-//      deploy token minted by the cloud. Cloud then launches the machine
-//      pointing at the freshly-pushed image. Requires Docker locally.
-//      Image bytes never proxy through OSS or cloud.
+//   2. Source mode ([dir]) — Path A (compute v3.2):
+//      CLI runs `flyctl deploy --remote-only --build-only` against the user's
+//      source directory using a per-app, attenuated deploy token minted by
+//      the cloud. The remote builder runs on Fly's infrastructure and pushes
+//      the image straight to registry.fly.io/<app>:<tag>. The cloud then
+//      launches the machine pointing at the freshly-pushed image.
+//      Requires `flyctl` on PATH (no Docker daemon needed).
+//      The deploy token is scoped to one app + builder/wg, with `else: deny`
+//      — it cannot deploy or read anything else in the InsForge Fly org.
 export function registerComputeDeployCommand(computeCmd: Command): void {
   computeCmd
     .command('deploy [dir]')
     .description(
       'Deploy a compute service. Two modes:\n' +
-        '  compute deploy <dir> --name <name>             (source mode — local docker build + push, requires Docker)\n' +
-        '  compute deploy --image <url> --name <name>     (image mode — deploys pre-built image, no Docker required)'
+        '  compute deploy <dir> --name <name>             (source mode — flyctl remote build + push, requires flyctl on PATH; no Docker needed)\n' +
+        '  compute deploy --image <url> --name <name>     (image mode — deploys pre-built image, no flyctl/Docker required)'
     )
     .requiredOption('--name <name>', 'Service name (DNS-safe, e.g. my-api)')
     .option('--image <url>', 'Pre-built image URL (image mode)')
@@ -144,7 +146,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
               `   • Use --image <url> to deploy a pre-built image instead`
           );
         }
-        ensureDockerAvailable();
+        ensureFlyctlAvailable();
 
         if (!json) outputInfo(`Detected Dockerfile at ${dockerfilePath}`);
 
@@ -190,17 +192,18 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         );
         const tokenJson = (await tokenRes.json()) as { token: string; expirySeconds: number };
 
-        // 3. Build + push
-        const tag = `cli-${Date.now()}`;
-        const imageRef = `registry.fly.io/${flyAppId}:${tag}`;
-        if (!json) outputInfo(`Building image ${imageRef}...`);
-        dockerBuild({ dir: absDir, imageRef });
-
-        if (!json) outputInfo('Logging in to registry.fly.io...');
-        dockerLogin('registry.fly.io', tokenJson.token);
-
-        if (!json) outputInfo(`Pushing ${imageRef}...`);
-        dockerPush(imageRef);
+        // 3. Remote build + push (no local Docker daemon needed).
+        //    flyctl ships the build context to Fly's remote builder, builds
+        //    there, and pushes to registry.fly.io/<app>:<tag> using the
+        //    attenuated FLY_API_TOKEN we just received.
+        const imageLabel = `cli-${Date.now()}`;
+        if (!json) outputInfo(`Building & pushing on Fly remote builder...`);
+        const { imageRef } = await flyctlBuildAndPush({
+          dir: absDir,
+          appId: flyAppId,
+          imageLabel,
+          token: tokenJson.token,
+        });
 
         // 4. Tell cloud the image is ready — launches new machine or
         //    updates existing one. PATCH includes any deploy-affecting
@@ -227,7 +230,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           const verb = existing ? 'updated' : 'deployed';
           outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
           if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
-          console.log(`  Tip: \`docker rmi ${imageRef}\` to reclaim local disk space`);
+          console.log(`  Image: ${imageRef} (built remotely; no local image to clean up)`);
         }
 
         await reportCliUsage('cli.compute.deploy', true);
