@@ -51,6 +51,18 @@ describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
     expect(['running', 'creating', 'deploying']).toContain(payload.status);
 
     createdServiceId = payload.id as string;
+
+    // Poll until the service reaches `running` so downstream tests don't race
+    // the async deploy. Bounded at ~60s — Fly cold starts on a fresh app
+    // typically settle in 5-15s.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const getRes = await runCli(['--json', 'compute', 'get', createdServiceId], { apiUrl });
+      expectCliSuccess(getRes);
+      const getPayload = parseJsonOutput(getRes.stdout) as Record<string, unknown>;
+      if (getPayload.status === 'running') return;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    throw new Error(`Service ${createdServiceId} did not reach 'running' within 60s`);
   });
 
   it('compute get --json should return the created service', async () => {

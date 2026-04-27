@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpawnSyncReturns } from 'node:child_process';
 
-// Mock node:child_process before importing the module under test so the module
-// captures the mock when it grabs a reference to spawnSync.
-const spawnSyncMock = vi.fn();
+// vi.mock factories are hoisted above ordinary top-level statements, so any
+// const they reference must also be hoisted via vi.hoisted (Vitest 4.x docs).
+const { spawnSyncMock } = vi.hoisted(() => ({ spawnSyncMock: vi.fn() }));
 vi.mock('node:child_process', () => ({
   spawnSync: (...args: unknown[]) => spawnSyncMock(...args),
 }));

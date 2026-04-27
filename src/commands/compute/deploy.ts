@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
@@ -76,6 +76,13 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             throw new CLIError('--env must be a JSON object like {"KEY":"value"}');
           }
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v !== 'string') {
+              throw new CLIError(
+                `--env values must be strings — got ${typeof v} for key "${k}"`
+              );
+            }
+          }
           envVars = parsed as Record<string, string>;
         }
 
@@ -128,7 +135,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
 
         // ─── Source mode (Path A) ───────────────────────────────────────
         const absDir = resolve(dir);
-        const dockerfilePath = `${absDir}/Dockerfile`;
+        const dockerfilePath = join(absDir, 'Dockerfile');
         if (!existsSync(dockerfilePath)) {
           throw new CLIError(
             `No Dockerfile at ${dockerfilePath}.\n` +
@@ -220,6 +227,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           const verb = existing ? 'updated' : 'deployed';
           outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
           if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
+          console.log(`  Tip: \`docker rmi ${imageRef}\` to reclaim local disk space`);
         }
 
         await reportCliUsage('cli.compute.deploy', true);
