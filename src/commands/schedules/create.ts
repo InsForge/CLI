@@ -11,7 +11,10 @@ export function registerSchedulesCreateCommand(schedulesCmd: Command): void {
     .command('create')
     .description('Create a new schedule')
     .requiredOption('--name <name>', 'Schedule name')
-    .requiredOption('--cron <expression>', 'Cron expression (5-field format)')
+    .requiredOption(
+      '--cron <expression>',
+      'Cron expression. 5-field cron (e.g. "*/5 * * * *", "0 9 * * 1-5") or pg_cron interval syntax for sub-minute cadence (e.g. "30 seconds", "5 minutes").'
+    )
     .requiredOption('--url <url>', 'URL to invoke')
     .requiredOption('--method <method>', 'HTTP method (GET, POST, PUT, PATCH, DELETE)')
     .option('--headers <json>', 'HTTP headers as JSON')
