@@ -32,6 +32,9 @@ export function dockerBuild({ dir, imageRef, platform = 'linux/amd64' }: BuildOp
     ['build', '--platform', platform, '-t', imageRef, dir],
     { stdio: 'inherit' }
   );
+  if (r.error) {
+    throw new CLIError(`docker build could not start: ${r.error.message}`);
+  }
   if (r.status !== 0) {
     throw new CLIError(`docker build failed (exit ${r.status}). See output above.`);
   }
@@ -43,6 +46,9 @@ export function dockerLogin(registry: string, password: string): void {
     encoding: 'utf8',
     stdio: ['pipe', 'pipe', 'pipe'],
   });
+  if (r.error) {
+    throw new CLIError(`docker login could not start: ${r.error.message}`);
+  }
   if (r.status !== 0) {
     throw new CLIError(
       `docker login ${registry} failed (exit ${r.status}): ${(r.stderr || r.stdout || '').trim().slice(0, 300)}`
@@ -52,6 +58,9 @@ export function dockerLogin(registry: string, password: string): void {
 
 export function dockerPush(imageRef: string): void {
   const r = spawnSync('docker', ['push', imageRef], { stdio: 'inherit' });
+  if (r.error) {
+    throw new CLIError(`docker push could not start: ${r.error.message}`);
+  }
   if (r.status !== 0) {
     throw new CLIError(`docker push ${imageRef} failed (exit ${r.status}). See output above.`);
   }

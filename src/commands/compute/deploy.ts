@@ -101,8 +101,8 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           let res;
           if (existing) {
             if (!json) outputInfo(`Found existing service "${opts.name}", updating...`);
-            const { name: _omit, ...updateBody } = body;
-            void _omit;
+            const updateBody: Record<string, unknown> = { ...body };
+            delete updateBody.name;
             res = await ossFetch(`/api/compute/services/${encodeURIComponent(existing.id)}`, {
               method: 'PATCH',
               body: JSON.stringify(updateBody),
