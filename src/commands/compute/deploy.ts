@@ -196,14 +196,41 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         //    flyctl ships the build context to Fly's remote builder, builds
         //    there, and pushes to registry.fly.io/<app>:<tag> using the
         //    attenuated FLY_API_TOKEN we just received.
+        //    If the build fails on a freshly-created service, roll back the
+        //    cloud row + Fly app so the user can retry without a manual
+        //    `compute delete`. Don't roll back on update of an existing
+        //    service — the running machine should survive transient build
+        //    errors.
         const imageLabel = `cli-${Date.now()}`;
         if (!json) outputInfo(`Building & pushing on Fly remote builder...`);
-        const { imageRef } = await flyctlBuildAndPush({
-          dir: absDir,
-          appId: flyAppId,
-          imageLabel,
-          token: tokenJson.token,
-        });
+        let imageRef: string;
+        try {
+          ({ imageRef } = await flyctlBuildAndPush({
+            dir: absDir,
+            appId: flyAppId,
+            imageLabel,
+            token: tokenJson.token,
+            region: opts.region,
+            port,
+          }));
+        } catch (buildErr) {
+          if (!existing) {
+            try {
+              await ossFetch(`/api/compute/services/${encodeURIComponent(serviceId)}`, {
+                method: 'DELETE',
+              });
+              if (!json) outputInfo(`Rolled back service "${opts.name}" after build failure.`);
+            } catch {
+              if (!json) {
+                outputInfo(
+                  `Build failed and rollback also failed. ` +
+                    `Run: npx @insforge/cli compute delete ${serviceId}`
+                );
+              }
+            }
+          }
+          throw buildErr;
+        }
 
         // 4. Tell cloud the image is ready — launches new machine or
         //    updates existing one. PATCH includes any deploy-affecting
