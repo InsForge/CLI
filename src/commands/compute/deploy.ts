@@ -221,11 +221,12 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
               });
               if (!json) outputInfo(`Rolled back service "${opts.name}" after build failure.`);
             } catch {
-              if (!json)
+              if (!json) {
                 outputInfo(
                   `Build failed and rollback also failed. ` +
                     `Run: npx @insforge/cli compute delete ${serviceId}`
                 );
+              }
             }
           }
           throw buildErr;
