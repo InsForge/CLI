@@ -163,7 +163,11 @@ async function runConnectFlow(
   token: string,
   opts: RunSetupOpts,
 ): Promise<PosthogConnectionResponse> {
-  const url = `${getFrontendUrl()}/dashboard/project/${projectId}?action=connect`;
+  // `action=connect` triggers the cloud-shell auto-trigger (fires OAuth start
+  // and redirects to PostHog before the iframe matters). `route=/dashboard/analytics`
+  // is a fallback so that if auto-trigger fails for any reason, the iframe at
+  // least lands on the Analytics page where the Connect PostHog button is visible.
+  const url = `${getFrontendUrl()}/dashboard/project/${projectId}?action=connect&route=${encodeURIComponent('/dashboard/analytics')}`;
 
   if (!opts.json) {
     clack.log.info('PostHog is not connected to this project yet.');
