@@ -72,6 +72,19 @@ function getLocalConfigFile(): string {
   return join(getLocalConfigDir(), 'project.json');
 }
 
+/** Path to the backup of `.insforge/project.json` written by `branch switch`
+ *  the first time the directory is moved off the parent project. Restored
+ *  by `branch switch --parent`. Exported so switch.ts can manage the file. */
+export function getParentBackupFile(): string {
+  return join(getLocalConfigDir(), 'project.parent.json');
+}
+
+/** Exposed so command code (e.g. branch switch) can write the active
+ *  project file path verbatim. */
+export function getProjectConfigFile(): string {
+  return getLocalConfigFile();
+}
+
 export function getProjectConfig(): ProjectConfig | null {
   const file = getLocalConfigFile();
   if (!existsSync(file)) {
