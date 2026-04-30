@@ -1,0 +1,13 @@
+// Wrap your <body> children with <PostHogProvider> in app/layout.tsx:
+//
+//   import { PostHogProvider } from './posthog-provider';
+//
+//   export default function RootLayout({ children }: { children: React.ReactNode }) {
+//     return (
+//       <html lang="en">
+//         <body>
+//           <PostHogProvider>{children}</PostHogProvider>
+//         </body>
+//       </html>
+//     );
+//   }

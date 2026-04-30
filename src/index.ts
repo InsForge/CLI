@@ -72,6 +72,7 @@ import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
 import { registerPaymentsCommands } from './commands/payments/index.js';
+import { registerPosthogSetupCommand } from './commands/posthog/setup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -196,6 +197,10 @@ registerComputeDeleteCommand(computeCmd);
 registerComputeStartCommand(computeCmd);
 registerComputeStopCommand(computeCmd);
 registerComputeLogsCommand(computeCmd);
+
+// PostHog commands
+const posthogCmd = program.command('posthog').description('Manage PostHog product analytics integration');
+registerPosthogSetupCommand(posthogCmd);
 
 // Schedules commands
 const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');
