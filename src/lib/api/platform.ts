@@ -3,7 +3,12 @@ import { AuthError, CLIError, formatFetchError } from '../errors.js';
 import { refreshAccessToken } from '../credentials.js';
 import type {
   ApiKeyResponse,
+  Branch,
+  BranchMode,
+  DiffResult,
   LoginResponse,
+  MergeConflictResponse,
+  MergeExecuteResponse,
   Organization,
   Project,
   User,
@@ -261,5 +266,82 @@ export async function createProject(
   }, apiUrl);
   const data = await res.json() as { project?: Project };
   return data.project ?? (data as unknown as Project);
+}
+
+// --- Branching ---
+
+export async function createBranchApi(
+  parentProjectId: string,
+  body: { mode: BranchMode; name: string },
+  apiUrl?: string,
+): Promise<Branch> {
+  const res = await platformFetch(`/projects/v1/${parentProjectId}/branches`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, apiUrl);
+  const data = await res.json() as { branch: Branch };
+  return data.branch;
+}
+
+export async function listBranchesApi(parentProjectId: string, apiUrl?: string): Promise<Branch[]> {
+  const res = await platformFetch(`/projects/v1/${parentProjectId}/branches`, {}, apiUrl);
+  const data = await res.json() as { data?: Branch[] };
+  return data.data ?? [];
+}
+
+export async function getBranchApi(branchId: string, apiUrl?: string): Promise<Branch> {
+  const res = await platformFetch(`/projects/v1/branches/${branchId}`, {}, apiUrl);
+  const data = await res.json() as { branch: Branch };
+  return data.branch;
+}
+
+export async function deleteBranchApi(branchId: string, apiUrl?: string): Promise<void> {
+  await platformFetch(`/projects/v1/branches/${branchId}`, { method: 'DELETE' }, apiUrl);
+}
+
+export async function mergeBranchDryRunApi(branchId: string, apiUrl?: string): Promise<DiffResult> {
+  const res = await platformFetch(
+    `/projects/v1/branches/${branchId}/merge?dryRun=true`,
+    { method: 'POST' },
+    apiUrl,
+  );
+  return await res.json() as DiffResult;
+}
+
+/**
+ * Merge execute. Returns the success body on clean merge, or the conflict
+ * body on 409. We bypass platformFetch's throw-on-non-2xx for the conflict
+ * case so callers can render the diff/conflict structure directly.
+ */
+export async function mergeBranchExecuteApi(
+  branchId: string,
+  apiUrl?: string,
+): Promise<{ ok: true; result: MergeExecuteResponse } | { ok: false; conflict: MergeConflictResponse }> {
+  const baseUrl = getPlatformApiUrl(apiUrl);
+  const token = getAccessToken();
+  if (!token) throw new AuthError();
+  const url = `${baseUrl}/projects/v1/branches/${branchId}/merge`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (err) {
+    throw new CLIError(formatFetchError(err, url));
+  }
+  if (res.ok) {
+    return { ok: true, result: await res.json() as MergeExecuteResponse };
+  }
+  if (res.status === 409) {
+    return { ok: false, conflict: await res.json() as MergeConflictResponse };
+  }
+  // Other failures: fall through to standard error path.
+  const err = await res.json().catch(() => ({})) as { error?: string; message?: string };
+  const msg = err.message ? `${err.error ?? res.status}: ${err.message}` : (err.error ?? `Merge failed: ${res.status}`);
+  throw new CLIError(msg, res.status === 403 ? 5 : 1);
 }
 
