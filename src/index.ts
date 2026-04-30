@@ -10,6 +10,7 @@ import { registerLogoutCommand } from './commands/logout.js';
 import { registerWhoamiCommand } from './commands/whoami.js';
 import { registerOrgsCommands } from './commands/orgs/list.js';
 import { registerProjectsCommands } from './commands/projects/list.js';
+import { registerBranchCommands } from './commands/branch/index.js';
 import { registerProjectLinkCommand } from './commands/projects/link.js';
 import { registerDbCommands } from './commands/db/query.js';
 import { registerDbTablesCommand } from './commands/db/tables.js';
@@ -114,6 +115,9 @@ registerOrgsCommands(orgsCmd);
 // Projects commands (hidden — use `insforge list` instead)
 const projectsCmd = program.command('projects', { hidden: true }).description('Manage projects');
 registerProjectsCommands(projectsCmd);
+
+// Branch commands
+registerBranchCommands(program);
 
 // Database commands
 const dbCmd = program.command('db').description('Database operations');
