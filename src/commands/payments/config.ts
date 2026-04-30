@@ -97,7 +97,11 @@ export function registerPaymentsConfigCommand(paymentsCmd: Command): void {
         const environment = parseEnvironment(environmentValue);
         await requireAuth();
 
-        if (!yes && !json) {
+        if (json && !yes) {
+          throw new CLIError('Use --yes with --json to remove a Stripe key non-interactively.');
+        }
+
+        if (!yes) {
           const confirm = await prompts.confirm({
             message: `Remove Stripe ${environment} key? Payment sync and mutations for this environment will stop.`,
           });

@@ -81,8 +81,22 @@ export function formatAmount(
   currency: string | null | undefined,
 ): string {
   if (amount === null || amount === undefined) return '-';
-  const code = currency?.toUpperCase() ?? '';
-  return `${(amount / 100).toFixed(2)} ${code}`.trim();
+  const code = currency?.toUpperCase();
+  let fractionDigits = 2;
+
+  if (code) {
+    try {
+      fractionDigits = new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: code,
+      }).resolvedOptions().maximumFractionDigits;
+    } catch {
+      fractionDigits = 2;
+    }
+  }
+
+  const divisor = 10 ** fractionDigits;
+  return `${(amount / divisor).toFixed(fractionDigits)} ${code ?? ''}`.trim();
 }
 
 export function formatRecurring(

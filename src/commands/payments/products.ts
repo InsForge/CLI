@@ -16,6 +16,7 @@ import type {
   UpdatePaymentProductRequest,
 } from '@insforge/shared-schemas';
 import {
+  formatAmount,
   formatDate,
   parseBooleanOption,
   parseEnvironment,
@@ -99,7 +100,7 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
               ['Price ID', 'Amount', 'Type', 'Active', 'Lookup Key'],
               data.prices.map((price) => [
                 price.stripePriceId,
-                price.unitAmount === null ? '-' : `${price.unitAmount} ${price.currency.toUpperCase()}`,
+                formatAmount(price.unitAmount, price.currency),
                 price.type,
                 price.active ? 'Yes' : 'No',
                 price.lookupKey ?? '-',
@@ -209,7 +210,11 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
         const environment = parseEnvironment(opts.environment);
         await requireAuth();
 
-        if (!yes && !json) {
+        if (json && !yes) {
+          throw new CLIError('Use --yes with --json to delete a Stripe product non-interactively.');
+        }
+
+        if (!yes) {
           const confirm = await prompts.confirm({
             message: `Delete Stripe ${environment} product "${productId}"?`,
           });
