@@ -6,6 +6,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { parseEnvFile } from '../../lib/env-file.js';
 import {
   ensureDockerAvailable,
   dockerBuild,
@@ -42,6 +43,10 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
     .option('--memory <mb>', 'Memory in MB', '512')
     .option('--region <region>', 'Fly.io region', 'iad')
     .option('--env <json>', 'Env vars as JSON object')
+    .option(
+      '--env-file <path>',
+      'Path to a .env file (KEY=VALUE per line, #-comments + blank lines ok). Mutually exclusive with --env.'
+    )
     .action(async (dir: string | undefined, opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
@@ -65,6 +70,11 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         if (!Number.isInteger(memory) || memory <= 0) {
           throw new CLIError(`Invalid --memory: ${opts.memory}`);
         }
+        if (opts.env && opts.envFile) {
+          throw new CLIError(
+            '--env and --env-file are mutually exclusive — pick one source for the env vars.'
+          );
+        }
         let envVars: Record<string, string> | undefined;
         if (opts.env) {
           let parsed: unknown;
@@ -84,6 +94,8 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             }
           }
           envVars = parsed as Record<string, string>;
+        } else if (opts.envFile) {
+          envVars = parseEnvFile(resolve(opts.envFile));
         }
 
         const baseBody: Record<string, unknown> = {
