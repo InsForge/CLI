@@ -1,6 +1,6 @@
 # @insforge/cli
 
-Command line tool for the [InsForge](https://insforge.dev) platform. Manage your databases, edge functions, storage, deployments, secrets, and more — directly from the terminal.
+Command line tool for the [InsForge](https://insforge.dev) platform. Manage your databases, edge functions, storage, deployments, payments, secrets, and more — directly from the terminal.
 
 Designed to be both human-friendly (interactive prompts, formatted tables) and agent-friendly (structured JSON output, non-interactive mode, semantic exit codes).
 
@@ -407,6 +407,92 @@ Cancel a running deployment.
 
 ```bash
 npx @insforge/cli deployments cancel abc-123
+```
+
+---
+
+### Payments — `npx @insforge/cli payments`
+
+Manage the Stripe payments foundation for the linked InsForge project. These commands are intended for developers and agents configuring Stripe keys, syncing catalog state, and managing products/prices. Runtime checkout and customer portal calls should usually be made from the app via the SDK.
+
+#### `npx @insforge/cli payments status`
+
+Show Stripe key, account, sync, and webhook status for test/live environments.
+
+```bash
+npx @insforge/cli payments status
+npx @insforge/cli payments status --json
+```
+
+#### `npx @insforge/cli payments config`
+
+List, set, or remove Stripe secret keys.
+
+```bash
+npx @insforge/cli payments config
+npx @insforge/cli payments config set test sk_test_xxx
+npx @insforge/cli payments config set live        # prompts securely
+npx @insforge/cli payments config remove test -y
+```
+
+#### `npx @insforge/cli payments sync`
+
+Sync Stripe products, prices, and subscriptions from configured environments.
+
+```bash
+npx @insforge/cli payments sync
+npx @insforge/cli payments sync --environment test
+npx @insforge/cli payments sync --environment live --json
+```
+
+#### `npx @insforge/cli payments webhooks configure <environment>`
+
+Create or recreate the InsForge-managed Stripe webhook endpoint for an environment.
+
+```bash
+npx @insforge/cli payments webhooks configure test
+```
+
+#### `npx @insforge/cli payments products`
+
+List, inspect, create, update, or delete Stripe products.
+
+```bash
+npx @insforge/cli payments products list --environment test
+npx @insforge/cli payments products get prod_123 --environment test
+npx @insforge/cli payments products create --environment test --name "Pro Plan"
+npx @insforge/cli payments products update prod_123 --environment test --description "Updated"
+npx @insforge/cli payments products delete prod_123 --environment test -y
+```
+
+#### `npx @insforge/cli payments prices`
+
+List, inspect, create, update, or archive Stripe prices.
+
+```bash
+npx @insforge/cli payments prices list --environment test
+npx @insforge/cli payments prices create --environment test --product prod_123 --currency usd --unit-amount 2000
+npx @insforge/cli payments prices create --environment test --product prod_123 --currency usd --unit-amount 2000 --interval month
+npx @insforge/cli payments prices update price_123 --environment test --active false
+npx @insforge/cli payments prices archive price_123 --environment test
+```
+
+#### `npx @insforge/cli payments subscriptions`
+
+List mirrored Stripe subscriptions for admin/debugging workflows.
+
+```bash
+npx @insforge/cli payments subscriptions --environment test
+npx @insforge/cli payments subscriptions --environment test --subject-type team --subject-id team_123
+```
+
+#### `npx @insforge/cli payments history`
+
+List mirrored payment history for admin/debugging workflows.
+
+```bash
+npx @insforge/cli payments history --environment test
+npx @insforge/cli payments history --environment test --limit 20 --json
 ```
 
 ---
