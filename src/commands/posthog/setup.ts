@@ -190,7 +190,7 @@ async function runConnectFlow(
   token: string,
   opts: RunSetupOpts,
 ): Promise<PosthogConnectionResponse> {
-  const url = `${getFrontendUrl()}/dashboard/${projectId}/analytics?action=connect`;
+  const url = `${getFrontendUrl()}/dashboard/project/${projectId}?action=connect`;
 
   if (!opts.json) {
     clack.log.info('PostHog is not connected to this project yet.');
