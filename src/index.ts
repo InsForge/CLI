@@ -65,7 +65,7 @@ import { registerComputeUpdateCommand } from './commands/compute/update.js';
 import { registerComputeDeleteCommand } from './commands/compute/delete.js';
 import { registerComputeStartCommand } from './commands/compute/start.js';
 import { registerComputeStopCommand } from './commands/compute/stop.js';
-import { registerComputeLogsCommand } from './commands/compute/logs.js';
+import { registerComputeEventsCommand } from './commands/compute/events.js';
 import { registerComputeDeployCommand } from './commands/compute/deploy.js';
 
 import { registerLogsCommand } from './commands/logs.js';
@@ -195,7 +195,7 @@ registerComputeUpdateCommand(computeCmd);
 registerComputeDeleteCommand(computeCmd);
 registerComputeStartCommand(computeCmd);
 registerComputeStopCommand(computeCmd);
-registerComputeLogsCommand(computeCmd);
+registerComputeEventsCommand(computeCmd);
 
 // Schedules commands
 const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');

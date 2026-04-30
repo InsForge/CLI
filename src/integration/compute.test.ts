@@ -87,10 +87,10 @@ describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
     expect(found).toBeDefined();
   });
 
-  it('compute logs --json should return events array', async () => {
+  it('compute events --json should return events array', async () => {
     expect(createdServiceId).toBeDefined();
 
-    const result = await runCli(['--json', 'compute', 'logs', createdServiceId!, '--limit', '5'], { apiUrl });
+    const result = await runCli(['--json', 'compute', 'events', createdServiceId!, '--limit', '5'], { apiUrl });
     expectCliSuccess(result);
 
     const payload = parseJsonOutput(result.stdout);
