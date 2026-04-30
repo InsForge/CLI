@@ -71,6 +71,7 @@ import { registerComputeDeployCommand } from './commands/compute/deploy.js';
 import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
+import { registerPaymentsCommands } from './commands/payments/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -180,6 +181,10 @@ registerMetadataCommand(program);
 // Diagnose commands
 const diagnoseCmd = program.command('diagnose');
 registerDiagnoseCommands(diagnoseCmd);
+
+// Payments commands
+const paymentsCmd = program.command('payments').description('Manage Stripe payments');
+registerPaymentsCommands(paymentsCmd);
 
 // Compute commands
 const computeCmd = program.command('compute').description('Manage compute services (Docker containers on Fly.io)');
