@@ -45,6 +45,22 @@ export function trackDiagnose(subcommand: string, config: ProjectConfig): void {
   });
 }
 
+export function trackPayments(
+  subcommand: string,
+  config: ProjectConfig,
+  properties?: Record<string, unknown>,
+): void {
+  captureEvent(config.project_id, 'cli_payments_invoked', {
+    subcommand,
+    project_id: config.project_id,
+    project_name: config.project_name,
+    org_id: config.org_id,
+    region: config.region,
+    oss_mode: config.project_id === FAKE_PROJECT_ID,
+    ...properties,
+  });
+}
+
 export async function shutdownAnalytics(): Promise<void> {
   try {
     if (client) await client.shutdown();

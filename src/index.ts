@@ -66,12 +66,13 @@ import { registerComputeUpdateCommand } from './commands/compute/update.js';
 import { registerComputeDeleteCommand } from './commands/compute/delete.js';
 import { registerComputeStartCommand } from './commands/compute/start.js';
 import { registerComputeStopCommand } from './commands/compute/stop.js';
-import { registerComputeLogsCommand } from './commands/compute/logs.js';
+import { registerComputeEventsCommand } from './commands/compute/events.js';
 import { registerComputeDeployCommand } from './commands/compute/deploy.js';
 
 import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
+import { registerPaymentsCommands } from './commands/payments/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -185,6 +186,10 @@ registerMetadataCommand(program);
 const diagnoseCmd = program.command('diagnose');
 registerDiagnoseCommands(diagnoseCmd);
 
+// Payments commands
+const paymentsCmd = program.command('payments').description('Manage Stripe payments');
+registerPaymentsCommands(paymentsCmd);
+
 // Compute commands
 const computeCmd = program.command('compute').description('Manage compute services (Docker containers on Fly.io)');
 registerComputeListCommand(computeCmd);
@@ -194,7 +199,7 @@ registerComputeUpdateCommand(computeCmd);
 registerComputeDeleteCommand(computeCmd);
 registerComputeStartCommand(computeCmd);
 registerComputeStopCommand(computeCmd);
-registerComputeLogsCommand(computeCmd);
+registerComputeEventsCommand(computeCmd);
 
 // Schedules commands
 const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');
