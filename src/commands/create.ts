@@ -12,8 +12,8 @@ import {
   getProject,
   getProjectApiKey,
 } from '../lib/api/platform.js';
-import { getAnonKey, getJwtSecret, runRawSql } from '../lib/api/oss.js';
-import { randomBytes } from 'node:crypto';
+import { getAnonKey, runRawSql } from '../lib/api/oss.js';
+import { applyAuthProvider, getAuthProviderNextSteps, VALID_AUTH_PROVIDERS, type AuthProvider } from '../auth-providers/apply.js';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
@@ -223,24 +223,16 @@ export function registerCreateCommand(program: Command): void {
 
         // 3. Select template (two-step: blank vs template, then pick template)
         const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo', 'empty'];
-        const validAuthProviders = ['better-auth'];
         let template = opts.template as string | undefined;
 
-        // --auth composes onto a base template. nextjs --auth better-auth
-        // resolves to the nextjs-better-auth directory in the templates repo.
-        // Auth providers are not surfaced in the interactive picker — flag-only.
-        if (opts.auth) {
-          if (!validAuthProviders.includes(opts.auth)) {
-            throw new CLIError(`Invalid --auth "${opts.auth}". Valid: ${validAuthProviders.join(', ')}`);
-          }
-          const base = template ?? 'nextjs';
-          if (base !== 'nextjs') {
-            throw new CLIError(`--auth ${opts.auth} only supports --template nextjs today`);
-          }
-          template = `${base}-${opts.auth}`;
+        // --auth is FLAG-ONLY; not in the interactive picker. It composes onto
+        // any base template by overlaying scaffolded files after the template
+        // download. With no --template, it overlays straight into cwd.
+        if (opts.auth && !VALID_AUTH_PROVIDERS.includes(opts.auth)) {
+          throw new CLIError(`Invalid --auth "${opts.auth}". Valid: ${VALID_AUTH_PROVIDERS.join(', ')}`);
         }
 
-        if (template && !validTemplates.includes(template) && !template.includes('-')) {
+        if (template && !validTemplates.includes(template)) {
           throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
         }
         if (!template) {
@@ -351,7 +343,7 @@ export function registerCreateCommand(program: Command): void {
         s?.stop(`Project "${project.name}" created and linked`);
 
         // 7. Download template or seed env for blank projects
-        const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'nextjs-better-auth', 'react', 'todo'];
+        const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
         if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {
@@ -384,6 +376,20 @@ export function registerCreateCommand(program: Command): void {
                 clack.log.warn(`Failed to create .env.local: ${error.message}`);
               }
             }
+          }
+        }
+
+        // 7b. If --auth was passed, overlay the auth-provider scaffold onto
+        // whatever the template (or blank project) produced. Auth providers are
+        // bundled with the CLI rather than living in the templates repo.
+        if (opts.auth) {
+          try {
+            const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
+            if (!json) {
+              clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
+            }
+          } catch (err) {
+            if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
           }
         }
 
@@ -607,41 +613,18 @@ export async function downloadGitHubTemplate(
     const envExampleExists = await fs.stat(envExamplePath).catch(() => null);
     if (envExampleExists) {
       const anonKey = await getAnonKey();
-      // JWT_SECRET is fetched lazily — only some templates need it (BA-style
-      // bridge integrations). Cache the result so we don't re-call the API
-      // for every matching var.
-      let jwtSecret: string | null | undefined;
       const envExample = await fs.readFile(envExamplePath, 'utf-8');
-      const envContent = envExample.replace(
+      const envFinal = envExample.replace(
         /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
         (_, prefix: string, _value: string) => {
           const key = prefix.slice(0, -1); // remove trailing '='
           if (/INSFORGE.*(URL|BASE_URL)$/.test(key)) return `${prefix}${projectConfig.oss_host}`;
           if (/INSFORGE.*ANON_KEY$/.test(key)) return `${prefix}${anonKey}`;
           if (key === 'NEXT_PUBLIC_APP_URL') return `${prefix}https://${projectConfig.appkey}.insforge.site`;
-          // BA-style auth scaffolds: the bridge route signs HS256 with the same
-          // secret InsForge uses internally.
-          if (/JWT_SECRET$/.test(key)) {
-            if (jwtSecret === undefined) jwtSecret = null; // sentinel; will be resolved below
-            return `__JWT_SECRET_PLACEHOLDER__${prefix}__JWT_SECRET_PLACEHOLDER__`;
-          }
-          // Auto-generate Better Auth's own session secret.
-          if (key === 'BETTER_AUTH_SECRET') return `${prefix}${randomBytes(32).toString('hex')}`;
           return `${prefix}${_value}`;
         },
       );
-      // If the template referenced JWT_SECRET, fetch it once and substitute.
-      let envFinal = envContent;
-      if (envContent.includes('__JWT_SECRET_PLACEHOLDER__')) {
-        const secret = await getJwtSecret();
-        envFinal = envContent.replace(
-          /__JWT_SECRET_PLACEHOLDER__([A-Z][A-Z0-9_]*=)__JWT_SECRET_PLACEHOLDER__/g,
-          (_match, prefix: string) => `${prefix}${secret ?? `replace-with-output-of-cli-secrets-get-JWT_SECRET`}`,
-        );
-        if (!secret && !json) {
-          clack.log.warn('Could not auto-fill JWT_SECRET — run `npx @insforge/cli secrets get JWT_SECRET` and paste it into .env.local.');
-        }
-      }
+      // (Auth-provider scaffolds handle their own env vars via applyAuthProvider.)
       const envLocalPath = path.join(cwd, '.env.local');
       try {
         await fs.writeFile(envLocalPath, envFinal, { flag: 'wx' });
