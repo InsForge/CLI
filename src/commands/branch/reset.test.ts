@@ -95,12 +95,11 @@ describe('branch reset', () => {
 
   it('happy path: confirms, calls reset, polls to ready, captures analytics', async () => {
     const program = makeProgram();
-    const origLog = console.log;
-    console.log = () => {};
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await program.parseAsync(['reset', 'feat-x', '--yes', '--json'], { from: 'user' });
     } finally {
-      console.log = origLog;
+      logSpy.mockRestore();
     }
     const { resetBranchApi, getBranchApi } = await import('../../lib/api/platform.js');
     expect(resetBranchApi).toHaveBeenCalledWith('b1', undefined);
@@ -114,12 +113,11 @@ describe('branch reset', () => {
 
   it('reset of merged branch is allowed (entry_state=merged threaded through analytics)', async () => {
     const program = makeProgram();
-    const origLog = console.log;
-    console.log = () => {};
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await program.parseAsync(['reset', 'feat-merged', '--yes', '--json'], { from: 'user' });
     } finally {
-      console.log = origLog;
+      logSpy.mockRestore();
     }
     const { resetBranchApi } = await import('../../lib/api/platform.js');
     expect(resetBranchApi).toHaveBeenCalledWith('b2', undefined);

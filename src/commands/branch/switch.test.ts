@@ -144,6 +144,19 @@ describe('runBranchSwitch', () => {
     );
   });
 
+  it('rejects passing both a branch name and --parent', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as any).mockReturnValue({
+      project_id: 'b1',
+      project_name: 'feat-x',
+      org_id: 'o1',
+      branched_from: { project_id: 'p1', project_name: 'parent' },
+    });
+    await expect(
+      runBranchSwitch({ name: 'feat-x', toParent: true, apiUrl: undefined, json: true }),
+    ).rejects.toThrow(/either a branch name or --parent/);
+  });
+
   it('--parent fails clearly when no backup exists', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
     (getProjectConfig as any).mockReturnValue({ project_id: 'b1', project_name: 'feat-x', org_id: 'o1' });

@@ -14,11 +14,21 @@ import type {
   User,
 } from '../../types.js';
 
+export interface PlatformFetchOptions extends RequestInit {
+  /**
+   * HTTP status codes that should be returned to the caller instead of
+   * thrown as CLIError. The 401-refresh path is unaffected. Use when the
+   * caller wants to render a structured error body (e.g. merge 409).
+   */
+  passThroughStatuses?: number[];
+}
+
 export async function platformFetch(
   path: string,
-  options: RequestInit = {},
+  options: PlatformFetchOptions = {},
   apiUrl?: string,
 ): Promise<Response> {
+  const { passThroughStatuses, ...fetchOptions } = options;
   const baseUrl = getPlatformApiUrl(apiUrl);
   const token = getAccessToken();
   if (!token) {
@@ -27,21 +37,21 @@ export async function platformFetch(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
-    ...(options.headers as Record<string, string> ?? {}),
+    ...(fetchOptions.headers as Record<string, string> ?? {}),
   };
 
   const fullUrl = `${baseUrl}${path}`;
   if (process.env.INSFORGE_DEBUG) {
-    console.error(`[DEBUG] ${options.method ?? 'GET'} ${fullUrl}`);
+    console.error(`[DEBUG] ${fetchOptions.method ?? 'GET'} ${fullUrl}`);
     console.error(`[DEBUG] Headers: ${JSON.stringify(headers, null, 2)}`);
-    if (options.body) {
-      console.error(`[DEBUG] Body: ${typeof options.body === 'string' ? options.body : JSON.stringify(options.body)}`);
+    if (fetchOptions.body) {
+      console.error(`[DEBUG] Body: ${typeof fetchOptions.body === 'string' ? fetchOptions.body : JSON.stringify(fetchOptions.body)}`);
     }
   }
 
   let res: Response;
   try {
-    res = await fetch(fullUrl, { ...options, headers });
+    res = await fetch(fullUrl, { ...fetchOptions, headers });
   } catch (err) {
     throw new CLIError(formatFetchError(err, fullUrl));
   }
@@ -52,15 +62,22 @@ export async function platformFetch(
     headers.Authorization = `Bearer ${newToken}`;
     let retryRes: Response;
     try {
-      retryRes = await fetch(fullUrl, { ...options, headers });
+      retryRes = await fetch(fullUrl, { ...fetchOptions, headers });
     } catch (err) {
       throw new CLIError(formatFetchError(err, fullUrl));
+    }
+    if (passThroughStatuses?.includes(retryRes.status)) {
+      return retryRes;
     }
     if (!retryRes.ok) {
       const err = await retryRes.json().catch(() => ({})) as { error?: string };
       throw new CLIError(err.error ?? `Request failed: ${retryRes.status}`, retryRes.status === 403 ? 5 : 1);
     }
     return retryRes;
+  }
+
+  if (passThroughStatuses?.includes(res.status)) {
+    return res;
   }
 
   if (!res.ok) {
@@ -326,38 +343,22 @@ export async function mergeBranchDryRunApi(branchId: string, apiUrl?: string): P
 
 /**
  * Merge execute. Returns the success body on clean merge, or the conflict
- * body on 409. We bypass platformFetch's throw-on-non-2xx for the conflict
- * case so callers can render the diff/conflict structure directly.
+ * body on 409. The 409 status is passed through platformFetch so callers
+ * can render the diff/conflict structure directly while still inheriting
+ * the auto-401-refresh and debug logging behavior.
  */
 export async function mergeBranchExecuteApi(
   branchId: string,
   apiUrl?: string,
 ): Promise<{ ok: true; result: MergeExecuteResponse } | { ok: false; conflict: MergeConflictResponse }> {
-  const baseUrl = getPlatformApiUrl(apiUrl);
-  const token = getAccessToken();
-  if (!token) throw new AuthError();
-  const url = `${baseUrl}/projects/v1/branches/${branchId}/merge`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  } catch (err) {
-    throw new CLIError(formatFetchError(err, url));
-  }
-  if (res.ok) {
-    return { ok: true, result: await res.json() as MergeExecuteResponse };
-  }
+  const res = await platformFetch(
+    `/projects/v1/branches/${branchId}/merge`,
+    { method: 'POST', passThroughStatuses: [409] },
+    apiUrl,
+  );
   if (res.status === 409) {
     return { ok: false, conflict: await res.json() as MergeConflictResponse };
   }
-  // Other failures: fall through to standard error path.
-  const err = await res.json().catch(() => ({})) as { error?: string; message?: string };
-  const msg = err.message ? `${err.error ?? res.status}: ${err.message}` : (err.error ?? `Merge failed: ${res.status}`);
-  throw new CLIError(msg, res.status === 403 ? 5 : 1);
+  return { ok: true, result: await res.json() as MergeExecuteResponse };
 }
 

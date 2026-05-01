@@ -49,23 +49,25 @@ export function registerBranchCreateCommand(branch: Command): void {
 
         const ready = await pollUntilReady(created.id, apiUrl, !json);
 
+        // Run auto-switch BEFORE emitting the final success/JSON payload so a
+        // failed switch does not surface as a successful create.
+        if (opts.switch && ready.branch_state === 'ready') {
+          await runBranchSwitch({ name, apiUrl, json });
+        }
+
         if (json) {
           outputJson({ branch: ready });
         } else if (ready.branch_state === 'ready') {
           outputSuccess(`Branch '${name}' is ready.`);
-        } else {
-          outputInfo(
-            `Branch '${name}' is still in '${ready.branch_state}' state. Run \`insforge branch list\` to check.`,
-          );
-        }
-
-        if (opts.switch && ready.branch_state === 'ready') {
-          await runBranchSwitch({ name, apiUrl, json });
-          if (!json) {
+          if (opts.switch) {
             outputInfo(
               '⚠ Re-source your dev server env (.env) to pick up the new INSFORGE_URL / ANON_KEY.',
             );
           }
+        } else {
+          outputInfo(
+            `Branch '${name}' is still in '${ready.branch_state}' state. Run \`insforge branch list\` to check.`,
+          );
         }
       } catch (err) {
         handleError(err, json);
@@ -94,6 +96,11 @@ async function pollUntilReady(
     }
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
-  // Timed out — return last known state with the warning printed by caller.
-  return await getBranchApi(branchId, apiUrl);
+  // Timed out — re-check terminal failure states so a state flip just before
+  // the deadline is not silently reported as “still in state …”.
+  const branch = await getBranchApi(branchId, apiUrl);
+  if (branch.branch_state === 'deleted' || branch.branch_state === 'conflicted') {
+    throw new CLIError(`Branch creation failed (state: ${branch.branch_state})`);
+  }
+  return branch;
 }

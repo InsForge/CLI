@@ -114,7 +114,7 @@ export interface Branch {
   appkey: string;
   region: string;
   status?: string;
-  branch_state: 'creating' | 'ready' | 'merging' | 'merged' | 'conflicted' | 'deleted';
+  branch_state: 'creating' | 'ready' | 'merging' | 'merged' | 'conflicted' | 'deleted' | 'resetting';
   branch_created_at: string;
   branch_metadata?: {
     mode: 'full' | 'schema-only';

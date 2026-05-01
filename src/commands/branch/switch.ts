@@ -30,6 +30,10 @@ export async function runBranchSwitch(input: RunBranchSwitchOptions): Promise<vo
     throw new CLIError('No project linked. Run `insforge link` first.');
   }
 
+  if (input.toParent && input.name) {
+    throw new CLIError('Pass either a branch name or --parent, not both.');
+  }
+
   const projectFile = getProjectConfigFile();
   const parentBackup = getParentBackupFile();
 

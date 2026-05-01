@@ -110,6 +110,11 @@ async function pollUntilReady(
     }
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
-  // Timed out — return last known state with the warning printed by caller.
-  return await getBranchApi(branchId, apiUrl);
+  // Timed out — re-check terminal failure states so a state flip just before
+  // the deadline is not silently reported as “still in state …”.
+  const branch = await getBranchApi(branchId, apiUrl);
+  if (branch.branch_state === 'deleted' || branch.branch_state === 'conflicted') {
+    throw new CLIError(`Branch reset failed (state: ${branch.branch_state})`);
+  }
+  return branch;
 }

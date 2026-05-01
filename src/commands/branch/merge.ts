@@ -47,9 +47,7 @@ export function registerBranchMergeCommand(branch: Command): void {
           if (!json) outputInfo(`SQL preview saved to ${opts.saveSql}`);
         }
 
-        if (json) {
-          outputJson({ diff, applied: false, dryRun: !!opts.dryRun });
-        } else {
+        if (!json) {
           console.log(diff.rendered_sql);
           console.log();
           outputInfo(
@@ -61,7 +59,14 @@ export function registerBranchMergeCommand(branch: Command): void {
           captureEvent(parentId, 'cli_branch_merge_conflict', {
             conflicts: diff.summary.conflicts,
           });
-          if (!json) {
+          if (json) {
+            outputJson({
+              diff,
+              applied: false,
+              dryRun: !!opts.dryRun,
+              error: 'merge_conflict',
+            });
+          } else {
             outputInfo('');
             outputInfo('Merge blocked: resolve conflicts before retrying.');
             for (const c of diff.conflicts) {
@@ -77,6 +82,9 @@ export function registerBranchMergeCommand(branch: Command): void {
             conflicts: 0,
             applied: false,
           });
+          if (json) {
+            outputJson({ diff, applied: false, dryRun: true });
+          }
           return;
         }
 
@@ -99,7 +107,12 @@ export function registerBranchMergeCommand(branch: Command): void {
             conflicts: result.conflict.diff.summary.conflicts,
           });
           if (json) {
-            outputJson({ error: 'merge_conflict', diff: result.conflict.diff });
+            outputJson({
+              diff: result.conflict.diff,
+              applied: false,
+              dryRun: false,
+              error: 'merge_conflict',
+            });
           } else {
             outputInfo('Merge blocked by a conflict that appeared between dry-run and apply:');
             for (const c of result.conflict.diff.conflicts) {
@@ -116,7 +129,7 @@ export function registerBranchMergeCommand(branch: Command): void {
         });
 
         if (json) {
-          outputJson(result.result);
+          outputJson({ ...result.result, diff, applied: true, dryRun: false });
         } else {
           outputSuccess(`Merged. Branch '${name}' is now in 'merged' state.`);
           outputInfo('⚠ Reminder: redeploy edge functions, website, and compute as needed.');
