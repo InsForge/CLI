@@ -71,6 +71,41 @@ interface ApplyResult {
   packageJsonPatched: boolean;
   envExampleAppended: boolean;
   envLocalWritten: boolean;
+  envKeysSkipped: string[];
+}
+
+// Parse `KEY=...` lines from a dotenv blob and return the set of defined keys.
+// Comments and blank lines are ignored. Quoted values, leading `export `, and
+// inline `#` comments don't matter — we only care about the LHS.
+// Exported for unit testing.
+export function extractEnvKeys(content: string): Set<string> {
+  const keys = new Set<string>();
+  for (const line of content.split('\n')) {
+    const trimmed = line.replace(/^\s*export\s+/, '').trimStart();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const m = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (m) keys.add(m[1]);
+  }
+  return keys;
+}
+
+// Remove any `KEY=value` lines from `append` whose KEY already appears in
+// `existingKeys`. Comments and blank lines are kept verbatim so the section
+// header survives even if every var below it collides. Returns the filtered
+// blob plus the list of keys we dropped (for telemetry / user warning).
+// Exported for unit testing.
+export function filterCollidingEnvLines(append: string, existingKeys: Set<string>): { filtered: string; dropped: string[] } {
+  const dropped: string[] = [];
+  const out: string[] = [];
+  for (const line of append.split('\n')) {
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+    if (m && existingKeys.has(m[1])) {
+      dropped.push(m[1]);
+      continue;
+    }
+    out.push(line);
+  }
+  return { filtered: out.join('\n'), dropped };
 }
 
 export async function applyAuthProvider(
@@ -100,6 +135,7 @@ export async function applyAuthProvider(
   const result: ApplyResult = {
     written: [], skipped: [],
     packageJsonPatched: false, envExampleAppended: false, envLocalWritten: false,
+    envKeysSkipped: [],
   };
 
   // 1. Copy files (skip if exists)
@@ -132,12 +168,18 @@ export async function applyAuthProvider(
     result.packageJsonPatched = true;
   }
 
-  // 3. Append to .env.example (or create if absent).
+  // 3. Append to .env.example (or create if absent). On collision, the user's
+  //    existing key wins — we drop our line silently and report it via
+  //    envKeysSkipped so the caller can warn. Same "base wins" rule as
+  //    package.json deep-merge.
   const envExamplePath = path.join(cwd, '.env.example');
   if (await pathExists(envExamplePath)) {
     const existing = await fs.readFile(envExamplePath, 'utf-8');
     if (!existing.includes('# ─── Better Auth + InsForge bridge')) {
-      await fs.writeFile(envExamplePath, existing.replace(/\n*$/, '\n\n') + manifest.envExampleAppend + '\n');
+      const existingKeys = extractEnvKeys(existing);
+      const { filtered, dropped } = filterCollidingEnvLines(manifest.envExampleAppend, existingKeys);
+      result.envKeysSkipped = dropped;
+      await fs.writeFile(envExamplePath, existing.replace(/\n*$/, '\n\n') + filtered + '\n');
       result.envExampleAppended = true;
     }
   } else {
@@ -145,32 +187,55 @@ export async function applyAuthProvider(
     result.envExampleAppended = true;
   }
 
-  // 4. Write .env.local with auto-filled values from the appended section.
-  //    Mirrors the substitution rules used for templates: INSFORGE_*_URL,
-  //    INSFORGE_*_ANON_KEY, NEXT_PUBLIC_APP_URL, *_JWT_SECRET, BETTER_AUTH_SECRET.
+  // 4. Write/extend .env.local with auto-filled values. Substitution rules:
+  //    INSFORGE_*_URL, INSFORGE_*_ANON_KEY, NEXT_PUBLIC_APP_URL, *_JWT_SECRET,
+  //    BETTER_AUTH_SECRET. If .env.local already exists we APPEND only the
+  //    keys it doesn't already define — same base-wins rule as .env.example.
   const envLocalPath = path.join(cwd, '.env.local');
-  if (!(await pathExists(envLocalPath))) {
-    const anonKey = await getAnonKey();
-    const jwtSecret = await getJwtSecret();
-    const filled = manifest.envExampleAppend.replace(
-      /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
-      (_, prefix: string, value: string) => {
-        const key = prefix.slice(0, -1);
-        if (/INSFORGE.*(URL|BASE_URL)$/.test(key)) return `${prefix}${projectConfig.oss_host}`;
-        if (/INSFORGE.*ANON_KEY$/.test(key)) return `${prefix}${anonKey}`;
-        if (key === 'NEXT_PUBLIC_APP_URL') return `${prefix}https://${projectConfig.appkey}.insforge.site`;
-        if (/JWT_SECRET$/.test(key)) {
-          return `${prefix}${jwtSecret ?? value}`;
-        }
-        if (key === 'BETTER_AUTH_SECRET') return `${prefix}${randomBytes(32).toString('hex')}`;
-        return `${prefix}${value}`;
-      },
-    );
+  const envLocalExists = await pathExists(envLocalPath);
+  const existingLocal = envLocalExists ? await fs.readFile(envLocalPath, 'utf-8') : '';
+  const existingLocalKeys = envLocalExists ? extractEnvKeys(existingLocal) : new Set<string>();
+
+  const anonKey = await getAnonKey();
+  const jwtSecret = await getJwtSecret();
+  const filled = manifest.envExampleAppend.replace(
+    /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
+    (_, prefix: string, value: string) => {
+      const key = prefix.slice(0, -1);
+      if (/INSFORGE.*(URL|BASE_URL)$/.test(key)) return `${prefix}${projectConfig.oss_host}`;
+      if (/INSFORGE.*ANON_KEY$/.test(key)) return `${prefix}${anonKey}`;
+      if (key === 'NEXT_PUBLIC_APP_URL') return `${prefix}https://${projectConfig.appkey}.insforge.site`;
+      if (/JWT_SECRET$/.test(key)) return `${prefix}${jwtSecret ?? value}`;
+      if (key === 'BETTER_AUTH_SECRET') return `${prefix}${randomBytes(32).toString('hex')}`;
+      return `${prefix}${value}`;
+    },
+  );
+
+  if (!envLocalExists) {
     await fs.writeFile(envLocalPath, filled + '\n');
     result.envLocalWritten = true;
-    if (!jwtSecret && !json) {
-      clack.log.warn('Could not auto-fill JWT_SECRET — run `npx @insforge/cli secrets get JWT_SECRET` and paste it into .env.local.');
+  } else {
+    const { filtered, dropped } = filterCollidingEnvLines(filled, existingLocalKeys);
+    // Only append if there's at least one new key — avoids tacking a header
+    // with no body onto an .env.local that's already fully populated.
+    const hasNewKey = filtered.split('\n').some((l) => /^[A-Z][A-Z0-9_]*=/.test(l));
+    if (hasNewKey) {
+      await fs.writeFile(envLocalPath, existingLocal.replace(/\n*$/, '\n\n') + filtered + '\n');
+      result.envLocalWritten = true;
     }
+    // Merge with existing example skips — caller cares about the union.
+    result.envKeysSkipped = Array.from(new Set([...result.envKeysSkipped, ...dropped]));
+  }
+
+  if (!jwtSecret && !json) {
+    clack.log.warn('Could not auto-fill JWT_SECRET — run `npx @insforge/cli secrets get JWT_SECRET` and paste it into .env.local.');
+  }
+
+  if (result.envKeysSkipped.length > 0 && !json) {
+    clack.log.warn(
+      `Kept your existing values for: ${result.envKeysSkipped.join(', ')}. ` +
+      `If any of these need the auth-provider's defaults, see .env.example for reference.`,
+    );
   }
 
   return result;
