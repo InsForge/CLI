@@ -83,7 +83,7 @@ export async function applyAuthProvider(
     throw new Error(`Unknown auth provider: ${provider}`);
   }
 
-  const manifest = await loadManifest(provider);
+  const manifest = loadManifest(provider);
   const here = path.dirname(fileURLToPath(import.meta.url));
   // Files live at dist/auth-providers/<provider>/files/ at runtime; in tests
   // they're at src/auth-providers/<provider>/files/. Probe both.

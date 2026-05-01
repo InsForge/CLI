@@ -427,7 +427,7 @@ export function registerProjectLinkCommand(program: Command): void {
               const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
               if (!json) {
                 clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
-                const next = await getAuthProviderNextSteps(opts.auth as AuthProvider);
+                const next = getAuthProviderNextSteps(opts.auth as AuthProvider);
                 clack.note(next, "What's next");
               }
             } catch (err) {

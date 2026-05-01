@@ -40,6 +40,9 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'bin/', '*.config.*'],
+    // Auth-provider scaffold files are raw template assets shipped to the
+    // user's project, not CLI source — they're never imported here, just
+    // copied. Skip linting them; they have their own runtime context.
+    ignores: ['dist/', 'node_modules/', 'bin/', '*.config.*', 'src/auth-providers/*/files/'],
   },
 );

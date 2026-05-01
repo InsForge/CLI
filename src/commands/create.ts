@@ -13,7 +13,7 @@ import {
   getProjectApiKey,
 } from '../lib/api/platform.js';
 import { getAnonKey, runRawSql } from '../lib/api/oss.js';
-import { applyAuthProvider, getAuthProviderNextSteps, VALID_AUTH_PROVIDERS, type AuthProvider } from '../auth-providers/apply.js';
+import { applyAuthProvider, VALID_AUTH_PROVIDERS, type AuthProvider } from '../auth-providers/apply.js';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
