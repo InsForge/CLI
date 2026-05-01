@@ -15,6 +15,9 @@ export const manifest = {
     'lib/insforge-server-mailer.ts',
     'app/api/auth/[...all]/route.ts',
     'app/api/insforge-token/route.ts',
+    'app/notes/page.tsx',
+    'app/sign-in/page.tsx',
+    'app/sign-up/page.tsx',
     'sql/01-init.sql',
     'sql/02-revoke.sql',
     'scripts/setup-db.mjs',
@@ -66,7 +69,7 @@ NEXT_PUBLIC_INSFORGE_ANON_KEY=replace-with-anon-key-from-insforge-dashboard
   1. Set DATABASE_URL in .env.local (where Better Auth's tables will live).
   2. npm install
   3. npm run setup     # runs BA migrations + RLS helper + REVOKE block
-  4. npm run dev`,
+  4. npm run dev       # then open http://localhost:3000/sign-up`,
 };
 
 export type AuthProviderManifest = typeof manifest;
