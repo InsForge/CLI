@@ -3,6 +3,7 @@ import { registerBranchCreateCommand } from './create.js';
 import { registerBranchListCommand } from './list.js';
 import { registerBranchSwitchCommand } from './switch.js';
 import { registerBranchMergeCommand } from './merge.js';
+import { registerBranchResetCommand } from './reset.js';
 import { registerBranchDeleteCommand } from './delete.js';
 
 export function registerBranchCommands(program: Command): void {
@@ -11,5 +12,6 @@ export function registerBranchCommands(program: Command): void {
   registerBranchListCommand(branch);
   registerBranchSwitchCommand(branch);
   registerBranchMergeCommand(branch);
+  registerBranchResetCommand(branch);
   registerBranchDeleteCommand(branch);
 }

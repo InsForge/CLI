@@ -299,6 +299,22 @@ export async function deleteBranchApi(branchId: string, apiUrl?: string): Promis
   await platformFetch(`/projects/v1/branches/${branchId}`, { method: 'DELETE' }, apiUrl);
 }
 
+/**
+ * Trigger an async branch reset. Backend transitions branch_state to
+ * 'resetting', kicks off pg_restore from the T0 backup, and returns 202
+ * with the post-transition row. Callers should poll getBranchApi until
+ * branch_state goes back to 'ready'.
+ */
+export async function resetBranchApi(branchId: string, apiUrl?: string): Promise<Branch> {
+  const res = await platformFetch(
+    `/projects/v1/branches/${branchId}/reset`,
+    { method: 'POST' },
+    apiUrl,
+  );
+  const data = await res.json() as { branch: Branch };
+  return data.branch;
+}
+
 export async function mergeBranchDryRunApi(branchId: string, apiUrl?: string): Promise<DiffResult> {
   const res = await platformFetch(
     `/projects/v1/branches/${branchId}/merge?dryRun=true`,
