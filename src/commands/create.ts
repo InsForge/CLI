@@ -158,7 +158,8 @@ export function registerCreateCommand(program: Command): void {
     .option('--name <name>', 'Project name')
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
-    .option('--template <template>', 'Template to use: react, nextjs, nextjs-better-auth, chatbot, crm, e-commerce, todo, or empty')
+    .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, todo, or empty')
+    .option('--auth <provider>', 'Wire a third-party auth provider into the chosen template (currently: better-auth)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -221,9 +222,25 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 3. Select template (two-step: blank vs template, then pick template)
-        const validTemplates = ['react', 'nextjs', 'nextjs-better-auth', 'chatbot', 'crm', 'e-commerce', 'todo', 'empty'];
+        const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo', 'empty'];
+        const validAuthProviders = ['better-auth'];
         let template = opts.template as string | undefined;
-        if (template && !validTemplates.includes(template)) {
+
+        // --auth composes onto a base template. nextjs --auth better-auth
+        // resolves to the nextjs-better-auth directory in the templates repo.
+        // Auth providers are not surfaced in the interactive picker — flag-only.
+        if (opts.auth) {
+          if (!validAuthProviders.includes(opts.auth)) {
+            throw new CLIError(`Invalid --auth "${opts.auth}". Valid: ${validAuthProviders.join(', ')}`);
+          }
+          const base = template ?? 'nextjs';
+          if (base !== 'nextjs') {
+            throw new CLIError(`--auth ${opts.auth} only supports --template nextjs today`);
+          }
+          template = `${base}-${opts.auth}`;
+        }
+
+        if (template && !validTemplates.includes(template) && !template.includes('-')) {
           throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
         }
         if (!template) {

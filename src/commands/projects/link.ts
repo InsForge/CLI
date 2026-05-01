@@ -34,7 +34,8 @@ export function registerProjectLinkCommand(program: Command): void {
     .description('Link current directory to an InsForge project')
     .option('--project-id <id>', 'Project ID to link')
     .option('--org-id <id>', 'Organization ID')
-    .option('--template <template>', 'Download a template after linking: react, nextjs, nextjs-better-auth, chatbot, crm, e-commerce, todo')
+    .option('--template <template>', 'Download a template after linking: react, nextjs, chatbot, crm, e-commerce, todo')
+    .option('--auth <provider>', 'Wire a third-party auth provider into the chosen template (currently: better-auth)')
     .option('--api-base-url <url>', 'API Base URL for direct linking (OSS/Self-hosted)')
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
     .action(async (opts, cmd) => {
@@ -43,10 +44,28 @@ export function registerProjectLinkCommand(program: Command): void {
       // Every template value accepted here is a directory in the InsForge
       // templates repo, so validation and the download call reference the
       // same single list.
-      const validTemplates = ['react', 'nextjs', 'nextjs-better-auth', 'chatbot', 'crm', 'e-commerce', 'todo'];
+      const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo'];
+      const validAuthProviders = ['better-auth'];
+
+      // --auth composes onto a base template by mapping to a flat directory:
+      // `--template nextjs --auth better-auth` resolves to `nextjs-better-auth`.
+      // The composed dir must exist in the templates repo.
+      if (opts.auth) {
+        if (!validAuthProviders.includes(opts.auth)) {
+          throw new CLIError(`Invalid --auth "${opts.auth}". Valid: ${validAuthProviders.join(', ')}`);
+        }
+        const base = opts.template ?? 'nextjs';
+        if (!validTemplates.includes(base)) {
+          throw new CLIError(`--auth requires a base template. Valid: ${validTemplates.join(', ')}`);
+        }
+        if (base !== 'nextjs') {
+          throw new CLIError(`--auth ${opts.auth} only supports --template nextjs today`);
+        }
+        opts.template = `${base}-${opts.auth}`;
+      }
 
       try {
-        if (opts.template && !validTemplates.includes(opts.template)) {
+        if (opts.template && !validTemplates.includes(opts.template) && !opts.template.includes('-')) {
           throw new CLIError(`Invalid template "${opts.template}". Valid options: ${validTemplates.join(', ')}`);
         }
 
