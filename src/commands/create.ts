@@ -12,7 +12,8 @@ import {
   getProject,
   getProjectApiKey,
 } from '../lib/api/platform.js';
-import { getAnonKey, runRawSql } from '../lib/api/oss.js';
+import { getAnonKey, getJwtSecret, runRawSql } from '../lib/api/oss.js';
+import { randomBytes } from 'node:crypto';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
@@ -157,7 +158,7 @@ export function registerCreateCommand(program: Command): void {
     .option('--name <name>', 'Project name')
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
-    .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, todo, or empty')
+    .option('--template <template>', 'Template to use: react, nextjs, nextjs-better-auth, chatbot, crm, e-commerce, todo, or empty')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -220,7 +221,7 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 3. Select template (two-step: blank vs template, then pick template)
-        const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo', 'empty'];
+        const validTemplates = ['react', 'nextjs', 'nextjs-better-auth', 'chatbot', 'crm', 'e-commerce', 'todo', 'empty'];
         let template = opts.template as string | undefined;
         if (template && !validTemplates.includes(template)) {
           throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
@@ -333,7 +334,7 @@ export function registerCreateCommand(program: Command): void {
         s?.stop(`Project "${project.name}" created and linked`);
 
         // 7. Download template or seed env for blank projects
-        const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
+        const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'nextjs-better-auth', 'react', 'todo'];
         if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {
@@ -563,9 +564,13 @@ export async function downloadGitHubTemplate(
   try {
     await fs.mkdir(tempDir, { recursive: true });
 
-    // Shallow clone the templates repo
+    // Shallow clone the templates repo. INSFORGE_TEMPLATES_REPO + INSFORGE_TEMPLATES_BRANCH
+    // are escape hatches for development against unmerged template branches.
+    const templatesRepo = process.env.INSFORGE_TEMPLATES_REPO ?? 'https://github.com/InsForge/insforge-templates.git';
+    const templatesBranch = process.env.INSFORGE_TEMPLATES_BRANCH;
+    const branchFlag = templatesBranch ? ` -b ${templatesBranch}` : '';
     await execAsync(
-      'git clone --depth 1 https://github.com/InsForge/insforge-templates.git .',
+      `git clone --depth 1${branchFlag} ${templatesRepo} .`,
       { cwd: tempDir, maxBuffer: 10 * 1024 * 1024, timeout: 60_000 },
     );
 
@@ -585,6 +590,10 @@ export async function downloadGitHubTemplate(
     const envExampleExists = await fs.stat(envExamplePath).catch(() => null);
     if (envExampleExists) {
       const anonKey = await getAnonKey();
+      // JWT_SECRET is fetched lazily — only some templates need it (BA-style
+      // bridge integrations). Cache the result so we don't re-call the API
+      // for every matching var.
+      let jwtSecret: string | null | undefined;
       const envExample = await fs.readFile(envExamplePath, 'utf-8');
       const envContent = envExample.replace(
         /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
@@ -593,12 +602,32 @@ export async function downloadGitHubTemplate(
           if (/INSFORGE.*(URL|BASE_URL)$/.test(key)) return `${prefix}${projectConfig.oss_host}`;
           if (/INSFORGE.*ANON_KEY$/.test(key)) return `${prefix}${anonKey}`;
           if (key === 'NEXT_PUBLIC_APP_URL') return `${prefix}https://${projectConfig.appkey}.insforge.site`;
+          // BA-style auth scaffolds: the bridge route signs HS256 with the same
+          // secret InsForge uses internally.
+          if (/JWT_SECRET$/.test(key)) {
+            if (jwtSecret === undefined) jwtSecret = null; // sentinel; will be resolved below
+            return `__JWT_SECRET_PLACEHOLDER__${prefix}__JWT_SECRET_PLACEHOLDER__`;
+          }
+          // Auto-generate Better Auth's own session secret.
+          if (key === 'BETTER_AUTH_SECRET') return `${prefix}${randomBytes(32).toString('hex')}`;
           return `${prefix}${_value}`;
         },
       );
+      // If the template referenced JWT_SECRET, fetch it once and substitute.
+      let envFinal = envContent;
+      if (envContent.includes('__JWT_SECRET_PLACEHOLDER__')) {
+        const secret = await getJwtSecret();
+        envFinal = envContent.replace(
+          /__JWT_SECRET_PLACEHOLDER__([A-Z][A-Z0-9_]*=)__JWT_SECRET_PLACEHOLDER__/g,
+          (_match, prefix: string) => `${prefix}${secret ?? `replace-with-output-of-cli-secrets-get-JWT_SECRET`}`,
+        );
+        if (!secret && !json) {
+          clack.log.warn('Could not auto-fill JWT_SECRET — run `npx @insforge/cli secrets get JWT_SECRET` and paste it into .env.local.');
+        }
+      }
       const envLocalPath = path.join(cwd, '.env.local');
       try {
-        await fs.writeFile(envLocalPath, envContent, { flag: 'wx' });
+        await fs.writeFile(envLocalPath, envFinal, { flag: 'wx' });
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
           if (!json) clack.log.warn('.env.local already exists; skipping env seeding.');

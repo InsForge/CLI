@@ -34,7 +34,7 @@ export function registerProjectLinkCommand(program: Command): void {
     .description('Link current directory to an InsForge project')
     .option('--project-id <id>', 'Project ID to link')
     .option('--org-id <id>', 'Organization ID')
-    .option('--template <template>', 'Download a template after linking: react, nextjs, chatbot, crm, e-commerce, todo')
+    .option('--template <template>', 'Download a template after linking: react, nextjs, nextjs-better-auth, chatbot, crm, e-commerce, todo')
     .option('--api-base-url <url>', 'API Base URL for direct linking (OSS/Self-hosted)')
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
     .action(async (opts, cmd) => {
@@ -43,7 +43,7 @@ export function registerProjectLinkCommand(program: Command): void {
       // Every template value accepted here is a directory in the InsForge
       // templates repo, so validation and the download call reference the
       // same single list.
-      const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo'];
+      const validTemplates = ['react', 'nextjs', 'nextjs-better-auth', 'chatbot', 'crm', 'e-commerce', 'todo'];
 
       try {
         if (opts.template && !validTemplates.includes(opts.template)) {
