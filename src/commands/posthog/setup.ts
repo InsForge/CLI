@@ -163,11 +163,20 @@ async function runConnectFlow(
   token: string,
   opts: RunSetupOpts,
 ): Promise<PosthogConnectionResponse> {
-  // `action=connect` triggers the cloud-shell auto-trigger (fires OAuth start
-  // and redirects to PostHog before the iframe matters). `route=/dashboard/analytics`
-  // is a fallback so that if auto-trigger fails for any reason, the iframe at
-  // least lands on the Analytics page where the Connect PostHog button is visible.
-  const url = `${getFrontendUrl()}/dashboard/project/${projectId}?action=connect&route=${encodeURIComponent('/dashboard/analytics')}`;
+  // The URL has TWO `action=connect` params, one outer + one inside the route.
+  //
+  //   ?action=connect                     → cloud-shell auto-trigger fires
+  //                                          OAuth start directly
+  //   route=/dashboard/analytics?action=connect → cloud passes this to the iframe
+  //                                                src, OSS Analytics page sees
+  //                                                its own ?action=connect and
+  //                                                fires connect via postMessage
+  //
+  // Both layers attempt to trigger; whichever runs first wins (idempotent).
+  // This way the flow is robust whether or not the cloud-shell deploy or OSS
+  // dashboard deploy has the auto-trigger code.
+  const innerRoute = '/dashboard/analytics?action=connect';
+  const url = `${getFrontendUrl()}/dashboard/project/${projectId}?action=connect&route=${encodeURIComponent(innerRoute)}`;
 
   if (!opts.json) {
     clack.log.info('PostHog is not connected to this project yet.');
