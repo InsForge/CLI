@@ -98,6 +98,72 @@ export interface ProjectConfig {
   region: string;
   api_key: string;
   oss_host: string;
+  /** When set, this directory is currently switched onto a branch. Carries
+   *  the original parent project's identifying fields so name → branch_id
+   *  resolution and `branch switch --parent` know where to land back. */
+  branched_from?: { project_id: string; project_name: string };
+}
+
+// --- Branching ---
+
+export interface Branch {
+  id: string;
+  parent_project_id: string;
+  organization_id: string;
+  name: string;
+  appkey: string;
+  region: string;
+  status?: string;
+  branch_state: 'creating' | 'ready' | 'merging' | 'merged' | 'conflicted' | 'deleted' | 'resetting';
+  branch_created_at: string;
+  branch_metadata?: {
+    mode: 'full' | 'schema-only';
+    parent_t0?: unknown;
+    source_backup_s3_key?: string;
+  };
+}
+
+export type BranchMode = 'full' | 'schema-only';
+
+export interface DiffChange {
+  schema: string;
+  object: string;
+  type: 'table' | 'policy' | 'function' | 'config_row' | 'migration' | 'edge_function';
+  action: 'add' | 'modify' | 'drop';
+  sql: string;
+}
+
+export interface DiffConflict {
+  schema: string;
+  object: string;
+  type: DiffChange['type'];
+  parent_t0_hash: string;
+  parent_now_hash: string;
+  branch_now_hash: string;
+  hint: string;
+}
+
+export interface DiffResult {
+  summary: { added: number; modified: number; conflicts: number };
+  /** Migration-file-style SQL preview, BEGIN/COMMIT-wrapped, with section
+   *  headers ([DDL] / [DATA] / [MIGRATION]). On conflict, leads with a
+   *  `-- ⚠️ MERGE BLOCKED` banner. Safe to print to stdout / save to file. */
+  rendered_sql: string;
+  changes: DiffChange[];
+  conflicts: DiffConflict[];
+}
+
+export interface MergeExecuteResponse {
+  branchId: string;
+  status: 'merged';
+  diff: DiffResult;
+}
+
+export interface MergeConflictResponse {
+  code: string;
+  error: string;
+  requestId?: string;
+  diff: DiffResult;
 }
 
 // API Error

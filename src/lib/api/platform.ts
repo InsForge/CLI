@@ -3,17 +3,32 @@ import { AuthError, CLIError, formatFetchError } from '../errors.js';
 import { refreshAccessToken } from '../credentials.js';
 import type {
   ApiKeyResponse,
+  Branch,
+  BranchMode,
+  DiffResult,
   LoginResponse,
+  MergeConflictResponse,
+  MergeExecuteResponse,
   Organization,
   Project,
   User,
 } from '../../types.js';
 
+export interface PlatformFetchOptions extends RequestInit {
+  /**
+   * HTTP status codes that should be returned to the caller instead of
+   * thrown as CLIError. The 401-refresh path is unaffected. Use when the
+   * caller wants to render a structured error body (e.g. merge 409).
+   */
+  passThroughStatuses?: number[];
+}
+
 export async function platformFetch(
   path: string,
-  options: RequestInit = {},
+  options: PlatformFetchOptions = {},
   apiUrl?: string,
 ): Promise<Response> {
+  const { passThroughStatuses, ...fetchOptions } = options;
   const baseUrl = getPlatformApiUrl(apiUrl);
   const token = getAccessToken();
   if (!token) {
@@ -22,21 +37,21 @@ export async function platformFetch(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
-    ...(options.headers as Record<string, string> ?? {}),
+    ...(fetchOptions.headers as Record<string, string> ?? {}),
   };
 
   const fullUrl = `${baseUrl}${path}`;
   if (process.env.INSFORGE_DEBUG) {
-    console.error(`[DEBUG] ${options.method ?? 'GET'} ${fullUrl}`);
+    console.error(`[DEBUG] ${fetchOptions.method ?? 'GET'} ${fullUrl}`);
     console.error(`[DEBUG] Headers: ${JSON.stringify(headers, null, 2)}`);
-    if (options.body) {
-      console.error(`[DEBUG] Body: ${typeof options.body === 'string' ? options.body : JSON.stringify(options.body)}`);
+    if (fetchOptions.body) {
+      console.error(`[DEBUG] Body: ${typeof fetchOptions.body === 'string' ? fetchOptions.body : JSON.stringify(fetchOptions.body)}`);
     }
   }
 
   let res: Response;
   try {
-    res = await fetch(fullUrl, { ...options, headers });
+    res = await fetch(fullUrl, { ...fetchOptions, headers });
   } catch (err) {
     throw new CLIError(formatFetchError(err, fullUrl));
   }
@@ -47,15 +62,22 @@ export async function platformFetch(
     headers.Authorization = `Bearer ${newToken}`;
     let retryRes: Response;
     try {
-      retryRes = await fetch(fullUrl, { ...options, headers });
+      retryRes = await fetch(fullUrl, { ...fetchOptions, headers });
     } catch (err) {
       throw new CLIError(formatFetchError(err, fullUrl));
+    }
+    if (passThroughStatuses?.includes(retryRes.status)) {
+      return retryRes;
     }
     if (!retryRes.ok) {
       const err = await retryRes.json().catch(() => ({})) as { error?: string };
       throw new CLIError(err.error ?? `Request failed: ${retryRes.status}`, retryRes.status === 403 ? 5 : 1);
     }
     return retryRes;
+  }
+
+  if (passThroughStatuses?.includes(res.status)) {
+    return res;
   }
 
   if (!res.ok) {
@@ -261,5 +283,82 @@ export async function createProject(
   }, apiUrl);
   const data = await res.json() as { project?: Project };
   return data.project ?? (data as unknown as Project);
+}
+
+// --- Branching ---
+
+export async function createBranchApi(
+  parentProjectId: string,
+  body: { mode: BranchMode; name: string },
+  apiUrl?: string,
+): Promise<Branch> {
+  const res = await platformFetch(`/projects/v1/${parentProjectId}/branches`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, apiUrl);
+  const data = await res.json() as { branch: Branch };
+  return data.branch;
+}
+
+export async function listBranchesApi(parentProjectId: string, apiUrl?: string): Promise<Branch[]> {
+  const res = await platformFetch(`/projects/v1/${parentProjectId}/branches`, {}, apiUrl);
+  const data = await res.json() as { data?: Branch[] };
+  return data.data ?? [];
+}
+
+export async function getBranchApi(branchId: string, apiUrl?: string): Promise<Branch> {
+  const res = await platformFetch(`/projects/v1/branches/${branchId}`, {}, apiUrl);
+  const data = await res.json() as { branch: Branch };
+  return data.branch;
+}
+
+export async function deleteBranchApi(branchId: string, apiUrl?: string): Promise<void> {
+  await platformFetch(`/projects/v1/branches/${branchId}`, { method: 'DELETE' }, apiUrl);
+}
+
+/**
+ * Trigger an async branch reset. Backend transitions branch_state to
+ * 'resetting', kicks off pg_restore from the T0 backup, and returns 202
+ * with the post-transition row. Callers should poll getBranchApi until
+ * branch_state goes back to 'ready'.
+ */
+export async function resetBranchApi(branchId: string, apiUrl?: string): Promise<Branch> {
+  const res = await platformFetch(
+    `/projects/v1/branches/${branchId}/reset`,
+    { method: 'POST' },
+    apiUrl,
+  );
+  const data = await res.json() as { branch: Branch };
+  return data.branch;
+}
+
+export async function mergeBranchDryRunApi(branchId: string, apiUrl?: string): Promise<DiffResult> {
+  const res = await platformFetch(
+    `/projects/v1/branches/${branchId}/merge?dryRun=true`,
+    { method: 'POST' },
+    apiUrl,
+  );
+  return await res.json() as DiffResult;
+}
+
+/**
+ * Merge execute. Returns the success body on clean merge, or the conflict
+ * body on 409. The 409 status is passed through platformFetch so callers
+ * can render the diff/conflict structure directly while still inheriting
+ * the auto-401-refresh and debug logging behavior.
+ */
+export async function mergeBranchExecuteApi(
+  branchId: string,
+  apiUrl?: string,
+): Promise<{ ok: true; result: MergeExecuteResponse } | { ok: false; conflict: MergeConflictResponse }> {
+  const res = await platformFetch(
+    `/projects/v1/branches/${branchId}/merge`,
+    { method: 'POST', passThroughStatuses: [409] },
+    apiUrl,
+  );
+  if (res.status === 409) {
+    return { ok: false, conflict: await res.json() as MergeConflictResponse };
+  }
+  return { ok: true, result: await res.json() as MergeExecuteResponse };
 }
 
