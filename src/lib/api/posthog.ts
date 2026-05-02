@@ -170,6 +170,70 @@ export async function pollPosthogConnection(
   }
 }
 
+export type PosthogCliStartResponse =
+  | { type: 'connected' }
+  | { type: 'authorize'; authorizeUrl: string };
+
+/**
+ * GET /integrations/posthog/cli-start?p=<projectId>
+ *
+ * Asks cloud-backend whether this project is already connected (or can be
+ * inline auto-provisioned for new users) — in which case we skip the browser
+ * hop entirely. Otherwise returns a direct PostHog `authorizeUrl` that the
+ * user must consent at; the URL points straight at posthog.com (no Insforge
+ * dashboard in the path).
+ */
+export async function startPosthogCliFlow(
+  projectId: string,
+  jwt: string,
+  apiUrl?: string,
+): Promise<PosthogCliStartResponse> {
+  const baseUrl = getPlatformApiUrl(apiUrl);
+  const url = `${baseUrl}/integrations/posthog/cli-start?p=${encodeURIComponent(projectId)}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${jwt}`,
+        Accept: 'application/json',
+      },
+    });
+  } catch (err) {
+    throw new CLIError(`Failed to start PostHog connect flow: ${formatFetchError(err, url)}`);
+  }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    const msg = body.error ?? res.statusText ?? `HTTP ${res.status}`;
+    if (res.status === 401) {
+      throw new CLIError(`Not authenticated (HTTP 401): ${msg}. Re-run \`insforge login\`.`);
+    }
+    if (res.status === 403) {
+      throw new CLIError(`Forbidden (HTTP 403): ${msg}`, 5);
+    }
+    if (res.status === 404) {
+      throw new CLIError(
+        `PostHog connect flow unavailable (HTTP 404): ${msg}. Check that the project is linked.`,
+      );
+    }
+    throw new CLIError(`PostHog cli-start failed (HTTP ${res.status}): ${msg}`);
+  }
+
+  const data = (await res.json().catch(() => ({}))) as Partial<PosthogCliStartResponse> & {
+    authorizeUrl?: string;
+  };
+
+  if (data.type === 'connected') {
+    return { type: 'connected' };
+  }
+  if (data.type === 'authorize' && typeof data.authorizeUrl === 'string' && data.authorizeUrl) {
+    return { type: 'authorize', authorizeUrl: data.authorizeUrl };
+  }
+  throw new CLIError('PostHog cli-start returned an unexpected response shape.');
+}
+
 export interface PosthogCliCredentials {
   apiKey: string;            // phc_
   personalApiKey: string;    // phx_

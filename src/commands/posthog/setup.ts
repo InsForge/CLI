@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
-import { getProjectConfig, getAccessToken, getFrontendUrl } from '../../lib/config.js';
+import { getProjectConfig, getAccessToken } from '../../lib/config.js';
 import {
   handleError,
   getRootOpts,
@@ -12,9 +12,9 @@ import {
 } from '../../lib/errors.js';
 import { isInteractive } from '../../lib/prompts.js';
 import {
-  fetchPosthogConnection,
   pollPosthogConnection,
   fetchPosthogCliCredentials,
+  startPosthogCliFlow,
   type PosthogConnectionResponse,
   type PosthogCliCredentials,
 } from '../../lib/api/posthog.js';
@@ -64,10 +64,9 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
     throw new ProjectNotLinkedError();
   }
 
-  // 2. Login token (raw access — fetchPosthogConnection takes the JWT directly
-  // because cloud-backend's connection endpoint uses user-Bearer auth, not the
-  // refresh-on-401 path. Re-running `insforge login` is the recovery; we don't
-  // need to plumb refresh here.)
+  // 2. Login token (raw access — cloud-backend's posthog endpoints use
+  // user-Bearer auth, not the refresh-on-401 path. Re-running `insforge login`
+  // is the recovery; we don't plumb refresh here.)
   const token = getAccessToken();
   if (!token) {
     throw new AuthError('Not logged in. Run `insforge login` first.');
@@ -78,29 +77,36 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
     outputSuccess(`Linked to InsForge project: ${proj.project_name} (${proj.project_id})`);
   }
 
-  // 3. Fetch existing connection
-  let conn = await fetchExistingConnection(proj.project_id, token, opts);
+  // 3. Ask cloud-backend whether we need a browser hop. New users may be
+  // auto-provisioned inline server-side, in which case we skip step 4 entirely.
+  const startResult = await startPosthogCliFlow(proj.project_id, token, opts.apiUrl);
 
-  // 4. If no connection, prompt browser flow + poll
-  if (!conn) {
-    conn = await runConnectFlow(proj.project_id, token, opts);
+  if (startResult.type === 'connected') {
+    if (!opts.json) {
+      outputSuccess('PostHog already connected (or auto-provisioned for new user). Installing SDK...');
+    }
+  } else {
+    await runConnectFlow(proj.project_id, token, startResult.authorizeUrl, opts);
   }
 
-  if (!conn.apiKey) {
-    // Defensive: pollPosthogConnection should have guaranteed a phc_ key,
-    // but cloud-backend could conceivably 200 with a partial body.
-    throw new CLIError('Connection succeeded but cloud-backend returned no apiKey. Try again or check the dashboard.');
-  }
-
-  // 5. Fetch CLI credentials (includes phx_ — sensitive, used for wizard --ci)
+  // 4. Fetch CLI credentials (includes phx_ — sensitive, used for wizard --ci)
   const creds = await fetchPosthogCliCredentials(proj.project_id, token, opts.apiUrl);
 
-  // 6. Spawn `npx -y @posthog/wizard@latest --ci` with credentials. Wizard
+  // 5. Spawn `npx -y @posthog/wizard@latest --ci` with credentials. Wizard
   // auto-detects framework from the user's package.json — we don't.
   const exitCode = await spawnWizard(creds, opts);
 
   if (!opts.json) {
     if (exitCode === 0) {
+      const ingestHost = creds.region.toLowerCase() === 'eu'
+        ? 'https://eu.i.posthog.com'
+        : 'https://us.i.posthog.com';
+      outputInfo(
+        `To verify the connection without launching your app, send a test event:\n` +
+          `  curl -X POST ${ingestHost}/i/v0/e/ \\\n` +
+          `    -H 'Content-Type: application/json' \\\n` +
+          `    -d '{"api_key":"${creds.apiKey}","event":"$pageview","distinct_id":"cli_test","properties":{"$current_url":"https://example.com"}}'`
+      );
       clack.outro('Done. Run your dev server to start sending events.');
     } else {
       clack.outro(pc.yellow(`Wizard exited with code ${exitCode}. See output above for details.`));
@@ -139,56 +145,23 @@ async function spawnWizard(
   });
 }
 
-async function fetchExistingConnection(
-  projectId: string,
-  token: string,
-  opts: RunSetupOpts,
-): Promise<PosthogConnectionResponse | null> {
-  const result = await fetchPosthogConnection(projectId, token, opts.apiUrl);
-  switch (result.kind) {
-    case 'connected':
-      if (!opts.json) outputSuccess('PostHog already connected to this project.');
-      return result.connection;
-    case 'not-connected':
-      return null;
-    case 'forbidden':
-      throw new CLIError(`Forbidden: ${result.message}`, 5);
-    case 'error':
-      throw new CLIError(`Could not check PostHog connection: ${result.message}`);
-  }
-}
-
 async function runConnectFlow(
   projectId: string,
   token: string,
+  authorizeUrl: string,
   opts: RunSetupOpts,
 ): Promise<PosthogConnectionResponse> {
-  // The URL has TWO `action=connect` params, one outer + one inside the route.
-  //
-  //   ?action=connect                     → cloud-shell auto-trigger fires
-  //                                          OAuth start directly
-  //   route=/dashboard/analytics?action=connect → cloud passes this to the iframe
-  //                                                src, OSS Analytics page sees
-  //                                                its own ?action=connect and
-  //                                                fires connect via postMessage
-  //
-  // Both layers attempt to trigger; whichever runs first wins (idempotent).
-  // This way the flow is robust whether or not the cloud-shell deploy or OSS
-  // dashboard deploy has the auto-trigger code.
-  const innerRoute = '/dashboard/analytics?action=connect';
-  const url = `${getFrontendUrl()}/dashboard/project/${projectId}?action=connect&route=${encodeURIComponent(innerRoute)}`;
-
   if (!opts.json) {
     clack.log.info('PostHog is not connected to this project yet.');
     outputInfo('');
-    outputInfo(`Open this URL to authorize PostHog:\n  ${pc.cyan(pc.underline(url))}`);
+    outputInfo(`Open this URL to authorize PostHog:\n  ${pc.cyan(pc.underline(authorizeUrl))}`);
     outputInfo('');
   }
 
   if (!opts.skipBrowser) {
     try {
       const open = (await import('open')).default;
-      await open(url);
+      await open(authorizeUrl);
     } catch {
       // Best-effort — URL was already printed above.
     }
