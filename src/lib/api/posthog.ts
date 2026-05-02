@@ -1,6 +1,27 @@
 import { getPlatformApiUrl } from '../config.js';
 import { CLIError, formatFetchError } from '../errors.js';
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
+// Wraps fetch with a per-request 30s timeout. If `callerSignal` aborts, the
+// fetch aborts too. Always clears the timeout on completion.
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  callerSignal?: AbortSignal,
+): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
+  const onCallerAbort = (): void => ac.abort();
+  callerSignal?.addEventListener('abort', onCallerAbort);
+  try {
+    return await fetch(url, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', onCallerAbort);
+  }
+}
+
 export interface PosthogConnectionResponse {
   apiKey?: string;
   region?: string;
@@ -38,19 +59,24 @@ export async function fetchPosthogConnection(
   projectId: string,
   jwt: string,
   apiUrl?: string,
+  signal?: AbortSignal,
 ): Promise<ConnectionFetch> {
   const baseUrl = getPlatformApiUrl(apiUrl);
   const url = `${baseUrl}/integrations/posthog/connection?project_id=${encodeURIComponent(projectId)}`;
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        Accept: 'application/json',
+    res = await fetchWithTimeout(
+      url,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          Accept: 'application/json',
+        },
       },
-    });
+      signal,
+    );
   } catch (err) {
     return { kind: 'error', message: formatFetchError(err, url) };
   }
@@ -146,7 +172,7 @@ export async function pollPosthogConnection(
     }
     opts.onTick?.(elapsed);
 
-    const result = await fetchPosthogConnection(projectId, jwt, apiUrl);
+    const result = await fetchPosthogConnection(projectId, jwt, apiUrl, opts.signal);
 
     switch (result.kind) {
       case 'connected':
@@ -193,7 +219,7 @@ export async function startPosthogCliFlow(
 
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${jwt}`,
@@ -260,7 +286,7 @@ export async function fetchPosthogCliCredentials(
 
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${jwt}`,

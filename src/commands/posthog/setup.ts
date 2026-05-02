@@ -137,7 +137,7 @@ async function spawnWizard(
   return await new Promise<number | null>((resolve, reject) => {
     const child = spawn('npx', args, {
       cwd: process.cwd(),
-      stdio: opts.json ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+      stdio: opts.json ? ['ignore', 'ignore', 'ignore'] : 'inherit',
       env: process.env,
     });
     child.on('error', err => reject(new CLIError(`Failed to launch wizard: ${err.message}`)));
@@ -151,7 +151,14 @@ async function runConnectFlow(
   authorizeUrl: string,
   opts: RunSetupOpts,
 ): Promise<PosthogConnectionResponse> {
-  if (!opts.json) {
+  if (opts.json) {
+    // JSON mode: keep stdout clean for the final result object. Print the
+    // URL to stderr so a human can copy it if the browser fails to open.
+    process.stderr.write(`Authorize PostHog: ${authorizeUrl}\n`);
+    process.stderr.write(
+      'Your browser should open automatically. If not, copy the URL above.\n',
+    );
+  } else {
     clack.log.info('PostHog is not connected to this project yet.');
     outputInfo('');
     outputInfo(`Open this URL to authorize PostHog:\n  ${pc.cyan(pc.underline(authorizeUrl))}`);
