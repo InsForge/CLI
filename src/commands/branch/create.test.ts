@@ -167,8 +167,11 @@ describe('branch create', () => {
     const program = new Command().exitOverride();
     program.option('--json').option('--api-url <url>').option('-y, --yes');
     registerBranchCreateCommand(program);
+    const logs: string[] = [];
     const origLog = console.log;
-    console.log = () => {};
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(' '));
+    };
     try {
       await program.parseAsync(
         ['create', 'feat-x', '--mode', 'full', '--json'],
@@ -178,8 +181,12 @@ describe('branch create', () => {
       console.log = origLog;
     }
     const { runBranchSwitch } = await import('./switch.js');
+    // In JSON mode, the auto-switch must be invoked silently so the create
+    // command emits exactly one JSON document.
     expect(runBranchSwitch).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'feat-x' }),
+      expect.objectContaining({ name: 'feat-x', json: true, silent: true }),
     );
+    // Single JSON payload, parseable as one document.
+    expect(() => JSON.parse(logs.join('\n'))).not.toThrow();
   });
 });

@@ -17,6 +17,12 @@ export interface RunBranchSwitchOptions {
   toParent?: boolean;
   apiUrl: string | undefined;
   json: boolean;
+  /**
+   * Suppress the success/JSON output from this function. Set when called as a
+   * sub-step of another command (e.g. `branch create --switch`) so the caller
+   * can emit a single, authoritative payload.
+   */
+  silent?: boolean;
 }
 
 /**
@@ -46,10 +52,12 @@ export async function runBranchSwitch(input: RunBranchSwitchOptions): Promise<vo
     copyFileSync(parentBackup, projectFile);
     unlinkSync(parentBackup);
     captureEvent(current.project_id, 'cli_branch_switch', { direction: 'to_parent' });
-    if (input.json) {
-      outputJson({ switched: 'parent' });
-    } else {
-      outputSuccess('Switched back to parent.');
+    if (!input.silent) {
+      if (input.json) {
+        outputJson({ switched: 'parent' });
+      } else {
+        outputSuccess('Switched back to parent.');
+      }
     }
     return;
   }
@@ -99,10 +107,12 @@ export async function runBranchSwitch(input: RunBranchSwitchOptions): Promise<vo
 
   captureEvent(parentId, 'cli_branch_switch', { direction: 'to_branch' });
 
-  if (input.json) {
-    outputJson({ switched: 'branch', branch_id: target.id });
-  } else {
-    outputSuccess(`Switched to branch '${target.name}'.`);
+  if (!input.silent) {
+    if (input.json) {
+      outputJson({ switched: 'branch', branch_id: target.id });
+    } else {
+      outputSuccess(`Switched to branch '${target.name}'.`);
+    }
   }
 }
 

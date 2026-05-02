@@ -44,7 +44,9 @@ export function registerBranchDeleteCommand(branch: Command): void {
         const currentlyOnDeleted = project.project_id === target.id;
         if (currentlyOnDeleted) {
           try {
-            await runBranchSwitch({ toParent: true, apiUrl, json });
+            // silent in JSON mode so we don't emit two JSON documents — the
+            // single `outputJson({ deleted, ... })` below is authoritative.
+            await runBranchSwitch({ toParent: true, apiUrl, json, silent: json });
           } catch (err) {
             // Non-fatal: the branch is gone, but we can at least tell the user.
             outputInfo(

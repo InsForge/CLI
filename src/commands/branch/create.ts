@@ -52,7 +52,9 @@ export function registerBranchCreateCommand(branch: Command): void {
         // Run auto-switch BEFORE emitting the final success/JSON payload so a
         // failed switch does not surface as a successful create.
         if (opts.switch && ready.branch_state === 'ready') {
-          await runBranchSwitch({ name, apiUrl, json });
+          // silent in JSON mode so we don't emit two JSON documents — the
+          // single `outputJson({ branch: ready })` below is authoritative.
+          await runBranchSwitch({ name, apiUrl, json, silent: json });
         }
 
         if (json) {

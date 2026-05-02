@@ -103,8 +103,10 @@ describe('branch delete', () => {
     const program = makeProgram();
     await runSilently(program, ['delete', 'feat-x', '--yes', '--json']);
     const { runBranchSwitch } = await import('./switch.js');
+    // In JSON mode, the chained switch-back must be silent so delete emits
+    // exactly one JSON document.
     expect(runBranchSwitch).toHaveBeenCalledWith(
-      expect.objectContaining({ toParent: true }),
+      expect.objectContaining({ toParent: true, json: true, silent: true }),
     );
   });
 
