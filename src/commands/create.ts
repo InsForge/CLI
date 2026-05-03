@@ -380,8 +380,9 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 7b. If --auth was passed, overlay the auth-provider scaffold onto
-        // whatever the template (or blank project) produced. Auth providers are
-        // bundled with the CLI rather than living in the templates repo.
+        // whatever the template (or blank project) produced. Auth-provider
+        // scaffolds are fetched from the InsForge templates repo at runtime
+        // (auth-providers/<name>/), not bundled with the CLI.
         if (opts.auth) {
           try {
             const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
@@ -389,7 +390,9 @@ export function registerCreateCommand(program: Command): void {
               clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
             }
           } catch (err) {
-            if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
+            const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+            if (json) console.error(JSON.stringify({ warning: msg }));
+            else clack.log.warn(msg);
           }
         }
 

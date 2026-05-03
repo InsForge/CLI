@@ -155,7 +155,9 @@ export function registerProjectLinkCommand(program: Command): void {
                   const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
                   if (!json) clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
                 } catch (err) {
-                  if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
+                  const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+                  if (json) outputJson({ success: false, warning: msg });
+                  else clack.log.warn(msg);
                 }
               }
 
@@ -205,7 +207,9 @@ export function registerProjectLinkCommand(program: Command): void {
                   clack.note(result.nextSteps, "What's next");
                 }
               } catch (err) {
-                if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
+                const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+                if (json) console.error(JSON.stringify({ warning: msg }));
+                else clack.log.warn(msg);
               }
             }
 
@@ -382,7 +386,9 @@ export function registerProjectLinkCommand(program: Command): void {
               const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
               if (!json) clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
             } catch (err) {
-              if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
+              const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+              if (json) console.error(JSON.stringify({ warning: msg }));
+              else clack.log.warn(msg);
             }
           }
 
@@ -429,7 +435,9 @@ export function registerProjectLinkCommand(program: Command): void {
                 clack.note(result.nextSteps, "What's next");
               }
             } catch (err) {
-              if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
+              const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+              if (json) console.error(JSON.stringify({ warning: msg }));
+              else clack.log.warn(msg);
             }
           }
 

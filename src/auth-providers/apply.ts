@@ -13,7 +13,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
 import * as clack from '@clack/prompts';
@@ -21,7 +21,7 @@ import * as clack from '@clack/prompts';
 import { getAnonKey, getJwtSecret } from '../lib/api/oss.js';
 import type { ProjectConfig } from '../types.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export const VALID_AUTH_PROVIDERS = ['better-auth'] as const;
 export type AuthProvider = (typeof VALID_AUTH_PROVIDERS)[number];
@@ -125,10 +125,15 @@ async function walkFiles(dir: string, base = dir): Promise<string[]> {
 // user's project.
 const PROVIDER_META_FILES = new Set(['manifest.json', 'README.md']);
 
+// INSFORGE_TEMPLATES_REPO and INSFORGE_TEMPLATES_BRANCH are escape hatches for
+// development against unmerged template branches. They are passed to git via
+// execFile's argv (no shell), but we still validate them so an env var can't
+// inject a `--upload-pack` or other git option that consumes the next argv.
+const SAFE_REPO_PATTERN = /^(https?:\/\/|git@)[A-Za-z0-9._:/@~+-]+(\.git)?$/;
+const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
+
 // Shallow-clone the templates repo and return the path to
-// `auth-providers/<provider>/`. INSFORGE_TEMPLATES_REPO and
-// INSFORGE_TEMPLATES_BRANCH are escape hatches for development against
-// unmerged template branches (same convention as create.ts).
+// `auth-providers/<provider>/`.
 async function fetchProviderTree(provider: AuthProvider): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const tempDir = path.join(tmpdir(), `insforge-auth-${provider}-${Date.now()}`);
   await fs.mkdir(tempDir, { recursive: true });
@@ -136,12 +141,22 @@ async function fetchProviderTree(provider: AuthProvider): Promise<{ dir: string;
 
   try {
     const repo = process.env.INSFORGE_TEMPLATES_REPO ?? 'https://github.com/InsForge/insforge-templates.git';
+    if (!SAFE_REPO_PATTERN.test(repo)) {
+      throw new Error(`INSFORGE_TEMPLATES_REPO has unsupported characters: ${repo}`);
+    }
     const branch = process.env.INSFORGE_TEMPLATES_BRANCH;
-    const branchFlag = branch ? ` -b ${branch}` : '';
-    await execAsync(
-      `git clone --depth 1${branchFlag} ${repo} .`,
-      { cwd: tempDir, maxBuffer: 10 * 1024 * 1024, timeout: 60_000 },
-    );
+    if (branch !== undefined && !SAFE_BRANCH_PATTERN.test(branch)) {
+      throw new Error(`INSFORGE_TEMPLATES_BRANCH has unsupported characters: ${branch}`);
+    }
+
+    const args = ['clone', '--depth', '1'];
+    if (branch) args.push('-b', branch);
+    args.push('--', repo, '.');
+    await execFileAsync('git', args, {
+      cwd: tempDir,
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 60_000,
+    });
 
     const providerDir = path.join(tempDir, 'auth-providers', provider);
     if (!(await pathExists(providerDir))) {
