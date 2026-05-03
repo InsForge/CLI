@@ -18,7 +18,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { installSkills, reportCliUsage } from '../../lib/skills.js';
-import { applyAuthProvider, getAuthProviderNextSteps, VALID_AUTH_PROVIDERS, type AuthProvider } from '../../auth-providers/apply.js';
+import { applyAuthProvider, VALID_AUTH_PROVIDERS, type AuthProvider } from '../../auth-providers/apply.js';
 import { captureEvent, trackCommand, shutdownAnalytics } from '../../lib/analytics.js';
 import { downloadGitHubTemplate } from '../create.js';
 import type { ProjectConfig } from '../../types.js';
@@ -202,8 +202,7 @@ export function registerProjectLinkCommand(program: Command): void {
                 const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
                 if (!json) {
                   clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
-                  const next = getAuthProviderNextSteps(opts.auth as AuthProvider);
-                  clack.note(next, "What's next");
+                  clack.note(result.nextSteps, "What's next");
                 }
               } catch (err) {
                 if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
@@ -427,8 +426,7 @@ export function registerProjectLinkCommand(program: Command): void {
               const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
               if (!json) {
                 clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
-                const next = getAuthProviderNextSteps(opts.auth as AuthProvider);
-                clack.note(next, "What's next");
+                clack.note(result.nextSteps, "What's next");
               }
             } catch (err) {
               if (!json) clack.log.warn(`Failed to apply --auth ${opts.auth}: ${(err as Error).message}`);
