@@ -40,7 +40,7 @@ export type ConnectionFetch =
   | { kind: 'error'; message: string; status?: number };
 
 /**
- * GET /integrations/posthog/connection?project_id=<id>
+ * GET /integrations/posthog/v1/connection?project_id=<id>
  *
  * Endpoint is owned by cloud-backend (added in parallel under the same plan).
  * Uses user-level Bearer auth from `insforge login` rather than the project
@@ -62,7 +62,7 @@ export async function fetchPosthogConnection(
   signal?: AbortSignal,
 ): Promise<ConnectionFetch> {
   const baseUrl = getPlatformApiUrl(apiUrl);
-  const url = `${baseUrl}/integrations/posthog/connection?project_id=${encodeURIComponent(projectId)}`;
+  const url = `${baseUrl}/integrations/posthog/v1/connection?project_id=${encodeURIComponent(projectId)}`;
 
   let res: Response;
   try {
@@ -201,7 +201,7 @@ export type PosthogCliStartResponse =
   | { type: 'authorize'; authorizeUrl: string };
 
 /**
- * GET /integrations/posthog/cli-start?p=<projectId>
+ * GET /integrations/posthog/v1/cli-start?p=<projectId>
  *
  * Asks cloud-backend whether this project is already connected (or can be
  * inline auto-provisioned for new users) — in which case we skip the browser
@@ -215,7 +215,7 @@ export async function startPosthogCliFlow(
   apiUrl?: string,
 ): Promise<PosthogCliStartResponse> {
   const baseUrl = getPlatformApiUrl(apiUrl);
-  const url = `${baseUrl}/integrations/posthog/cli-start?p=${encodeURIComponent(projectId)}`;
+  const url = `${baseUrl}/integrations/posthog/v1/cli-start?p=${encodeURIComponent(projectId)}`;
 
   let res: Response;
   try {
@@ -270,7 +270,7 @@ export interface PosthogCliCredentials {
 }
 
 /**
- * GET /integrations/posthog/cli-credentials?project_id=<id>
+ * GET /integrations/posthog/v1/cli-credentials?project_id=<id>
  *
  * Returns phx_ in addition to phc_ so the CLI can spawn
  * `npx @posthog/wizard --ci --api-key <phx_>`. Same membership rules as
@@ -282,7 +282,7 @@ export async function fetchPosthogCliCredentials(
   apiUrl?: string,
 ): Promise<PosthogCliCredentials> {
   const baseUrl = getPlatformApiUrl(apiUrl);
-  const url = `${baseUrl}/integrations/posthog/cli-credentials?project_id=${encodeURIComponent(projectId)}`;
+  const url = `${baseUrl}/integrations/posthog/v1/cli-credentials?project_id=${encodeURIComponent(projectId)}`;
 
   let res: Response;
   try {
