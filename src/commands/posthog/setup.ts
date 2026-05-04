@@ -1,0 +1,206 @@
+import type { Command } from 'commander';
+import { spawn } from 'node:child_process';
+import * as clack from '@clack/prompts';
+import pc from 'picocolors';
+import { getProjectConfig, getAccessToken } from '../../lib/config.js';
+import {
+  handleError,
+  getRootOpts,
+  CLIError,
+  ProjectNotLinkedError,
+  AuthError,
+} from '../../lib/errors.js';
+import { isInteractive } from '../../lib/prompts.js';
+import {
+  pollPosthogConnection,
+  fetchPosthogCliCredentials,
+  startPosthogCliFlow,
+  type PosthogConnectionResponse,
+  type PosthogCliCredentials,
+} from '../../lib/api/posthog.js';
+import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_TIMEOUT_MS = 15 * 60 * 1000;
+const MAX_TRANSIENT_RETRIES = 5;
+
+interface SetupResult {
+  wizardExitCode: number | null;
+}
+
+export function registerPosthogSetupCommand(program: Command): void {
+  program
+    .command('setup')
+    .description('Install the PostHog SDK into the current directory app')
+    .option('--skip-browser', 'Do not auto-open the browser; only print the URL')
+    .action(async (opts, cmd) => {
+      const { json, apiUrl } = getRootOpts(cmd);
+      try {
+        const result = await runSetup({
+          json,
+          apiUrl,
+          skipBrowser: Boolean(opts.skipBrowser),
+        });
+
+        if (json) {
+          outputJson({ success: true, ...result });
+        }
+      } catch (err) {
+        handleError(err, json);
+      }
+    });
+}
+
+interface RunSetupOpts {
+  json: boolean;
+  apiUrl?: string;
+  skipBrowser: boolean;
+}
+
+async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
+  // 1. Linked project
+  const proj = getProjectConfig();
+  if (!proj || !proj.project_id) {
+    throw new ProjectNotLinkedError();
+  }
+
+  // 2. Login token (raw access — cloud-backend's posthog endpoints use
+  // user-Bearer auth, not the refresh-on-401 path. Re-running `insforge login`
+  // is the recovery; we don't plumb refresh here.)
+  const token = getAccessToken();
+  if (!token) {
+    throw new AuthError('Not logged in. Run `insforge login` first.');
+  }
+
+  if (!opts.json) {
+    clack.intro('PostHog setup');
+    outputSuccess(`Linked to InsForge project: ${proj.project_name} (${proj.project_id})`);
+  }
+
+  // 3. Ask cloud-backend whether we need a browser hop. New users may be
+  // auto-provisioned inline server-side, in which case we skip step 4 entirely.
+  const startResult = await startPosthogCliFlow(proj.project_id, token, opts.apiUrl);
+
+  if (startResult.type === 'connected') {
+    if (!opts.json) {
+      outputSuccess('PostHog already connected (or auto-provisioned for new user). Installing SDK...');
+    }
+  } else {
+    await runConnectFlow(proj.project_id, token, startResult.authorizeUrl, opts);
+  }
+
+  // 4. Fetch CLI credentials (includes phx_ — sensitive, used for wizard --ci)
+  const creds = await fetchPosthogCliCredentials(proj.project_id, token, opts.apiUrl);
+
+  // 5. Spawn `npx -y @posthog/wizard@latest --ci` with credentials. Wizard
+  // auto-detects framework from the user's package.json — we don't.
+  const exitCode = await spawnWizard(creds, opts);
+
+  if (!opts.json) {
+    if (exitCode === 0) {
+      const ingestHost = creds.region.toLowerCase() === 'eu'
+        ? 'https://eu.i.posthog.com'
+        : 'https://us.i.posthog.com';
+      outputInfo(
+        `To verify the connection without launching your app, send a test event:\n` +
+          `  curl -X POST ${ingestHost}/i/v0/e/ \\\n` +
+          `    -H 'Content-Type: application/json' \\\n` +
+          `    -d '{"api_key":"${creds.apiKey}","event":"$pageview","distinct_id":"cli_test","properties":{"$current_url":"https://example.com"}}'`
+      );
+      clack.outro('Done. Run your dev server to start sending events.');
+    } else {
+      clack.outro(pc.yellow(`Wizard exited with code ${exitCode}. See output above for details.`));
+    }
+  }
+
+  return { wizardExitCode: exitCode };
+}
+
+async function spawnWizard(
+  creds: PosthogCliCredentials,
+  opts: RunSetupOpts,
+): Promise<number | null> {
+  const args = [
+    '-y',
+    '@posthog/wizard@latest',
+    '--ci',
+    '--api-key', creds.personalApiKey,
+    '--project-id', String(creds.posthogProjectId),
+    '--region', creds.region.toLowerCase(),
+    '--install-dir', '.',
+  ];
+
+  if (!opts.json) {
+    outputInfo('Running PostHog wizard to install the SDK...');
+  }
+
+  return await new Promise<number | null>((resolve, reject) => {
+    const child = spawn('npx', args, {
+      cwd: process.cwd(),
+      stdio: opts.json ? ['ignore', 'ignore', 'ignore'] : 'inherit',
+      env: process.env,
+    });
+    child.on('error', err => reject(new CLIError(`Failed to launch wizard: ${err.message}`)));
+    child.on('exit', code => resolve(code));
+  });
+}
+
+async function runConnectFlow(
+  projectId: string,
+  token: string,
+  authorizeUrl: string,
+  opts: RunSetupOpts,
+): Promise<PosthogConnectionResponse> {
+  if (opts.json) {
+    // JSON mode: keep stdout clean for the final result object. Print the
+    // URL to stderr so a human can copy it if the browser fails to open.
+    process.stderr.write(`Authorize PostHog: ${authorizeUrl}\n`);
+    process.stderr.write(
+      'Your browser should open automatically. If not, copy the URL above.\n',
+    );
+  } else {
+    clack.log.info('PostHog is not connected to this project yet.');
+    outputInfo('');
+    outputInfo(`Open this URL to authorize PostHog:\n  ${pc.cyan(pc.underline(authorizeUrl))}`);
+    outputInfo('');
+  }
+
+  if (!opts.skipBrowser) {
+    try {
+      const open = (await import('open')).default;
+      await open(authorizeUrl);
+    } catch {
+      // Best-effort — URL was already printed above.
+    }
+  }
+
+  const spinner = !opts.json && isInteractive ? clack.spinner() : null;
+  spinner?.start('Waiting for connection... (timeout: 15 minutes)');
+
+  try {
+    const conn = await pollPosthogConnection(
+      projectId,
+      token,
+      {
+        intervalMs: POLL_INTERVAL_MS,
+        timeoutMs: POLL_TIMEOUT_MS,
+        maxTransientRetries: MAX_TRANSIENT_RETRIES,
+        onTick: (elapsed): void => {
+          if (spinner) {
+            const secs = Math.floor(elapsed / 1000);
+            const mins = Math.floor(secs / 60);
+            const remaining = `${mins}m ${secs % 60}s elapsed`;
+            spinner.message(`Waiting for connection... (${remaining})`);
+          }
+        },
+      },
+      opts.apiUrl,
+    );
+    spinner?.stop('Connection received from PostHog.');
+    return conn;
+  } catch (err) {
+    spinner?.stop('Connection wait failed.');
+    throw err;
+  }
+}
+
