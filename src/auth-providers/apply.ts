@@ -178,7 +178,19 @@ async function loadManifest(providerDir: string): Promise<AuthProviderManifest> 
   if (!(await pathExists(manifestPath))) {
     throw new Error(`Missing manifest.json in ${providerDir}`);
   }
-  return JSON.parse(await fs.readFile(manifestPath, 'utf-8')) as AuthProviderManifest;
+  const parsed = JSON.parse(await fs.readFile(manifestPath, 'utf-8')) as Partial<AuthProviderManifest>;
+  // Sanity-check the shape so a malformed templates manifest fails with a
+  // helpful message instead of a downstream `Cannot read properties of undefined`.
+  const missing: string[] = [];
+  if (typeof parsed.name !== 'string') missing.push('name');
+  if (!Array.isArray(parsed.files)) missing.push('files (array)');
+  if (!parsed.packageJsonPatch || typeof parsed.packageJsonPatch !== 'object') missing.push('packageJsonPatch (object)');
+  if (typeof parsed.envExampleAppend !== 'string') missing.push('envExampleAppend (string)');
+  if (typeof parsed.nextSteps !== 'string') missing.push('nextSteps (string)');
+  if (missing.length > 0) {
+    throw new Error(`Malformed manifest.json in ${providerDir} — missing or wrong-typed fields: ${missing.join(', ')}`);
+  }
+  return parsed as AuthProviderManifest;
 }
 
 export async function applyAuthProvider(

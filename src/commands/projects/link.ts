@@ -156,7 +156,7 @@ export function registerProjectLinkCommand(program: Command): void {
                   if (!json) clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
                 } catch (err) {
                   const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
-                  if (json) outputJson({ success: false, warning: msg });
+                  if (json) console.error(JSON.stringify({ warning: msg }));
                   else clack.log.warn(msg);
                 }
               }

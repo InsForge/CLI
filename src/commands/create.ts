@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
@@ -25,6 +25,14 @@ import { deployProject } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Same safety guard fetchProviderTree uses in apply.ts. INSFORGE_TEMPLATES_REPO
+// and INSFORGE_TEMPLATES_BRANCH are escape hatches for development against
+// unmerged branches; they are passed to git's argv (no shell), but we still
+// validate the values so a hostile env var can't slip in extra git options.
+const SAFE_REPO_PATTERN = /^(https?:\/\/|git@)[A-Za-z0-9._:/@~+-]+(\.git)?$/;
+const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
 export type Framework = 'react' | 'nextjs';
 
@@ -592,13 +600,24 @@ export async function downloadGitHubTemplate(
 
     // Shallow clone the templates repo. INSFORGE_TEMPLATES_REPO + INSFORGE_TEMPLATES_BRANCH
     // are escape hatches for development against unmerged template branches.
+    // Validated against safe-character patterns and passed via argv (execFile),
+    // not a shell string, so a hostile env var can't inject extra git options.
     const templatesRepo = process.env.INSFORGE_TEMPLATES_REPO ?? 'https://github.com/InsForge/insforge-templates.git';
+    if (!SAFE_REPO_PATTERN.test(templatesRepo)) {
+      throw new Error(`INSFORGE_TEMPLATES_REPO has unsupported characters: ${templatesRepo}`);
+    }
     const templatesBranch = process.env.INSFORGE_TEMPLATES_BRANCH;
-    const branchFlag = templatesBranch ? ` -b ${templatesBranch}` : '';
-    await execAsync(
-      `git clone --depth 1${branchFlag} ${templatesRepo} .`,
-      { cwd: tempDir, maxBuffer: 10 * 1024 * 1024, timeout: 60_000 },
-    );
+    if (templatesBranch !== undefined && !SAFE_BRANCH_PATTERN.test(templatesBranch)) {
+      throw new Error(`INSFORGE_TEMPLATES_BRANCH has unsupported characters: ${templatesBranch}`);
+    }
+    const cloneArgs = ['clone', '--depth', '1'];
+    if (templatesBranch) cloneArgs.push('-b', templatesBranch);
+    cloneArgs.push('--', templatesRepo, '.');
+    await execFileAsync('git', cloneArgs, {
+      cwd: tempDir,
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 60_000,
+    });
 
     const templateDir = path.join(tempDir, templateName);
     const stat = await fs.stat(templateDir).catch(() => null);
@@ -664,8 +683,11 @@ export async function downloadGitHubTemplate(
     }
   } catch (err) {
     s?.stop(`${templateName} template download failed`);
-    if (!json) {
-      clack.log.warn(`Failed to download ${templateName} template: ${(err as Error).message}`);
+    const msg = `Failed to download ${templateName} template: ${(err as Error).message}`;
+    if (json) {
+      console.error(JSON.stringify({ warning: msg }));
+    } else {
+      clack.log.warn(msg);
       clack.log.info('You can manually clone from: https://github.com/InsForge/insforge-templates');
     }
   } finally {
