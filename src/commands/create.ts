@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
@@ -13,6 +13,7 @@ import {
   getProjectApiKey,
 } from '../lib/api/platform.js';
 import { getAnonKey, runRawSql } from '../lib/api/oss.js';
+import { applyAuthProvider, VALID_AUTH_PROVIDERS, type AuthProvider } from '../auth-providers/apply.js';
 import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
@@ -24,6 +25,14 @@ import { deployProject } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// Same safety guard fetchProviderTree uses in apply.ts. INSFORGE_TEMPLATES_REPO
+// and INSFORGE_TEMPLATES_BRANCH are escape hatches for development against
+// unmerged branches; they are passed to git's argv (no shell), but we still
+// validate the values so a hostile env var can't slip in extra git options.
+const SAFE_REPO_PATTERN = /^(https?:\/\/|git@)[A-Za-z0-9._:/@~+-]+(\.git)?$/;
+const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
 export type Framework = 'react' | 'nextjs';
 
@@ -158,6 +167,7 @@ export function registerCreateCommand(program: Command): void {
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
     .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, todo, or empty')
+    .option('--auth <provider>', 'Wire a third-party auth provider into the chosen template (currently: better-auth)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -222,6 +232,14 @@ export function registerCreateCommand(program: Command): void {
         // 3. Select template (two-step: blank vs template, then pick template)
         const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo', 'empty'];
         let template = opts.template as string | undefined;
+
+        // --auth is FLAG-ONLY; not in the interactive picker. It composes onto
+        // any base template by overlaying scaffolded files after the template
+        // download. With no --template, it overlays straight into cwd.
+        if (opts.auth && !VALID_AUTH_PROVIDERS.includes(opts.auth)) {
+          throw new CLIError(`Invalid --auth "${opts.auth}". Valid: ${VALID_AUTH_PROVIDERS.join(', ')}`);
+        }
+
         if (template && !validTemplates.includes(template)) {
           throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
         }
@@ -366,6 +384,23 @@ export function registerCreateCommand(program: Command): void {
                 clack.log.warn(`Failed to create .env.local: ${error.message}`);
               }
             }
+          }
+        }
+
+        // 7b. If --auth was passed, overlay the auth-provider scaffold onto
+        // whatever the template (or blank project) produced. Auth-provider
+        // scaffolds are fetched from the InsForge templates repo at runtime
+        // (auth-providers/<name>/), not bundled with the CLI.
+        if (opts.auth) {
+          try {
+            const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
+            if (!json) {
+              clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
+            }
+          } catch (err) {
+            const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+            if (json) console.error(JSON.stringify({ warning: msg }));
+            else clack.log.warn(msg);
           }
         }
 
@@ -563,11 +598,26 @@ export async function downloadGitHubTemplate(
   try {
     await fs.mkdir(tempDir, { recursive: true });
 
-    // Shallow clone the templates repo
-    await execAsync(
-      'git clone --depth 1 https://github.com/InsForge/insforge-templates.git .',
-      { cwd: tempDir, maxBuffer: 10 * 1024 * 1024, timeout: 60_000 },
-    );
+    // Shallow clone the templates repo. INSFORGE_TEMPLATES_REPO + INSFORGE_TEMPLATES_BRANCH
+    // are escape hatches for development against unmerged template branches.
+    // Validated against safe-character patterns and passed via argv (execFile),
+    // not a shell string, so a hostile env var can't inject extra git options.
+    const templatesRepo = process.env.INSFORGE_TEMPLATES_REPO ?? 'https://github.com/InsForge/insforge-templates.git';
+    if (!SAFE_REPO_PATTERN.test(templatesRepo)) {
+      throw new Error(`INSFORGE_TEMPLATES_REPO has unsupported characters: ${templatesRepo}`);
+    }
+    const templatesBranch = process.env.INSFORGE_TEMPLATES_BRANCH;
+    if (templatesBranch !== undefined && !SAFE_BRANCH_PATTERN.test(templatesBranch)) {
+      throw new Error(`INSFORGE_TEMPLATES_BRANCH has unsupported characters: ${templatesBranch}`);
+    }
+    const cloneArgs = ['clone', '--depth', '1'];
+    if (templatesBranch) cloneArgs.push('-b', templatesBranch);
+    cloneArgs.push('--', templatesRepo, '.');
+    await execFileAsync('git', cloneArgs, {
+      cwd: tempDir,
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 60_000,
+    });
 
     const templateDir = path.join(tempDir, templateName);
     const stat = await fs.stat(templateDir).catch(() => null);
@@ -586,7 +636,7 @@ export async function downloadGitHubTemplate(
     if (envExampleExists) {
       const anonKey = await getAnonKey();
       const envExample = await fs.readFile(envExamplePath, 'utf-8');
-      const envContent = envExample.replace(
+      const envFinal = envExample.replace(
         /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
         (_, prefix: string, _value: string) => {
           const key = prefix.slice(0, -1); // remove trailing '='
@@ -596,9 +646,10 @@ export async function downloadGitHubTemplate(
           return `${prefix}${_value}`;
         },
       );
+      // (Auth-provider scaffolds handle their own env vars via applyAuthProvider.)
       const envLocalPath = path.join(cwd, '.env.local');
       try {
-        await fs.writeFile(envLocalPath, envContent, { flag: 'wx' });
+        await fs.writeFile(envLocalPath, envFinal, { flag: 'wx' });
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code === 'EEXIST') {
           if (!json) clack.log.warn('.env.local already exists; skipping env seeding.');
@@ -632,8 +683,11 @@ export async function downloadGitHubTemplate(
     }
   } catch (err) {
     s?.stop(`${templateName} template download failed`);
-    if (!json) {
-      clack.log.warn(`Failed to download ${templateName} template: ${(err as Error).message}`);
+    const msg = `Failed to download ${templateName} template: ${(err as Error).message}`;
+    if (json) {
+      console.error(JSON.stringify({ warning: msg }));
+    } else {
+      clack.log.warn(msg);
       clack.log.info('You can manually clone from: https://github.com/InsForge/insforge-templates');
     }
   } finally {

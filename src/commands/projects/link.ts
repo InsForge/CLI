@@ -18,6 +18,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { installSkills, reportCliUsage } from '../../lib/skills.js';
+import { applyAuthProvider, VALID_AUTH_PROVIDERS, type AuthProvider } from '../../auth-providers/apply.js';
 import { captureEvent, trackCommand, shutdownAnalytics } from '../../lib/analytics.js';
 import { downloadGitHubTemplate } from '../create.js';
 import type { ProjectConfig } from '../../types.js';
@@ -35,6 +36,7 @@ export function registerProjectLinkCommand(program: Command): void {
     .option('--project-id <id>', 'Project ID to link')
     .option('--org-id <id>', 'Organization ID')
     .option('--template <template>', 'Download a template after linking: react, nextjs, chatbot, crm, e-commerce, todo')
+    .option('--auth <provider>', 'Wire a third-party auth provider into the chosen template (currently: better-auth)')
     .option('--api-base-url <url>', 'API Base URL for direct linking (OSS/Self-hosted)')
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
     .action(async (opts, cmd) => {
@@ -44,6 +46,14 @@ export function registerProjectLinkCommand(program: Command): void {
       // templates repo, so validation and the download call reference the
       // same single list.
       const validTemplates = ['react', 'nextjs', 'chatbot', 'crm', 'e-commerce', 'todo'];
+
+      // --auth is a flag-only escape hatch (not in the interactive picker). It
+      // composes onto whatever the link/template flow produces by overlaying
+      // an auth-provider scaffold from CLI's bundled assets — no templates-repo
+      // directory required.
+      if (opts.auth && !VALID_AUTH_PROVIDERS.includes(opts.auth)) {
+        throw new CLIError(`Invalid --auth "${opts.auth}". Valid: ${VALID_AUTH_PROVIDERS.join(', ')}`);
+      }
 
       try {
         if (opts.template && !validTemplates.includes(opts.template)) {
@@ -139,6 +149,18 @@ export function registerProjectLinkCommand(program: Command): void {
                 }
               }
 
+              // Overlay --auth scaffold (after template, before user prompt)
+              if (opts.auth) {
+                try {
+                  const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
+                  if (!json) clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
+                } catch (err) {
+                  const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+                  if (json) console.error(JSON.stringify({ warning: msg }));
+                  else clack.log.warn(msg);
+                }
+              }
+
               await installSkills(json);
               trackCommand('link', 'oss-org', { direct: true, template });
               await reportCliUsage('cli.link_direct', true, 6, projectConfig);
@@ -173,6 +195,22 @@ export function registerProjectLinkCommand(program: Command): void {
               outputJson({ success: true, project: { id: projectConfig.project_id, name: projectConfig.project_name, region: projectConfig.region } });
             } else {
               outputSuccess(`Linked to direct project at ${projectConfig.oss_host}`);
+            }
+
+            // --auth without --template: overlay scaffold straight into cwd.
+            // This is the "add Better Auth to my existing project" flow.
+            if (opts.auth) {
+              try {
+                const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
+                if (!json) {
+                  clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
+                  clack.note(result.nextSteps, "What's next");
+                }
+              } catch (err) {
+                const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+                if (json) console.error(JSON.stringify({ warning: msg }));
+                else clack.log.warn(msg);
+              }
             }
 
             trackCommand('link', 'oss-org', { direct: true });
@@ -342,6 +380,18 @@ export function registerProjectLinkCommand(program: Command): void {
           // Only proceed with install/next steps if template actually downloaded
           const templateDownloaded = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
 
+          // Overlay --auth scaffold (after template, before install).
+          if (opts.auth) {
+            try {
+              const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
+              if (!json) clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
+            } catch (err) {
+              const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+              if (json) console.error(JSON.stringify({ warning: msg }));
+              else clack.log.warn(msg);
+            }
+          }
+
           if (templateDownloaded && !json) {
             const installSpinner = clack.spinner();
             installSpinner.start('Installing dependencies...');
@@ -374,6 +424,23 @@ export function registerProjectLinkCommand(program: Command): void {
             }
           }
         } else {
+          // No template path. If --auth was passed, overlay the auth scaffold
+          // straight into cwd (the "add Better Auth to my existing project"
+          // flow). Otherwise we just save config in cwd and exit.
+          if (opts.auth) {
+            try {
+              const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
+              if (!json) {
+                clack.log.success(`Wired in ${opts.auth}: ${result.written.length} files written, ${result.skipped.length} skipped`);
+                clack.note(result.nextSteps, "What's next");
+              }
+            } catch (err) {
+              const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
+              if (json) console.error(JSON.stringify({ warning: msg }));
+              else clack.log.warn(msg);
+            }
+          }
+
           // No template — install agent skills in the current directory
           await installSkills(json);
           await reportCliUsage('cli.link', true, 6, projectConfig);
