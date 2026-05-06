@@ -40,7 +40,8 @@
     "commander": "^13.1.0",
     "open": "^10.1.0",
     "picocolors": "^1.1.1",
-    "posthog-node": "^5.28.9"
+    "posthog-node": "^5.28.9",
+    "smol-toml": "^1.6.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
