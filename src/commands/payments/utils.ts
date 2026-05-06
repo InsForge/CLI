@@ -1,26 +1,34 @@
-import type { StripeEnvironment } from '@insforge/shared-schemas';
-import { getProjectConfig } from '../../lib/config.js';
-import { CLIError } from '../../lib/errors.js';
-import { shutdownAnalytics, trackPayments } from '../../lib/analytics.js';
+import type { StripeEnvironment } from "@insforge/shared-schemas";
+import { getProjectConfig } from "../../lib/config.js";
+import { CLIError } from "../../lib/errors.js";
+import { shutdownAnalytics, trackPayments } from "../../lib/analytics.js";
 
-export type PaymentCommandTelemetry = Record<string, string | number | boolean | undefined>;
+export type PaymentCommandTelemetry = Record<
+  string,
+  string | number | boolean | undefined
+>;
 
 export function parseEnvironment(value: string): StripeEnvironment {
-  if (value === 'test' || value === 'live') return value;
+  if (value === "test" || value === "live") return value;
   throw new CLIError('Environment must be "test" or "live".');
 }
 
-export function parseEnvironmentOrAll(value: string): StripeEnvironment | 'all' {
-  if (value === 'all') return value;
+export function parseEnvironmentOrAll(
+  value: string,
+): StripeEnvironment | "all" {
+  if (value === "all") return value;
   return parseEnvironment(value);
 }
 
-export function parseBooleanOption(value: string | undefined, flagName: string): boolean | undefined {
+export function parseBooleanOption(
+  value: string | undefined,
+  flagName: string,
+): boolean | undefined {
   if (value === undefined) return undefined;
 
   const normalized = value.toLowerCase();
-  if (normalized === 'true') return true;
-  if (normalized === 'false') return false;
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
 
   throw new CLIError(`${flagName} must be "true" or "false".`);
 }
@@ -45,23 +53,25 @@ export function parseIntegerOption(
   return parsed;
 }
 
-export function parseMetadataOption(value: string | undefined): Record<string, string> | undefined {
+export function parseMetadataOption(
+  value: string | undefined,
+): Record<string, string> | undefined {
   if (value === undefined) return undefined;
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new CLIError('Invalid JSON for --metadata.');
+    throw new CLIError("Invalid JSON for --metadata.");
   }
 
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new CLIError('--metadata must be a JSON object.');
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new CLIError("--metadata must be a JSON object.");
   }
 
   const metadata: Record<string, string> = {};
   for (const [key, raw] of Object.entries(parsed)) {
-    if (typeof raw !== 'string') {
+    if (typeof raw !== "string") {
       throw new CLIError(`Metadata value for "${key}" must be a string.`);
     }
     metadata[key] = raw;
@@ -71,7 +81,7 @@ export function parseMetadataOption(value: string | undefined): Record<string, s
 }
 
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return '-';
+  if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
@@ -80,31 +90,32 @@ export function formatAmount(
   amount: number | null | undefined,
   currency: string | null | undefined,
 ): string {
-  if (amount === null || amount === undefined) return '-';
+  if (amount === null || amount === undefined) return "-";
   const code = currency?.toUpperCase();
   let fractionDigits = 2;
 
   if (code) {
     try {
-      fractionDigits = new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: code,
-      }).resolvedOptions().maximumFractionDigits;
+      fractionDigits =
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: code,
+        }).resolvedOptions().maximumFractionDigits ?? 2;
     } catch {
       fractionDigits = 2;
     }
   }
 
   const divisor = 10 ** fractionDigits;
-  return `${(amount / divisor).toFixed(fractionDigits)} ${code ?? ''}`.trim();
+  return `${(amount / divisor).toFixed(fractionDigits)} ${code ?? ""}`.trim();
 }
 
 export function formatRecurring(
   interval: string | null | undefined,
   intervalCount: number | null | undefined,
 ): string {
-  if (!interval) return 'one-time';
-  return `${intervalCount && intervalCount > 1 ? `${intervalCount} ` : ''}${interval}`;
+  if (!interval) return "one-time";
+  return `${intervalCount && intervalCount > 1 ? `${intervalCount} ` : ""}${interval}`;
 }
 
 export async function trackPaymentUsage(

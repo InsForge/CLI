@@ -10,11 +10,11 @@ import { requireAuth } from "../../lib/credentials.js";
 import { CLIError, getRootOpts, handleError } from "../../lib/errors.js";
 import { outputJson, outputSuccess, outputTable } from "../../lib/output.js";
 import type {
-  CreatePaymentPriceRequest,
+  CreatePaymentPriceBody,
   ListPaymentPricesResponse,
   StripePriceRecurringInterval,
   StripePriceTaxBehavior,
-  UpdatePaymentPriceRequest,
+  UpdatePaymentPriceBody,
 } from "@insforge/shared-schemas";
 import {
   formatAmount,
@@ -26,9 +26,6 @@ import {
   parseMetadataOption,
   trackPaymentUsage,
 } from "./utils.js";
-
-type CreatePaymentPriceBody = Omit<CreatePaymentPriceRequest, "environment">;
-type UpdatePaymentPriceBody = Omit<UpdatePaymentPriceRequest, "environment">;
 type PaymentPrice = ListPaymentPricesResponse["prices"][number];
 
 function nullableString(value: string | undefined): string | null | undefined {

@@ -26,9 +26,8 @@ import type {
   UpdatePaymentPriceBody,
   UpdatePaymentProductBody,
 } from "@insforge/shared-schemas";
-type ListPaymentCustomersQuery = Omit<
-  ListPaymentCustomersRequest,
-  "environment"
+type ListPaymentCustomersQuery = Partial<
+  Omit<ListPaymentCustomersRequest, "environment">
 >;
 
 function withQuery(

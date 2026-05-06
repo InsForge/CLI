@@ -11,9 +11,9 @@ import { requireAuth } from "../../lib/credentials.js";
 import { CLIError, getRootOpts, handleError } from "../../lib/errors.js";
 import { outputJson, outputSuccess, outputTable } from "../../lib/output.js";
 import type {
-  CreatePaymentProductRequest,
+  CreatePaymentProductBody,
   ListPaymentProductsResponse,
-  UpdatePaymentProductRequest,
+  UpdatePaymentProductBody,
 } from "@insforge/shared-schemas";
 import {
   formatAmount,
@@ -23,15 +23,6 @@ import {
   parseMetadataOption,
   trackPaymentUsage,
 } from "./utils.js";
-
-type CreatePaymentProductBody = Omit<
-  CreatePaymentProductRequest,
-  "environment"
->;
-type UpdatePaymentProductBody = Omit<
-  UpdatePaymentProductRequest,
-  "environment"
->;
 type PaymentProduct = ListPaymentProductsResponse["products"][number];
 
 function nullableString(value: string | undefined): string | null | undefined {

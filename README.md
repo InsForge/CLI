@@ -465,7 +465,7 @@ npx @insforge/cli payments catalog --environment test
 npx @insforge/cli payments catalog --environment test --json
 ```
 
-#### `npx @insforge/cli payments customers`
+#### `npx @insforge/cli payments customers --environment <environment>`
 
 List mirrored Stripe customers for admin/debugging workflows.
 
