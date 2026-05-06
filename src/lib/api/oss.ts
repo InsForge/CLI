@@ -38,6 +38,18 @@ export async function getAnonKey(): Promise<string> {
   return data.accessToken;
 }
 
+export async function getJwtSecret(): Promise<string | null> {
+  // Returns null if the project doesn't expose JWT_SECRET — caller falls back
+  // to leaving the env var as-is so the user can fill it manually.
+  try {
+    const res = await ossFetch('/api/secrets/JWT_SECRET');
+    const data = await res.json() as { value?: string };
+    return typeof data.value === 'string' && data.value.length > 0 ? data.value : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function ossFetch(
   path: string,
   options: RequestInit = {},
