@@ -8,9 +8,6 @@ describe('parseConfigToml', () => {
 project_id = "proj-abc"
 
 [auth]
-jwt_expiry = 3600
-enable_signup = true
-site_url = "https://app.example.com"
 additional_redirect_urls = ["http://localhost:3000"]
 
 [storage.buckets.avatars]
@@ -22,9 +19,6 @@ public = false
     expect(parseConfigToml(toml)).toEqual({
       project_id: 'proj-abc',
       auth: {
-        jwt_expiry: 3600,
-        enable_signup: true,
-        site_url: 'https://app.example.com',
         additional_redirect_urls: ['http://localhost:3000'],
       },
       storage: {
@@ -37,7 +31,9 @@ public = false
   });
 
   it('throws ConfigValidationError on bad type', () => {
-    expect(() => parseConfigToml('[auth]\njwt_expiry = "60m"')).toThrow(/jwt_expiry.*positive integer/);
+    expect(() => parseConfigToml('[auth]\nadditional_redirect_urls = "not-an-array"')).toThrow(
+      /additional_redirect_urls.*array of strings/,
+    );
   });
 
   it('throws on malformed TOML with a clear message', () => {
@@ -49,7 +45,7 @@ describe('stringifyConfigToml', () => {
   it('round-trips a config through stringify → parse', () => {
     const original = {
       project_id: 'proj-abc',
-      auth: { jwt_expiry: 3600, enable_signup: false },
+      auth: { additional_redirect_urls: ['http://localhost:3000'] },
       storage: { buckets: { avatars: { public: true } } },
     };
     expect(parseConfigToml(stringifyConfigToml(original))).toEqual(original);
@@ -58,7 +54,7 @@ describe('stringifyConfigToml', () => {
   it('emits stable, predictable section ordering', () => {
     const out = stringifyConfigToml({
       storage: { buckets: { z: { public: true }, a: { public: false } } },
-      auth: { enable_signup: true },
+      auth: { additional_redirect_urls: ['http://localhost:3000'] },
       project_id: 'proj-x',
     });
     // project_id first, then auth, then storage; bucket keys sorted

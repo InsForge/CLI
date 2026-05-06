@@ -24,9 +24,6 @@ export function stringifyConfigToml(config: InsforgeConfig): string {
 
   if (config.auth) {
     lines.push('[auth]');
-    if (config.auth.jwt_expiry !== undefined) lines.push(`jwt_expiry = ${config.auth.jwt_expiry}`);
-    if (config.auth.enable_signup !== undefined) lines.push(`enable_signup = ${config.auth.enable_signup}`);
-    if (config.auth.site_url !== undefined) lines.push(`site_url = ${JSON.stringify(config.auth.site_url)}`);
     if (config.auth.additional_redirect_urls !== undefined) {
       const urls = config.auth.additional_redirect_urls.map((u) => JSON.stringify(u)).join(', ');
       lines.push(`additional_redirect_urls = [${urls}]`);

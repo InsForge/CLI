@@ -6,7 +6,13 @@ describe('formatPlan', () => {
   it('renders a multi-section plan with kept warnings', () => {
     const out = formatPlan({
       changes: [
-        { section: 'auth', op: 'modify', key: 'jwt_expiry', from: 3600, to: 7200 },
+        {
+          section: 'auth',
+          op: 'modify',
+          key: 'additional_redirect_urls',
+          from: ['http://a'],
+          to: ['http://a', 'http://b'],
+        },
         { section: 'storage.buckets', op: 'add', key: 'avatars', value: { public: true } },
         { section: 'storage.buckets', op: 'modify', key: 'user-files', field: 'public', from: false, to: true },
         { section: 'storage.buckets', op: 'remove', key: 'old-bucket', kept: true },
@@ -14,7 +20,7 @@ describe('formatPlan', () => {
       summary: { add: 1, modify: 2, remove: 0, kept: 1 },
     });
     expect(out).toContain('auth:');
-    expect(out).toContain('~ jwt_expiry: 3600 → 7200');
+    expect(out).toContain('~ additional_redirect_urls: ["http://a"] → ["http://a","http://b"]');
     expect(out).toContain('storage.buckets:');
     expect(out).toContain('+ avatars');
     expect(out).toContain('~ user-files: public false → true');

@@ -31,7 +31,7 @@ export function diffConfig({ live, file, prune = false }: DiffInput): DiffResult
   // --- auth ---
   const liveAuth = live.auth ?? {};
   const fileAuth = file.auth ?? {};
-  for (const key of ['jwt_expiry', 'enable_signup', 'site_url', 'additional_redirect_urls'] as const) {
+  for (const key of ['additional_redirect_urls'] as const) {
     if (!(key in fileAuth)) continue;
     const fromV = (liveAuth as Record<string, unknown>)[key];
     const toV = (fileAuth as Record<string, unknown>)[key];
