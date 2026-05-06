@@ -450,8 +450,26 @@ export function registerProjectLinkCommand(program: Command): void {
               const result = await applyAuthProvider(opts.auth as AuthProvider, process.cwd(), projectConfig, json);
               if (!json) {
                 clack.log.success(`Wired in ${opts.auth}: ${result.written.length} new, ${result.overwritten.length} replaced`);
-                clack.note(result.nextSteps, "What's next");
               }
+
+              // Re-install so deps added by packageJsonPatch (pg, better-auth,
+              // jsonwebtoken, @insforge/sdk) actually land in node_modules.
+              // Without this, `npm run setup` fails with `Cannot find package 'pg'`.
+              const hasPackageJson = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
+              if (hasPackageJson && !json) {
+                const installSpinner = clack.spinner();
+                installSpinner.start('Installing dependencies...');
+                try {
+                  await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
+                  installSpinner.stop('Dependencies installed');
+                } catch (err) {
+                  installSpinner.stop('Failed to install dependencies');
+                  clack.log.warn(`npm install failed: ${(err as Error).message}`);
+                  clack.log.info('Run `npm install` manually to install dependencies.');
+                }
+              }
+
+              if (!json) clack.note(result.nextSteps, "What's next");
             } catch (err) {
               const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
               if (json) console.error(JSON.stringify({ warning: msg }));
