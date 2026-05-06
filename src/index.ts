@@ -73,6 +73,7 @@ import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
 import { registerPaymentsCommands } from './commands/payments/index.js';
+import { registerConfigCommand } from './commands/config/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -175,6 +176,9 @@ registerSecretsGetCommand(secretsCmd);
 registerSecretsAddCommand(secretsCmd);
 registerSecretsUpdateCommand(secretsCmd);
 registerSecretsDeleteCommand(secretsCmd);
+
+// Config commands (insforge.toml)
+registerConfigCommand(program);
 
 // Logs command
 registerLogsCommand(program);
