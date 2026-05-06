@@ -29,6 +29,19 @@ function buildOssHost(appkey: string, region: string): string {
   return `https://${appkey}.${region}.insforge.app`;
 }
 
+async function runNpmInstall(startMessage = 'Installing dependencies...'): Promise<void> {
+  const spinner = clack.spinner();
+  spinner.start(startMessage);
+  try {
+    await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
+    spinner.stop('Dependencies installed');
+  } catch (err) {
+    spinner.stop('Failed to install dependencies');
+    clack.log.warn(`npm install failed: ${(err as Error).message}`);
+    clack.log.info('Run `npm install` manually to install dependencies.');
+  }
+}
+
 export function registerProjectLinkCommand(program: Command): void {
   program
     .command('link')
@@ -152,16 +165,7 @@ export function registerProjectLinkCommand(program: Command): void {
               }
 
               if (templateDownloaded && !json) {
-                const installSpinner = clack.spinner();
-                installSpinner.start('Installing dependencies...');
-                try {
-                  await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
-                  installSpinner.stop('Dependencies installed');
-                } catch (err) {
-                  installSpinner.stop('Failed to install dependencies');
-                  clack.log.warn(`npm install failed: ${(err as Error).message}`);
-                  clack.log.info('Run `npm install` manually to install dependencies.');
-                }
+                await runNpmInstall();
               }
 
               await installSkills(json);
@@ -208,20 +212,12 @@ export function registerProjectLinkCommand(program: Command): void {
                 if (!json) {
                   clack.log.success(`Wired in ${opts.auth}: ${result.written.length} new, ${result.overwritten.length} replaced`);
                 }
-                // Run npm install if we patched package.json with new deps.
-                // The overlay added better-auth, pg, jsonwebtoken etc.; without
-                // a re-install, `npm run setup` fails with module-not-found.
+                // Re-install when the overlay patched package.json — otherwise
+                // its new deps (better-auth, pg, jsonwebtoken, …) are listed
+                // but never installed and `npm run setup` fails with
+                // "Cannot find package 'pg'".
                 if (result.packageJsonPatched && !json) {
-                  const installSpinner = clack.spinner();
-                  installSpinner.start('Installing new dependencies...');
-                  try {
-                    await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
-                    installSpinner.stop('Dependencies installed');
-                  } catch (err) {
-                    installSpinner.stop('Failed to install dependencies');
-                    clack.log.warn(`npm install failed: ${(err as Error).message}`);
-                    clack.log.info('Run `npm install` manually to install dependencies.');
-                  }
+                  await runNpmInstall('Installing new dependencies...');
                 }
                 if (!json) clack.note(result.nextSteps, "What's next");
               } catch (err) {
@@ -411,16 +407,7 @@ export function registerProjectLinkCommand(program: Command): void {
           }
 
           if (templateDownloaded && !json) {
-            const installSpinner = clack.spinner();
-            installSpinner.start('Installing dependencies...');
-            try {
-              await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
-              installSpinner.stop('Dependencies installed');
-            } catch (err) {
-              installSpinner.stop('Failed to install dependencies');
-              clack.log.warn(`npm install failed: ${(err as Error).message}`);
-              clack.log.info('Run `npm install` manually to install dependencies.');
-            }
+            await runNpmInstall();
           }
 
           // Install agent skills inside the project directory
@@ -452,21 +439,10 @@ export function registerProjectLinkCommand(program: Command): void {
                 clack.log.success(`Wired in ${opts.auth}: ${result.written.length} new, ${result.overwritten.length} replaced`);
               }
 
-              // Re-install so deps added by packageJsonPatch (pg, better-auth,
-              // jsonwebtoken, @insforge/sdk) actually land in node_modules.
-              // Without this, `npm run setup` fails with `Cannot find package 'pg'`.
-              const hasPackageJson = await fs.stat(path.join(process.cwd(), 'package.json')).catch(() => null);
-              if (hasPackageJson && !json) {
-                const installSpinner = clack.spinner();
-                installSpinner.start('Installing dependencies...');
-                try {
-                  await execAsync('npm install', { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 });
-                  installSpinner.stop('Dependencies installed');
-                } catch (err) {
-                  installSpinner.stop('Failed to install dependencies');
-                  clack.log.warn(`npm install failed: ${(err as Error).message}`);
-                  clack.log.info('Run `npm install` manually to install dependencies.');
-                }
+              // Re-install when the overlay patched package.json — same as
+              // the direct-OSS bare-overlay path above.
+              if (result.packageJsonPatched && !json) {
+                await runNpmInstall('Installing new dependencies...');
               }
 
               if (!json) clack.note(result.nextSteps, "What's next");
