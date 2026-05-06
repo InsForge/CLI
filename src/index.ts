@@ -22,6 +22,7 @@ import { registerDbRpcCommand } from './commands/db/rpc.js';
 import { registerDbExportCommand } from './commands/db/export.js';
 import { registerDbImportCommand } from './commands/db/import.js';
 import { registerDbMigrationsCommand } from './commands/db/migrations.js';
+import { registerDbConnectionStringCommand } from './commands/db/connection-string.js';
 import { registerRecordsCommands } from './commands/records/list.js';
 import { registerRecordsCreateCommand } from './commands/records/create.js';
 import { registerRecordsUpdateCommand } from './commands/records/update.js';
@@ -132,6 +133,7 @@ registerDbRpcCommand(dbCmd);
 registerDbExportCommand(dbCmd);
 registerDbImportCommand(dbCmd);
 registerDbMigrationsCommand(dbCmd);
+registerDbConnectionStringCommand(dbCmd);
 
 // Records commands (hidden — do not use for now)
 const recordsCmd = program.command('records', { hidden: true }).description('CRUD operations on table records');
