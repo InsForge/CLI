@@ -69,6 +69,7 @@ function deepMergeKeepBase<T extends Record<string, unknown>>(base: T, patch: Re
 interface ApplyResult {
   written: string[];
   skipped: string[];
+  overwritten: string[];
   packageJsonPatched: boolean;
   envExampleAppended: boolean;
   envLocalWritten: boolean;
@@ -212,22 +213,29 @@ export async function applyAuthProvider(
     const manifest = await loadManifest(providerDir);
 
     const result: ApplyResult = {
-      written: [], skipped: [],
+      written: [], skipped: [], overwritten: [],
       packageJsonPatched: false, envExampleAppended: false, envLocalWritten: false,
       envKeysSkipped: [],
       nextSteps: manifest.nextSteps,
     };
 
-    // 1. Copy files (skip if exists). Walk the provider tree and exclude
-    //    overlay-meta files (manifest.json, README.md).
+    // 1. Copy files. Auth-provider overlays REPLACE on collision — the user
+    //    opted into `--auth <provider>` expressing intent that the provider's
+    //    auth primitives win over whatever the base template ships. Without
+    //    this, base templates that pre-populate src/lib/insforge.ts (with a
+    //    different export shape) silently shadow the overlay version and the
+    //    overlay's pages crash at runtime. Track overwrites so we can warn.
+    //    Walk the provider tree and exclude overlay-meta files
+    //    (manifest.json, README.md).
     const allFiles = (await walkFiles(providerDir)).filter((rel) => !PROVIDER_META_FILES.has(rel));
     for (const rel of allFiles) {
       const src = path.join(providerDir, rel);
       const dest = path.join(cwd, rel);
-      if (await pathExists(dest)) { result.skipped.push(rel); continue; }
+      const existed = await pathExists(dest);
       await fs.mkdir(path.dirname(dest), { recursive: true });
       await fs.copyFile(src, dest);
-      result.written.push(rel);
+      if (existed) result.overwritten.push(rel);
+      else result.written.push(rel);
     }
 
     // 2. Deep-merge package.json (preserve user's existing values).
