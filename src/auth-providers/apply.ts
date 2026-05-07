@@ -18,7 +18,7 @@ import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
 import * as clack from '@clack/prompts';
 
-import { getAnonKey, getJwtSecret } from '../lib/api/oss.js';
+import { getAnonKey, getDatabaseConnectionString, getJwtSecret } from '../lib/api/oss.js';
 import type { ProjectConfig } from '../types.js';
 
 const execFileAsync = promisify(execFile);
@@ -284,8 +284,11 @@ export async function applyAuthProvider(
     const existingLocal = envLocalExists ? await fs.readFile(envLocalPath, 'utf-8') : '';
     const existingLocalKeys = envLocalExists ? extractEnvKeys(existingLocal) : new Set<string>();
 
-    const anonKey = await getAnonKey();
-    const jwtSecret = await getJwtSecret();
+    const [anonKey, jwtSecret, databaseUrl] = await Promise.all([
+      getAnonKey(),
+      getJwtSecret(),
+      getDatabaseConnectionString(),
+    ]);
     const filled = manifest.envExampleAppend.replace(
       /^([A-Z][A-Z0-9_]*=)(.*)$/gm,
       (_, prefix: string, value: string) => {
@@ -295,6 +298,7 @@ export async function applyAuthProvider(
         if (key === 'NEXT_PUBLIC_APP_URL') return `${prefix}https://${projectConfig.appkey}.insforge.site`;
         if (/JWT_SECRET$/.test(key)) return `${prefix}${jwtSecret ?? value}`;
         if (key === 'BETTER_AUTH_SECRET') return `${prefix}${randomBytes(32).toString('hex')}`;
+        if (key === 'DATABASE_URL') return `${prefix}${databaseUrl ?? value}`;
         return `${prefix}${value}`;
       },
     );
