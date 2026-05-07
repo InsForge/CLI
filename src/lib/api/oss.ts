@@ -50,6 +50,21 @@ export async function getJwtSecret(): Promise<string | null> {
   }
 }
 
+export async function getDatabaseConnectionString(): Promise<string | null> {
+  // Cloud-only: returns the project's Postgres URL (with sslmode). Self-hosted
+  // returns null so callers leave DATABASE_URL at the localhost default —
+  // self-hosters know their own connection string.
+  try {
+    const res = await ossFetch('/api/metadata/database-connection-string');
+    const data = await res.json() as { connectionURL?: string };
+    return typeof data.connectionURL === 'string' && data.connectionURL.length > 0
+      ? data.connectionURL
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function ossFetch(
   path: string,
   options: RequestInit = {},
