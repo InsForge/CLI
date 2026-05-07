@@ -10,6 +10,7 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { parseConfigToml } from '../../lib/config-toml.js';
 import { diffConfig, type DiffChange } from '../../lib/config-diff.js';
 import { formatPlan } from '../../lib/config-format.js';
+import { metadataSupports, changePath } from '../../lib/config-capabilities.js';
 import type { InsforgeConfig } from '../../lib/config-schema.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
@@ -78,19 +79,44 @@ export function registerConfigApplyCommand(cfg: Command): void {
           }
         }
 
+        // Per-change capability gate. Each change is independent: a backend
+        // that supports `auth.allowed_redirect_urls` but not (future)
+        // `email.smtp` should apply the first and skip the second with a
+        // named warning. Better than failing the whole batch.
+        const applied: DiffChange[] = [];
+        const skipped: Array<{ key: string; reason: string }> = [];
         for (const change of result.changes) {
+          const path = changePath(change);
+          if (!metadataSupports(raw, change)) {
+            skipped.push({
+              key: path,
+              reason: `your backend doesn't expose ${path} — upgrade the project to apply this section`,
+            });
+            continue;
+          }
           await applyChange(change);
+          applied.push(change);
         }
 
         if (json) {
           console.log(
-            JSON.stringify({ plan: result, applied: true, changes: result.changes }, null, 2),
+            JSON.stringify({ plan: result, applied, skipped }, null, 2),
           );
         } else {
-          const s = result.summary;
-          console.log(
-            `${pc.green('✓')} Applied (${s.add} added, ${s.modify} modified, ${s.remove} removed)`,
-          );
+          if (skipped.length) {
+            console.warn(
+              pc.yellow(`⚠ Skipped ${skipped.length} section(s):`) +
+                '\n' +
+                skipped.map((s) => `  - ${s.key}: ${s.reason}`).join('\n'),
+            );
+          }
+          if (applied.length) {
+            console.log(
+              `${pc.green('✓')} Applied ${applied.length} of ${result.changes.length} change(s).`,
+            );
+          } else {
+            console.log('Nothing applied.');
+          }
         }
         await reportCliUsage('cli.config.apply', true);
       } catch (err) {

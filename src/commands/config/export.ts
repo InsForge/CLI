@@ -48,19 +48,39 @@ export function registerConfigExportCommand(cfg: Command): void {
           auth?: { allowedRedirectUrls?: string[] };
         };
 
-        const config: InsforgeConfig = {
-          auth: {
-            allowed_redirect_urls: raw.auth?.allowedRedirectUrls ?? [],
-          },
-        };
+        // Only emit sections the backend actually exposes. The TOML file
+        // should describe what THIS backend can do — not aspirational fields
+        // that would break on apply. Probe presence in the raw response;
+        // an older backend without the field gets an empty config,
+        // not a TOML littered with defaults that pretend to work.
+        const config: InsforgeConfig = {};
+        const skipped: string[] = [];
+
+        const authSlice = raw?.auth;
+        if (authSlice && typeof authSlice === 'object' && 'allowedRedirectUrls' in authSlice) {
+          config.auth = {
+            allowed_redirect_urls: authSlice.allowedRedirectUrls ?? [],
+          };
+        } else {
+          skipped.push('auth.allowed_redirect_urls');
+        }
 
         const toml = stringifyConfigToml(config);
         writeFileSync(target, toml, 'utf8');
 
         if (json) {
-          console.log(JSON.stringify({ written: target, config }));
+          console.log(JSON.stringify({ written: target, config, skipped }, null, 2));
         } else {
           console.log(`${pc.green('✓')} Wrote ${target}`);
+          if (skipped.length) {
+            console.warn(
+              pc.yellow(
+                `⚠ Skipped ${skipped.length} section(s) not supported by this backend:`,
+              ) +
+                '\n' +
+                skipped.map((k) => `  - ${k}`).join('\n'),
+            );
+          }
         }
         await reportCliUsage('cli.config.export', true);
       } catch (err) {
