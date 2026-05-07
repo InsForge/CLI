@@ -50,16 +50,37 @@ export async function getJwtSecret(): Promise<string | null> {
   }
 }
 
+// Splice the real password into a masked Postgres URL like
+// `postgresql://postgres:********@host:5432/db?sslmode=require`. Replaces
+// the segment between the first `://<user>:` and the next `@`. Exported
+// for unit testing.
+export function spliceDatabasePassword(maskedUrl: string, password: string): string {
+  return maskedUrl.replace(/^(postgresql:\/\/[^:]+:)[^@]+(@)/, `$1${password}$2`);
+}
+
 export async function getDatabaseConnectionString(): Promise<string | null> {
-  // Cloud-only: returns the project's Postgres URL (with sslmode). Self-hosted
-  // returns null so callers leave DATABASE_URL at the localhost default —
-  // self-hosters know their own connection string.
+  // Cloud-only: returns the project's Postgres URL with the real password
+  // substituted in. The platform's `/database-connection-string` endpoint
+  // masks the password (`postgresql://postgres:********@...`), so we also
+  // hit `/database-password` and splice the unmasked value in. Without this
+  // splice, callers (e.g., `link`'s .env.local auto-fill) would write a URL
+  // BA's pg pool can't authenticate with.
+  // Self-hosted returns null on either endpoint (PROJECT_ID not configured)
+  // so we fall back gracefully.
   try {
-    const res = await ossFetch('/api/metadata/database-connection-string');
-    const data = await res.json() as { connectionURL?: string };
-    return typeof data.connectionURL === 'string' && data.connectionURL.length > 0
-      ? data.connectionURL
-      : null;
+    const [urlRes, pwRes] = await Promise.all([
+      ossFetch('/api/metadata/database-connection-string'),
+      ossFetch('/api/metadata/database-password'),
+    ]);
+    const urlBody = await urlRes.json() as { connectionURL?: string };
+    const pwBody = await pwRes.json() as { databasePassword?: string };
+
+    const masked = urlBody.connectionURL;
+    const password = pwBody.databasePassword;
+    if (typeof masked !== 'string' || !masked) return null;
+    if (typeof password !== 'string' || !password) return null;
+
+    return spliceDatabasePassword(masked, password);
   } catch {
     return null;
   }

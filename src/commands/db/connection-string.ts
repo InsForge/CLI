@@ -1,10 +1,9 @@
 import type { Command } from 'commander';
-import { ossFetch } from '../../lib/api/oss.js';
+import { getDatabaseConnectionString } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
-import type { ConnectionStringResponse } from '../../types.js';
 
 export function registerDbConnectionStringCommand(dbCmd: Command): void {
   dbCmd
@@ -14,12 +13,14 @@ export function registerDbConnectionStringCommand(dbCmd: Command): void {
       const { json } = getRootOpts(cmd);
       try {
         await requireAuth();
-        const res = await ossFetch('/api/metadata/database-connection-string');
-        const body = (await res.json()) as ConnectionStringResponse;
+        const url = await getDatabaseConnectionString();
+        if (!url) {
+          throw new CLIError('Could not fetch the database connection string. This command requires a cloud project (self-hosted instances expose Postgres directly via your docker-compose).');
+        }
         if (json) {
-          outputJson(body);
+          outputJson({ connectionURL: url });
         } else {
-          console.log(body.connectionURL);
+          console.log(url);
         }
         await reportCliUsage('cli.db.connection-string', true);
       } catch (err) {

@@ -38,6 +38,33 @@ async function runNpmInstall(startMessage = 'Installing dependencies...'): Promi
   }
 }
 
+// Run `npm run setup` if the auth-provider's packageJsonPatch added that
+// script. The BA scaffold's setup chains schema → BA migrate → app SQL,
+// hitting DATABASE_URL — so this is the step that actually creates tables.
+// We always attempt it after a successful --auth overlay; if DATABASE_URL is
+// wrong (network issue, missing IP allowlist, etc.) the user gets a clear
+// error and can re-run `npm run setup` after fixing.
+async function runNpmSetupIfPresent(): Promise<void> {
+  const pkgPath = path.join(process.cwd(), 'package.json');
+  let hasSetup = false;
+  try {
+    const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8')) as { scripts?: Record<string, string> };
+    hasSetup = typeof pkg.scripts?.setup === 'string';
+  } catch { /* no package.json or unreadable — skip */ }
+  if (!hasSetup) return;
+
+  const spinner = clack.spinner();
+  spinner.start('Running setup (schema + migrations)...');
+  try {
+    await execAsync('npm run setup', { cwd: process.cwd(), maxBuffer: 20 * 1024 * 1024 });
+    spinner.stop('Setup complete');
+  } catch (err) {
+    spinner.stop('Setup failed');
+    clack.log.warn(`npm run setup failed: ${(err as Error).message.split('\n')[0]}`);
+    clack.log.info('Inspect the error, fix DATABASE_URL or network access, then run `npm run setup` manually.');
+  }
+}
+
 export function registerProjectLinkCommand(program: Command): void {
   program
     .command('link')
@@ -162,6 +189,9 @@ export function registerProjectLinkCommand(program: Command): void {
 
               if (templateDownloaded && !json) {
                 await runNpmInstall();
+                if (opts.auth) {
+                  await runNpmSetupIfPresent();
+                }
               }
 
               await installSkills(json);
@@ -214,6 +244,7 @@ export function registerProjectLinkCommand(program: Command): void {
                 // "Cannot find package 'pg'".
                 if (result.packageJsonPatched && !json) {
                   await runNpmInstall('Installing new dependencies...');
+                  await runNpmSetupIfPresent();
                 }
                 if (!json) clack.note(result.nextSteps, "What's next");
               } catch (err) {
@@ -404,6 +435,9 @@ export function registerProjectLinkCommand(program: Command): void {
 
           if (templateDownloaded && !json) {
             await runNpmInstall();
+            if (opts.auth) {
+              await runNpmSetupIfPresent();
+            }
           }
 
           // Install agent skills inside the project directory
@@ -439,6 +473,7 @@ export function registerProjectLinkCommand(program: Command): void {
               // the direct-OSS bare-overlay path above.
               if (result.packageJsonPatched && !json) {
                 await runNpmInstall('Installing new dependencies...');
+                await runNpmSetupIfPresent();
               }
 
               if (!json) clack.note(result.nextSteps, "What's next");
