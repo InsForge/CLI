@@ -74,6 +74,7 @@ interface ApplyResult {
   envExampleAppended: boolean;
   envLocalWritten: boolean;
   envKeysSkipped: string[];
+  envKeysRefreshed: string[];
   nextSteps: string;
 }
 
@@ -90,6 +91,49 @@ export function extractEnvKeys(content: string): Set<string> {
     if (m) keys.add(m[1]);
   }
   return keys;
+}
+
+// Parse `KEY=value` lines into a Map. Comments and blank lines are ignored.
+// We use this to compare the user's .env.local values against the manifest's
+// literal defaults so we can distinguish "user customized" from "user has
+// the stale default".
+// Exported for unit testing.
+export function extractEnvPairs(content: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const line of content.split('\n')) {
+    const trimmed = line.replace(/^\s*export\s+/, '').trimStart();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const m = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+    if (m) out.set(m[1], m[2]);
+  }
+  return out;
+}
+
+// Refresh stale platform defaults in the user's .env.local. If the user's
+// value matches the manifest's literal default AND the platform now has a
+// real value (e.g., cloud DATABASE_URL), overwrite the line. User-customized
+// values (anything that differs from the manifest default) are preserved.
+// Exported for unit testing.
+export function refreshStaleEnvDefaults(
+  existing: string,
+  manifestDefaults: Map<string, string>,
+  platformValues: Map<string, string>,
+): { updated: string; refreshed: string[] } {
+  const refreshed: string[] = [];
+  const lines = existing.split('\n').map((line) => {
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+    if (!m) return line;
+    const key = m[1];
+    const userValue = m[2];
+    const def = manifestDefaults.get(key);
+    const real = platformValues.get(key);
+    if (def !== undefined && real !== undefined && userValue === def && real !== def) {
+      refreshed.push(key);
+      return `${key}=${real}`;
+    }
+    return line;
+  });
+  return { updated: lines.join('\n'), refreshed };
 }
 
 // Remove any `KEY=value` lines from `append` whose KEY already appears in
@@ -216,6 +260,7 @@ export async function applyAuthProvider(
       written: [], skipped: [], overwritten: [],
       packageJsonPatched: false, envExampleAppended: false, envLocalWritten: false,
       envKeysSkipped: [],
+      envKeysRefreshed: [],
       nextSteps: manifest.nextSteps,
     };
 
@@ -307,13 +352,29 @@ export async function applyAuthProvider(
       await fs.writeFile(envLocalPath, filled + '\n');
       result.envLocalWritten = true;
     } else {
-      const { filtered, dropped } = filterCollidingEnvLines(filled, existingLocalKeys);
+      // Two passes:
+      //  1. Refresh stale platform defaults in-place. If the user's existing
+      //     value matches the manifest's literal default AND we now have a
+      //     real platform value (e.g., they re-linked against a cloud project
+      //     after the CLI started fetching DATABASE_URL), update the line.
+      //     User-customized values are preserved untouched.
+      //  2. Append any genuinely new keys at the end.
+      const manifestDefaults = extractEnvPairs(manifest.envExampleAppend);
+      const platformValues = extractEnvPairs(filled);
+      const { updated, refreshed } = refreshStaleEnvDefaults(existingLocal, manifestDefaults, platformValues);
+
+      const refreshedSet = new Set(refreshed);
+      const keysAfterRefresh = new Set([...existingLocalKeys, ...refreshedSet]);
+      const { filtered, dropped } = filterCollidingEnvLines(filled, keysAfterRefresh);
       const hasNewKey = filtered.split('\n').some((l) => /^[A-Z][A-Z0-9_]*=/.test(l));
-      if (hasNewKey) {
-        await fs.writeFile(envLocalPath, existingLocal.replace(/\n*$/, '\n\n') + filtered + '\n');
+
+      if (refreshed.length > 0 || hasNewKey) {
+        const base = hasNewKey ? updated.replace(/\n*$/, '\n\n') + filtered + '\n' : updated;
+        await fs.writeFile(envLocalPath, base);
         result.envLocalWritten = true;
       }
       result.envKeysSkipped = Array.from(new Set([...result.envKeysSkipped, ...dropped]));
+      result.envKeysRefreshed = Array.from(new Set([...result.envKeysRefreshed, ...refreshed]));
     }
 
     if (!jwtSecret && !json) {
@@ -324,6 +385,13 @@ export async function applyAuthProvider(
       clack.log.warn(
         `Kept your existing values for: ${result.envKeysSkipped.join(', ')}. ` +
         `If any of these need the auth-provider's defaults, see .env.example for reference.`,
+      );
+    }
+
+    if (result.envKeysRefreshed.length > 0 && !json) {
+      clack.log.info(
+        `Refreshed stale platform defaults: ${result.envKeysRefreshed.join(', ')}. ` +
+        `Your value matched the manifest's default, so we replaced it with the live one.`,
       );
     }
 
