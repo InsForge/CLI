@@ -6,7 +6,7 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { parseConfigToml } from '../../lib/config-toml.js';
 import { diffConfig, type DiffChange } from '../../lib/config-diff.js';
 import { formatPlan } from '../../lib/config-format.js';
@@ -21,7 +21,7 @@ export function registerConfigApplyCommand(cfg: Command): void {
     .option('--dry-run', 'show plan, do not apply')
     .option('--auto-approve', 'skip confirmation prompt')
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, yes } = getRootOpts(cmd);
       try {
         await requireAuth();
 
@@ -38,19 +38,35 @@ export function registerConfigApplyCommand(cfg: Command): void {
         };
 
         const result = diffConfig({ live, file });
+        const approved = opts.autoApprove || yes;
 
-        if (json) {
-          console.log(JSON.stringify(result, null, 2));
-        } else {
+        // Render the plan immediately in interactive mode so the user can read
+        // it before confirming. In --json mode hold output until the end so
+        // we emit a single JSON document (parsable by jq, etc.).
+        if (!json) {
           console.log(formatPlan(result));
         }
 
         if (result.changes.length === 0 || opts.dryRun) {
+          if (json) {
+            console.log(
+              JSON.stringify({ plan: result, applied: false, dryRun: !!opts.dryRun }, null, 2),
+            );
+          }
           await reportCliUsage('cli.config.apply', true);
           return;
         }
 
-        if (!opts.autoApprove && !json) {
+        if (!approved) {
+          if (json) {
+            // No TTY in --json runs; require explicit consent rather than
+            // silently applying or hanging on a prompt.
+            throw new CLIError(
+              'Refusing to apply in --json mode without --auto-approve or --yes.',
+              1,
+              'CONFIRMATION_REQUIRED',
+            );
+          }
           const ok = await p.confirm({
             message: 'Apply these changes?',
             initialValue: false,
@@ -63,11 +79,13 @@ export function registerConfigApplyCommand(cfg: Command): void {
         }
 
         for (const change of result.changes) {
-          await applyChange(change, file);
+          await applyChange(change);
         }
 
         if (json) {
-          console.log(JSON.stringify({ applied: true, changes: result.changes }));
+          console.log(
+            JSON.stringify({ plan: result, applied: true, changes: result.changes }, null, 2),
+          );
         } else {
           const s = result.summary;
           console.log(
@@ -82,10 +100,7 @@ export function registerConfigApplyCommand(cfg: Command): void {
     });
 }
 
-async function applyChange(
-  change: DiffChange,
-  file: InsforgeConfig,
-): Promise<void> {
+async function applyChange(change: DiffChange): Promise<void> {
   if (change.section === 'auth' && change.key === 'allowed_redirect_urls') {
     await ossFetch('/api/auth/config', {
       method: 'PUT',

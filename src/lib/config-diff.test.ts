@@ -49,4 +49,32 @@ describe('diffConfig', () => {
       },
     ]);
   });
+
+  it('treats reordered redirect URLs as no-op', () => {
+    const live = { auth: { allowed_redirect_urls: ['https://b.com', 'https://a.com'] } };
+    const file = { auth: { allowed_redirect_urls: ['https://a.com', 'https://b.com'] } };
+    expect(diffConfig({ live, file }).changes).toEqual([]);
+  });
+
+  it('deduplicates redirect URLs before comparing', () => {
+    const live = { auth: { allowed_redirect_urls: ['https://a.com', 'https://a.com'] } };
+    const file = { auth: { allowed_redirect_urls: ['https://a.com'] } };
+    expect(diffConfig({ live, file }).changes).toEqual([]);
+  });
+
+  it('emits normalized values when there is a real change', () => {
+    const live = { auth: { allowed_redirect_urls: ['https://b.com', 'https://a.com'] } };
+    const file = {
+      auth: { allowed_redirect_urls: ['https://c.com', 'https://a.com', 'https://b.com'] },
+    };
+    expect(diffConfig({ live, file }).changes).toEqual([
+      {
+        section: 'auth',
+        op: 'modify',
+        key: 'allowed_redirect_urls',
+        from: ['https://a.com', 'https://b.com'],
+        to: ['https://a.com', 'https://b.com', 'https://c.com'],
+      },
+    ]);
+  });
 });

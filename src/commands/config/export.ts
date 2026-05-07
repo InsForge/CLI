@@ -6,7 +6,7 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { stringifyConfigToml } from '../../lib/config-toml.js';
 import type { InsforgeConfig } from '../../lib/config-schema.js';
 import { reportCliUsage } from '../../lib/skills.js';
@@ -24,6 +24,15 @@ export function registerConfigExportCommand(cfg: Command): void {
 
         const target = resolve(process.cwd(), opts.out);
         if (existsSync(target) && !opts.force) {
+          if (json) {
+            // No TTY in --json runs; bail with an actionable error instead
+            // of hanging on an interactive prompt.
+            throw new CLIError(
+              `${opts.out} exists. Re-run with --force to overwrite.`,
+              1,
+              'OUTPUT_EXISTS',
+            );
+          }
           const ok = await p.confirm({
             message: `${opts.out} exists. Overwrite?`,
             initialValue: false,

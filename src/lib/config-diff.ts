@@ -37,8 +37,12 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
   const liveAuth = live.auth ?? {};
 
   if (fileAuth && 'allowed_redirect_urls' in fileAuth) {
-    const fromV = liveAuth.allowed_redirect_urls ?? [];
-    const toV = fileAuth.allowed_redirect_urls ?? [];
+    // Treat the redirect allowlist as a set: order and duplicates in the TOML
+    // shouldn't produce a diff. Reorder/dedupe both sides before comparing,
+    // and emit the normalized values so the change rendered to the user
+    // (and the request body sent on apply) matches what's actually different.
+    const fromV = normalizeUrlList(liveAuth.allowed_redirect_urls);
+    const toV = normalizeUrlList(fileAuth.allowed_redirect_urls);
     if (!arrayEquals(fromV, toV)) {
       changes.push({
         section: 'auth',
@@ -59,6 +63,10 @@ function summarize(changes: DiffChange[]): DiffSummary {
     if (c.op === 'modify') s.modify++;
   }
   return s;
+}
+
+function normalizeUrlList(input: string[] | undefined): string[] {
+  return Array.from(new Set(input ?? [])).sort();
 }
 
 function arrayEquals(a: string[], b: string[]): boolean {
