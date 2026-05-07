@@ -6,7 +6,7 @@ export function parseConfigToml(input: string): InsforgeConfig {
   try {
     parsed = smolToml.parse(input);
   } catch (err) {
-    throw new Error(`TOML parse error: ${(err as Error).message}`);
+    throw new Error(`TOML parse error: ${(err as Error).message}`, { cause: err });
   }
   return validateConfig(parsed);
 }

@@ -37,7 +37,8 @@ type RawMetadata = {
 export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean {
   if (change.section === 'auth' && change.key === 'allowed_redirect_urls') {
     return (
-      raw?.auth != null &&
+      raw?.auth !== undefined &&
+      raw.auth !== null &&
       typeof raw.auth === 'object' &&
       'allowedRedirectUrls' in raw.auth
     );

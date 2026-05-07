@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerConfigApplyCommand } from './apply.js';
+import type * as ErrorsModule from '../../lib/errors.js';
 
 // Per-test we override what /api/metadata returns by reassigning this.
 let nextMetadataResponse: unknown = {};
@@ -33,7 +34,7 @@ vi.mock('../../lib/skills.js', () => ({
 }));
 
 vi.mock('../../lib/errors.js', async (orig) => {
-  const actual = await orig<typeof import('../../lib/errors.js')>();
+  const actual = await orig<typeof ErrorsModule>();
   return {
     ...actual,
     // Force handleError to throw rather than process.exit so tests can inspect.

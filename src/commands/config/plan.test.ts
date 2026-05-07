@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerConfigPlanCommand } from './plan.js';
+import type * as ErrorsModule from '../../lib/errors.js';
 
 let nextMetadataResponse: unknown = {};
 const ossFetchMock = vi.fn(async () => {
@@ -26,7 +27,7 @@ vi.mock('../../lib/skills.js', () => ({
 }));
 
 vi.mock('../../lib/errors.js', async (orig) => {
-  const actual = await orig<typeof import('../../lib/errors.js')>();
+  const actual = await orig<typeof ErrorsModule>();
   return {
     ...actual,
     handleError: vi.fn((err: unknown) => {
