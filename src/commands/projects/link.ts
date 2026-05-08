@@ -246,7 +246,6 @@ export function registerProjectLinkCommand(program: Command): void {
                   await runNpmInstall('Installing new dependencies...');
                   await runNpmSetupIfPresent();
                 }
-                if (!json) clack.note(result.nextSteps, "What's next");
               } catch (err) {
                 const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
                 if (json) console.error(JSON.stringify({ warning: msg }));
@@ -475,8 +474,6 @@ export function registerProjectLinkCommand(program: Command): void {
                 await runNpmInstall('Installing new dependencies...');
                 await runNpmSetupIfPresent();
               }
-
-              if (!json) clack.note(result.nextSteps, "What's next");
             } catch (err) {
               const msg = `Failed to apply --auth ${opts.auth}: ${(err as Error).message}`;
               if (json) console.error(JSON.stringify({ warning: msg }));
