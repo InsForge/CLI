@@ -13,7 +13,7 @@ import {
   getProjectApiKey,
   reportAgentConnected,
 } from '../../lib/api/platform.js';
-import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl, FAKE_PROJECT_ID, FAKE_ORG_ID } from '../../lib/config.js';
+import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl, buildOssHost, FAKE_PROJECT_ID, FAKE_ORG_ID } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
@@ -24,10 +24,6 @@ import { downloadGitHubTemplate } from '../create.js';
 import type { ProjectConfig } from '../../types.js';
 
 const execAsync = promisify(exec);
-
-function buildOssHost(appkey: string, region: string): string {
-  return `https://${appkey}.${region}.insforge.app`;
-}
 
 async function runNpmInstall(startMessage = 'Installing dependencies...'): Promise<void> {
   const spinner = clack.spinner();

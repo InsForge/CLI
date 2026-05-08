@@ -5,6 +5,7 @@ import {
   saveProjectConfig,
   getProjectConfigFile,
   getParentBackupFile,
+  buildOssHost,
 } from '../../lib/config.js';
 import { listBranchesApi, getProjectApiKey } from '../../lib/api/platform.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
@@ -88,7 +89,7 @@ export async function runBranchSwitch(input: RunBranchSwitchOptions): Promise<vo
   }
 
   const apiKey = await getProjectApiKey(target.id, input.apiUrl);
-  const ossHost = `${target.appkey}.${target.region}.insforge.app`;
+  const ossHost = buildOssHost(target.appkey, target.region);
   const branched_from = current.branched_from ?? {
     project_id: current.project_id,
     project_name: current.project_name,

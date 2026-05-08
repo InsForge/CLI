@@ -50,9 +50,22 @@ vi.mock('./switch.js', () => ({
   registerBranchSwitchCommand: vi.fn(),
 }));
 
+// Capture spinner method calls so the non-JSON path can assert on them.
+const spinnerMock = {
+  start: vi.fn(),
+  message: vi.fn(),
+  stop: vi.fn(),
+};
+vi.mock('@clack/prompts', () => ({
+  spinner: () => spinnerMock,
+}));
+
 describe('branch create', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    spinnerMock.start.mockReset();
+    spinnerMock.message.mockReset();
+    spinnerMock.stop.mockReset();
   });
 
   it('rejects when no project linked', async () => {
@@ -188,5 +201,83 @@ describe('branch create', () => {
     );
     // Single JSON payload, parseable as one document.
     expect(() => JSON.parse(logs.join('\n'))).not.toThrow();
+  });
+
+  it('switch failure after a successful create reports "switch failed", not "creation failed"', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as any).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+      appkey: 'p1ky',
+      region: 'us-east',
+      api_key: 'k',
+      oss_host: 'https://p1ky.us-east.insforge.app',
+    });
+    const { runBranchSwitch } = await import('./switch.js');
+    (runBranchSwitch as any).mockRejectedValueOnce(new Error('network down'));
+
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    (process.exit as any) = (code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    };
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as any;
+    try {
+      await program
+        .parseAsync(['create', 'feat-x', '--mode', 'full'], { from: 'user' })
+        .catch(() => {});
+    } finally {
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+    }
+    expect(exitCode).toBe(1);
+    // The crucial assertion: spinner stops with switch-failure copy, not
+    // the misleading "creation failed" line.
+    expect(spinnerMock.stop).toHaveBeenCalledTimes(1);
+    const [stopMsg, stopCode] = spinnerMock.stop.mock.calls[0];
+    expect(stopMsg).toContain('switching context failed');
+    expect(stopMsg).toContain('insforge branch switch feat-x');
+    expect(stopMsg).not.toContain('creation failed');
+    expect(stopCode).toBe(1);
+  });
+
+  it('non-JSON path drives the spinner and keeps it active through switch', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as any).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+      appkey: 'p1ky',
+      region: 'us-east',
+      api_key: 'k',
+      oss_host: 'https://p1ky.us-east.insforge.app',
+    });
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    await program.parseAsync(['create', 'feat-x', '--mode', 'full'], { from: 'user' });
+
+    // start fires once for the slow POST...
+    expect(spinnerMock.start).toHaveBeenCalledTimes(1);
+    expect(spinnerMock.start).toHaveBeenCalledWith(expect.stringContaining("Creating branch 'feat-x'"));
+    // ...and stop fires exactly once (after the switch completes), with the
+    // unified "ready and active" message — never with the misleading "ready"
+    // line that a separate stop+restart pair would produce.
+    expect(spinnerMock.stop).toHaveBeenCalledTimes(1);
+    expect(spinnerMock.stop).toHaveBeenCalledWith(
+      expect.stringContaining('ready and active'),
+    );
+    // Switch ran silently so its outputSuccess does not interleave with the
+    // active spinner frame.
+    const { runBranchSwitch } = await import('./switch.js');
+    expect(runBranchSwitch).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'feat-x', json: false, silent: true }),
+    );
   });
 });

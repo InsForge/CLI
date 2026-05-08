@@ -14,7 +14,7 @@ import {
 } from '../lib/api/platform.js';
 import { getAnonKey, runRawSql } from '../lib/api/oss.js';
 import { applyAuthProvider, VALID_AUTH_PROVIDERS, type AuthProvider } from '../auth-providers/apply.js';
-import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl } from '../lib/config.js';
+import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl, buildOssHost } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
@@ -35,10 +35,6 @@ const SAFE_REPO_PATTERN = /^(https?:\/\/|git@)[A-Za-z0-9._:/@~+-]+(\.git)?$/;
 const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
 
 export type Framework = 'react' | 'nextjs';
-
-function buildOssHost(appkey: string, region: string): string {
-  return `https://${appkey}.${region}.insforge.app`;
-}
 
 async function waitForProjectActive(projectId: string, apiUrl?: string, timeoutMs = 120_000): Promise<void> {
   const start = Date.now();

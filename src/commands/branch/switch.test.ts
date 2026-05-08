@@ -8,6 +8,7 @@ vi.mock('../../lib/config.js', () => ({
   saveProjectConfig: vi.fn((c: any) => saveCalls.push(c)),
   getProjectConfigFile: () => '/tmp/_test_/.insforge/project.json',
   getParentBackupFile: () => '/tmp/_test_/.insforge/project.parent.json',
+  buildOssHost: (appkey: string, region: string) => `https://${appkey}.${region}.insforge.app`,
   FAKE_PROJECT_ID: '00000000-0000-0000-0000-000000000000',
 }));
 
@@ -78,6 +79,7 @@ describe('runBranchSwitch', () => {
       project_id: 'b1',
       project_name: 'feat-x',
       api_key: 'branch-api-key',
+      oss_host: 'https://p1ky-x9p.us-east.insforge.app',
       branched_from: { project_id: 'p1', project_name: 'parent' },
     });
   });
