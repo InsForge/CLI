@@ -1,0 +1,11 @@
+// Add this near the top of src/main.tsx, before ReactDOM.createRoot:
+import posthog from 'posthog-js';
+
+const posthogKey = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
+if (posthogKey) {
+  posthog.init(posthogKey, {
+    api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || '{{HOST}}',
+    capture_pageview: true,
+    capture_pageleave: true,
+  });
+}

@@ -1,0 +1,29 @@
+'use client';
+
+import { useEffect } from 'react';
+import posthog from 'posthog-js';
+
+// PostHog client-side provider for the Next.js App Router.
+// Initialises posthog-js exactly once on the client; SSR is skipped because
+// `useEffect` only runs in the browser.
+export function PostHogProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (posthog.__loaded) return;
+
+    const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+    if (!key) {
+      // Fail closed in production: missing env var → no init, no events.
+      // Avoids accidentally firing events without a key in CI/preview builds.
+      return;
+    }
+
+    posthog.init(key, {
+      api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || '{{HOST}}',
+      capture_pageview: true,
+      capture_pageleave: true,
+    });
+  }, []);
+
+  return <>{children}</>;
+}
