@@ -142,6 +142,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             const verb = existing ? 'updated' : 'deployed';
             outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
             if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
+            if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
           }
           await reportCliUsage('cli.compute.deploy', true);
           return;
@@ -269,6 +270,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           const verb = existing ? 'updated' : 'deployed';
           outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
           if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
+          if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
           console.log(`  Image: ${imageRef} (built remotely; no local image to clean up)`);
         }
 
