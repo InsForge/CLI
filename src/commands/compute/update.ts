@@ -131,6 +131,8 @@ export function registerComputeUpdateCommand(computeCmd: Command): void {
           outputJson(service);
         } else {
           outputSuccess(`Service "${service.name}" updated [${service.status}]`);
+          if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
+          if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
         }
         await reportCliUsage('cli.compute.update', true);
       } catch (err) {
