@@ -401,7 +401,7 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // Install agent skills
-        await installSkills(json);
+        await installSkills(json, opts.auth as string | undefined);
         trackCommand('create', orgId);
         await reportCliUsage('cli.create', true, 6);
 

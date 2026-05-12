@@ -68,10 +68,25 @@ function updateGitignore(): void {
   appendFileSync(gitignorePath, block);
 }
 
-export async function installSkills(json: boolean): Promise<void> {
+// Agents that the `npx skills add -a <agent>` CLI knows how to target. Kept
+// here so the BA-provider install below stays in lockstep with the main
+// InsForge install — no per-call-site drift if we add a new agent in future.
+const AGENT_FLAGS =
+  '-a antigravity -a augment -a claude-code -a cline -a codex -a cursor -a gemini-cli -a github-copilot -a kilo -a qoder -a qwen-code -a roo -a trae -a windsurf';
+
+// Provider-specific skill packs we install on top of the InsForge skills when
+// the user wires that provider in via `link --auth <provider>` / `create
+// --auth <provider>`. Each is its own marketplace/skill repo — they
+// complement (not duplicate) `insforge-integrations`, which covers the
+// InsForge bridge side of each provider.
+const PROVIDER_SKILLS: Record<string, { repo: string; label: string }> = {
+  'better-auth': { repo: 'better-auth/skills', label: 'Better Auth skills' },
+};
+
+export async function installSkills(json: boolean, authProvider?: string): Promise<void> {
   try {
     if (!json) clack.log.info('Installing InsForge agent skills (global)...');
-    await execAsync('npx skills add insforge/agent-skills -g -y -a antigravity -a augment -a claude-code -a cline -a codex -a cursor -a gemini-cli -a github-copilot -a kilo -a qoder -a qwen-code -a roo -a trae -a windsurf', {
+    await execAsync(`npx skills add insforge/agent-skills -g -y ${AGENT_FLAGS}`, {
       cwd: process.cwd(),
       timeout: SKILL_INSTALL_TIMEOUT_MS,
     });
@@ -95,6 +110,28 @@ export async function installSkills(json: boolean): Promise<void> {
     if (!json) {
       clack.log.warn(`Could not install find-skills: ${describeExecError(err)}`);
       clack.log.info('Run `npx skills add https://github.com/vercel-labs/skills --skill find-skills` once resolved.');
+    }
+  }
+
+  // Provider-specific skills: install the upstream pack (e.g. better-auth's
+  // own skills repo) when the user opted into a third-party auth provider.
+  // Complements `insforge-integrations` rather than replacing it — that one
+  // covers the InsForge bridge side; this one covers the provider's own
+  // patterns (BA scaffolding, email/password, 2FA, organizations, etc.).
+  const providerEntry = authProvider ? PROVIDER_SKILLS[authProvider] : undefined;
+  if (providerEntry) {
+    try {
+      if (!json) clack.log.info(`Installing ${providerEntry.label} (global)...`);
+      await execAsync(`npx skills add ${providerEntry.repo} -g -y ${AGENT_FLAGS}`, {
+        cwd: process.cwd(),
+        timeout: SKILL_INSTALL_TIMEOUT_MS,
+      });
+      if (!json) clack.log.success(`${providerEntry.label} installed.`);
+    } catch (err) {
+      if (!json) {
+        clack.log.warn(`Could not install ${providerEntry.label}: ${describeExecError(err)}`);
+        clack.log.info(`Run \`npx skills add ${providerEntry.repo}\` once resolved to see the full output.`);
+      }
     }
   }
 
