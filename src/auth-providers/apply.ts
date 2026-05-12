@@ -113,7 +113,16 @@ export function extractEnvPairs(content: string): Map<string, string> {
 // value matches the manifest's literal default AND the platform now has a
 // real value (e.g., cloud DATABASE_URL), overwrite the line. User-customized
 // values (anything that differs from the manifest default) are preserved.
+//
+// One extra case beyond "matches the default": the cloud's
+// `database-connection-string` endpoint used to return a placeholder URL
+// like `postgresql://postgres:********@host/db?sslmode=require` before
+// 0.1.72 spliced the real password in. Users linked under that older CLI
+// still have the masked URL in their .env.local. The masked value can
+// never authenticate to Postgres, so it's clearly stale — detect any
+// `:****@` (one or more `*`) password and refresh from the platform.
 // Exported for unit testing.
+const MASKED_PASSWORD_PATTERN = /:\*+@/;
 export function refreshStaleEnvDefaults(
   existing: string,
   manifestDefaults: Map<string, string>,
@@ -127,7 +136,10 @@ export function refreshStaleEnvDefaults(
     const userValue = m[2];
     const def = manifestDefaults.get(key);
     const real = platformValues.get(key);
-    if (def !== undefined && real !== undefined && userValue === def && real !== def) {
+    if (def === undefined || real === undefined || real === def) return line;
+    const matchesDefault = userValue === def;
+    const isMaskedPassword = MASKED_PASSWORD_PATTERN.test(userValue);
+    if (matchesDefault || isMaskedPassword) {
       refreshed.push(key);
       return `${key}=${real}`;
     }
