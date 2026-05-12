@@ -19,6 +19,8 @@
 // section to use it will be [email.smtp] or [auth.providers.<built_in>].
 
 import { ConfigValidationError } from './config-schema.js';
+import { ossFetch } from './api/oss.js';
+import { CLIError } from './errors.js';
 
 /** Matches `env(NAME)` where NAME is upper-snake-case. */
 const ENV_REF_PATTERN = /^env\(([A-Z_][A-Z0-9_]*)\)$/;
@@ -69,4 +71,70 @@ export function validateSensitiveString(
       `         ${path.split('.').pop()} = "env(${suggestedSecretName})"\n` +
       `    3. insforge config apply`,
   );
+}
+
+/**
+ * Resolve an env() ref against the project's InsForge secrets store. Returns
+ * the decrypted value. Pre-flight check before `apply` PUTs anything — if
+ * the named secret doesn't exist or is inactive, fail fast with an
+ * actionable error rather than letting the backend emit a generic 400.
+ *
+ * Why the secrets store (not local env vars): secrets are shared per-project
+ * across teammates, CI deploys, and dashboards. A `process.env.SMTP_PASSWORD`
+ * from a developer's shell would create silent skew for everyone else.
+ *
+ * @param envRef The full env() reference (e.g. "env(SMTP_PASSWORD)").
+ * @param fieldPath Dotted path of the field for error messages.
+ */
+export async function resolveEnvRef(envRef: string, fieldPath: string): Promise<string> {
+  const secretName = parseEnvRef(envRef);
+  if (!secretName) {
+    // Defensive — callers should have already validated. If we reach here,
+    // it means schema validation was bypassed somewhere upstream.
+    throw new ConfigValidationError(
+      fieldPath,
+      `expected env() reference, got "${envRef}"`,
+    );
+  }
+
+  let res: Response;
+  try {
+    res = await ossFetch(`/api/secrets/${encodeURIComponent(secretName)}`);
+  } catch (err) {
+    // Network-level failure — surface as-is. The secret may exist; we
+    // couldn't reach the backend to check.
+    throw new CLIError(
+      `failed to resolve env(${secretName}) for ${fieldPath}: ${(err as Error).message}`,
+      1,
+      'SECRET_LOOKUP_FAILED',
+    );
+  }
+
+  if (res.status === 404) {
+    throw new CLIError(
+      `${fieldPath} references env(${secretName}) but no such secret exists.\n` +
+        `  fix: insforge secrets add ${secretName} "<value>"`,
+      1,
+      'SECRET_NOT_FOUND',
+    );
+  }
+
+  if (!res.ok) {
+    throw new CLIError(
+      `failed to resolve env(${secretName}) for ${fieldPath}: HTTP ${res.status}`,
+      1,
+      'SECRET_LOOKUP_FAILED',
+    );
+  }
+
+  const body = (await res.json()) as { value?: string };
+  if (typeof body.value !== 'string' || body.value.length === 0) {
+    throw new CLIError(
+      `env(${secretName}) resolved to an empty value (secret may be inactive).\n` +
+        `  fix: insforge secrets update ${secretName} --active true`,
+      1,
+      'SECRET_EMPTY',
+    );
+  }
+  return body.value;
 }

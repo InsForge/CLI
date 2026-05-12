@@ -43,6 +43,16 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
       'allowedRedirectUrls' in raw.auth
     );
   }
+  if (change.section === 'auth.smtp') {
+    // SMTP is whole-object: a backend either exposes `smtpConfig` in
+    // /api/metadata (and accepts PUT /api/auth/smtp-config) or doesn't.
+    return (
+      raw?.auth !== undefined &&
+      raw.auth !== null &&
+      typeof raw.auth === 'object' &&
+      'smtpConfig' in raw.auth
+    );
+  }
   return false;
 }
 
@@ -50,5 +60,6 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
  * Human-readable path for a change, used in skipped/applied summaries.
  */
 export function changePath(change: DiffChange): string {
+  if (change.section === 'auth.smtp') return 'auth.smtp';
   return `${change.section}.${change.key}`;
 }

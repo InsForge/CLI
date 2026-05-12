@@ -11,6 +11,24 @@ import { stringifyConfigToml } from '../../lib/config-toml.js';
 import type { InsforgeConfig } from '../../lib/config-schema.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
+interface RawAuthMetadata {
+  allowedRedirectUrls?: string[];
+  smtpConfig?: {
+    enabled?: boolean;
+    host?: string;
+    port?: number;
+    username?: string;
+    hasPassword?: boolean;
+    senderEmail?: string;
+    senderName?: string;
+    minIntervalSeconds?: number;
+  };
+}
+
+interface RawMetadataResponse {
+  auth?: RawAuthMetadata;
+}
+
 export function registerConfigExportCommand(cfg: Command): void {
   cfg
     .command('export')
@@ -44,9 +62,7 @@ export function registerConfigExportCommand(cfg: Command): void {
         }
 
         const res = await ossFetch('/api/metadata');
-        const raw = (await res.json()) as {
-          auth?: { allowedRedirectUrls?: string[] };
-        };
+        const raw = (await res.json()) as RawMetadataResponse;
 
         // Only emit sections the backend actually exposes. The TOML file
         // should describe what THIS backend can do — not aspirational fields
@@ -58,11 +74,32 @@ export function registerConfigExportCommand(cfg: Command): void {
 
         const authSlice = raw?.auth;
         if (authSlice && typeof authSlice === 'object' && 'allowedRedirectUrls' in authSlice) {
-          config.auth = {
-            allowed_redirect_urls: authSlice.allowedRedirectUrls ?? [],
-          };
+          config.auth = config.auth ?? {};
+          config.auth.allowed_redirect_urls = authSlice.allowedRedirectUrls ?? [];
         } else {
           skipped.push('auth.allowed_redirect_urls');
+        }
+
+        if (authSlice && 'smtpConfig' in authSlice && authSlice.smtpConfig) {
+          const s = authSlice.smtpConfig;
+          config.auth = config.auth ?? {};
+          config.auth.smtp = {
+            enabled: s.enabled ?? false,
+            host: s.host ?? '',
+            port: s.port ?? 587,
+            username: s.username ?? '',
+            // When backend has a password set, emit a deterministic env()
+            // placeholder so the user knows which secret to define. We do
+            // NOT round-trip the value (it never leaves the backend).
+            // Re-applying this TOML force-resends from the secrets store
+            // — see config-diff.ts for the force-resend rationale.
+            ...(s.hasPassword ? { password: 'env(SMTP_PASSWORD)' } : {}),
+            sender_email: s.senderEmail ?? '',
+            sender_name: s.senderName ?? '',
+            min_interval_seconds: s.minIntervalSeconds ?? 60,
+          };
+        } else {
+          skipped.push('auth.smtp');
         }
 
         const toml = stringifyConfigToml(config);
