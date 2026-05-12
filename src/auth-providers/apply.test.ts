@@ -100,6 +100,23 @@ describe('refreshStaleEnvDefaults', () => {
     expect(updated).toBe(existing);
   });
 
+  it('refreshes a masked-password URL even if it differs from the manifest default', () => {
+    // Pre-0.1.72 cloud links wrote `postgresql://postgres:********@...`
+    // (placeholder password) to .env.local. Re-linking under 0.1.72+ should
+    // replace that with the real spliced password from /database-password.
+    const existing = 'DATABASE_URL=postgresql://postgres:********@m8s5kmam.us-east.database.insforge.app:5432/insforge?sslmode=require\n';
+    const defaults = new Map([
+      ['DATABASE_URL', 'postgresql://postgres:postgres@127.0.0.1:5432/insforge'],
+    ]);
+    const platform = new Map([
+      ['DATABASE_URL', 'postgresql://postgres:realsecret@m8s5kmam.us-east.database.insforge.app:5432/insforge?sslmode=require'],
+    ]);
+    const { updated, refreshed } = refreshStaleEnvDefaults(existing, defaults, platform);
+    expect(refreshed).toEqual(['DATABASE_URL']);
+    expect(updated).toContain('postgres:realsecret@');
+    expect(updated).not.toContain('********');
+  });
+
   it('handles multiple keys, refreshing only the stale ones', () => {
     const existing = [
       'DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/insforge',
