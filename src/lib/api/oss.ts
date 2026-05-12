@@ -58,27 +58,51 @@ export function spliceDatabasePassword(maskedUrl: string, password: string): str
   return maskedUrl.replace(/^(postgresql:\/\/[^:]+:)[^@]+(@)/, `$1${password}$2`);
 }
 
+// The platform also returns the password as `********` (or any run of `*`)
+// while the project is finishing provisioning — splicing that into the URL
+// is a silent no-op and leaves the user with an unusable masked URL in
+// `.env.local`. Treat it the same as "not ready".
+export function isMaskedDatabasePassword(value: string): boolean {
+  return /^\*+$/.test(value);
+}
+
+async function fetchDatabasePasswordOnce(): Promise<string | null> {
+  try {
+    const res = await ossFetch('/api/metadata/database-password');
+    const body = await res.json() as { databasePassword?: string };
+    const pw = body.databasePassword;
+    if (typeof pw !== 'string' || !pw || isMaskedDatabasePassword(pw)) return null;
+    return pw;
+  } catch {
+    return null;
+  }
+}
+
 export async function getDatabaseConnectionString(): Promise<string | null> {
   // Cloud-only: returns the project's Postgres URL with the real password
   // substituted in. The platform's `/database-connection-string` endpoint
-  // masks the password (`postgresql://postgres:********@...`), so we also
-  // hit `/database-password` and splice the unmasked value in. Without this
-  // splice, callers (e.g., `link`'s .env.local auto-fill) would write a URL
-  // BA's pg pool can't authenticate with.
-  // Self-hosted returns null on either endpoint (PROJECT_ID not configured)
-  // so we fall back gracefully.
+  // masks the password (`postgresql://postgres:********@...`); we hit
+  // `/database-password` separately to splice the real password in.
+  //
+  // Right after `create`, the project flips to `status=active` before the
+  // password generator has populated `/database-password` — that endpoint
+  // can return `********` itself for ~5-10s. So we poll briefly (up to 20s
+  // total) until we see a real password before giving up. Self-hosted /
+  // older projects without the endpoint return null and we fall back.
   try {
-    const [urlRes, pwRes] = await Promise.all([
-      ossFetch('/api/metadata/database-connection-string'),
-      ossFetch('/api/metadata/database-password'),
-    ]);
+    const urlRes = await ossFetch('/api/metadata/database-connection-string');
     const urlBody = await urlRes.json() as { connectionURL?: string };
-    const pwBody = await pwRes.json() as { databasePassword?: string };
-
     const masked = urlBody.connectionURL;
-    const password = pwBody.databasePassword;
     if (typeof masked !== 'string' || !masked) return null;
-    if (typeof password !== 'string' || !password) return null;
+
+    let password = await fetchDatabasePasswordOnce();
+    const POLL_ATTEMPTS = 9;
+    const POLL_DELAY_MS = 2_000;
+    for (let attempt = 0; password === null && attempt < POLL_ATTEMPTS; attempt++) {
+      await new Promise((r) => setTimeout(r, POLL_DELAY_MS));
+      password = await fetchDatabasePasswordOnce();
+    }
+    if (password === null) return null;
 
     return spliceDatabasePassword(masked, password);
   } catch {
