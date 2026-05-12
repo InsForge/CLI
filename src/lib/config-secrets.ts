@@ -101,21 +101,25 @@ export async function resolveEnvRef(envRef: string, fieldPath: string): Promise<
   try {
     res = await ossFetch(`/api/secrets/${encodeURIComponent(secretName)}`);
   } catch (err) {
-    // Network-level failure — surface as-is. The secret may exist; we
-    // couldn't reach the backend to check.
+    // ossFetch throws on any non-2xx, swallowing the status. Recover the
+    // "missing secret" case from the error message — the backend's NOT_FOUND
+    // path is the most common failure here and deserves the named code +
+    // actionable hint, not a generic network error.
+    const message = (err as Error).message ?? '';
+    if (/not found/i.test(message)) {
+      throw new CLIError(
+        `${fieldPath} references env(${secretName}) but no such secret exists.\n` +
+          `  fix: insforge secrets add ${secretName} "<value>"`,
+        1,
+        'SECRET_NOT_FOUND',
+      );
+    }
+    // Other failures: re-wrap with the path context so users see what we
+    // were trying to resolve when the lookup blew up.
     throw new CLIError(
-      `failed to resolve env(${secretName}) for ${fieldPath}: ${(err as Error).message}`,
+      `failed to resolve env(${secretName}) for ${fieldPath}: ${message}`,
       1,
       'SECRET_LOOKUP_FAILED',
-    );
-  }
-
-  if (res.status === 404) {
-    throw new CLIError(
-      `${fieldPath} references env(${secretName}) but no such secret exists.\n` +
-        `  fix: insforge secrets add ${secretName} "<value>"`,
-      1,
-      'SECRET_NOT_FOUND',
     );
   }
 

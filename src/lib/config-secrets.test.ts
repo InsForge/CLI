@@ -93,10 +93,11 @@ describe('resolveEnvRef', () => {
     expect(ossFetchMock).toHaveBeenCalledWith('/api/secrets/SMTP_PASSWORD');
   });
 
-  it('throws SECRET_NOT_FOUND on 404 with an actionable add hint', async () => {
-    ossFetchMock.mockResolvedValueOnce(
-      new Response('{"error":"not found"}', { status: 404 }),
-    );
+  it('throws SECRET_NOT_FOUND when secret is missing (ossFetch throws "not found")', async () => {
+    // ossFetch throws on any non-2xx — recover the missing-secret signal from
+    // the error message rather than inspecting status, since the underlying
+    // Response is unreachable from the caller side.
+    ossFetchMock.mockRejectedValueOnce(new Error('Secret not found: MISSING'));
     await expect(
       resolveEnvRef('env(MISSING)', 'auth.smtp.password'),
     ).rejects.toMatchObject({

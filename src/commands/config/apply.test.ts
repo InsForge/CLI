@@ -22,7 +22,10 @@ const ossFetchMock = vi.fn(async (path: string, init?: RequestInit) => {
     const key = decodeURIComponent(secretMatch[1]);
     const value = secretsStore.get(key);
     if (value === undefined) {
-      return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+      // Real ossFetch throws on any non-2xx instead of returning the Response.
+      // Mirror that: the resolver recovers the "missing" signal from the error
+      // message because the underlying status is unreachable.
+      throw new Error(`Secret not found: ${key}`);
     }
     return new Response(JSON.stringify({ key, value }), {
       status: 200,
