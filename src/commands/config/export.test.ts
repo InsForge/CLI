@@ -90,7 +90,9 @@ describe('config export (capability probe)', () => {
     expect(result.config.auth).toEqual({
       allowed_redirect_urls: ['https://a.com', 'https://b.com'],
     });
-    expect(result.skipped).toEqual([]);
+    // Self-host metadata response (no deployments slice) — that section is
+    // skipped, but the redirect URLs still apply.
+    expect(result.skipped).toEqual(['deployments.subdomain']);
 
     const written = readFileSync(target, 'utf8');
     expect(written).toContain('allowed_redirect_urls');
@@ -114,9 +116,74 @@ describe('config export (capability probe)', () => {
 
     const result = docs[0] as { config: { auth?: unknown }; skipped: string[] };
     expect(result.config.auth).toBeUndefined();
-    expect(result.skipped).toEqual(['auth.allowed_redirect_urls']);
+    expect(result.skipped).toEqual([
+      'auth.allowed_redirect_urls',
+      'deployments.subdomain',
+    ]);
     // File is still written so future apply cycles work — just empty.
     expect(existsSync(target)).toBe(true);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('emits [deployments] when cloud backend exposes a custom slug', async () => {
+    nextMetadataResponse = {
+      auth: { allowedRedirectUrls: [] },
+      deployments: { customSlug: 'my-app' },
+    };
+    const target = join(tmp, 'insforge.toml');
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      'config',
+      'export',
+      '--out',
+      target,
+      '--force',
+    ]);
+
+    const result = docs[0] as {
+      config: { deployments?: { subdomain?: string } };
+      skipped: string[];
+    };
+    expect(result.config.deployments).toEqual({ subdomain: 'my-app' });
+    expect(result.skipped).toEqual([]);
+
+    const written = readFileSync(target, 'utf8');
+    expect(written).toContain('[deployments]');
+    expect(written).toContain('subdomain = "my-app"');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('omits [deployments] when cloud backend has no slug set', async () => {
+    // Slice present but customSlug: null — the project is on its default
+    // URL. Emitting subdomain = "" would mean "clear on apply" (which fails
+    // the 3-char min), so we leave the section out entirely.
+    nextMetadataResponse = {
+      auth: { allowedRedirectUrls: [] },
+      deployments: { customSlug: null },
+    };
+    const target = join(tmp, 'insforge.toml');
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      'config',
+      'export',
+      '--out',
+      target,
+      '--force',
+    ]);
+
+    const result = docs[0] as {
+      config: { deployments?: unknown };
+      skipped: string[];
+    };
+    expect(result.config.deployments).toBeUndefined();
+    expect(result.skipped).toEqual([]);
+
+    const written = readFileSync(target, 'utf8');
+    expect(written).not.toContain('[deployments]');
 
     rmSync(tmp, { recursive: true, force: true });
   });

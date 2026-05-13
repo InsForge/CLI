@@ -33,9 +33,16 @@ export function registerConfigApplyCommand(cfg: Command): void {
         const res = await ossFetch('/api/metadata');
         const raw = (await res.json()) as {
           auth?: { allowedRedirectUrls?: string[] };
+          deployments?: { customSlug?: string | null };
         };
         const live: InsforgeConfig = {
           auth: { allowed_redirect_urls: raw.auth?.allowedRedirectUrls ?? [] },
+          // Only populate the deployments slice when the backend exposes it.
+          // The capability gate (metadataSupports) still does the final check
+          // — this just gives diffConfig something to compare against.
+          ...(raw.deployments
+            ? { deployments: { subdomain: raw.deployments.customSlug ?? null } }
+            : {}),
         };
 
         const result = diffConfig({ live, file });
@@ -134,5 +141,18 @@ async function applyChange(change: DiffChange): Promise<void> {
     });
     return;
   }
-  throw new Error(`Unsupported change type: ${change.section}.${change.key}`);
+  if (change.section === 'deployments' && change.key === 'subdomain') {
+    // Backend (updateSlugRequestSchema) accepts string | null; the diff
+    // layer already normalized empty-string to null. A conflict on a
+    // taken slug returns 409 — ossFetch surfaces that as a CLIError with
+    // the backend's "Slug is already taken" message.
+    await ossFetch('/api/deployments/slug', {
+      method: 'PUT',
+      body: JSON.stringify({ slug: change.to }),
+    });
+    return;
+  }
+  throw new Error(
+    `Unsupported change type: ${(change as DiffChange).section}.${(change as DiffChange).key}`,
+  );
 }

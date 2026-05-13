@@ -30,5 +30,10 @@ export function formatPlan(result: DiffResult): string {
 }
 
 function formatChange(c: DiffChange): string {
+  if (c.section === 'deployments' && c.key === 'subdomain') {
+    const fromLabel = c.from === null ? '(unset)' : JSON.stringify(c.from);
+    const toLabel = c.to === null ? '(unset)' : JSON.stringify(c.to);
+    return `~ ${c.key}: ${fromLabel} → ${toLabel}`;
+  }
   return `~ ${c.key}: ${JSON.stringify(c.from)} → ${JSON.stringify(c.to)}`;
 }

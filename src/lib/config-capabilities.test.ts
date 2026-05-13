@@ -61,6 +61,32 @@ describe('metadataSupports', () => {
   });
 });
 
+describe('metadataSupports — deployments.subdomain', () => {
+  const change: DiffChange = {
+    section: 'deployments',
+    op: 'modify',
+    key: 'subdomain',
+    from: null,
+    to: 'my-app',
+  };
+
+  it('returns true when the deployments slice is present (cloud backend)', () => {
+    expect(metadataSupports({ deployments: { customSlug: null } }, change)).toBe(true);
+  });
+
+  it('returns true when the slice carries a non-null slug', () => {
+    expect(metadataSupports({ deployments: { customSlug: 'set' } }, change)).toBe(true);
+  });
+
+  it('returns false when the slice is omitted (self-host or pre-#1259 backend)', () => {
+    // Critical version-skew guard: a backend that doesn't expose
+    // deployments must not receive a slug PUT — self-host's slug endpoint
+    // 503s, and a pre-#1259 cloud backend would have no metadata round-trip
+    // to detect the field at all.
+    expect(metadataSupports({ auth: { allowedRedirectUrls: [] } }, change)).toBe(false);
+  });
+});
+
 describe('changePath', () => {
   it('joins section and key with a dot', () => {
     expect(changePath(change)).toBe('auth.allowed_redirect_urls');

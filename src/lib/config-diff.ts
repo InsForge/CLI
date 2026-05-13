@@ -1,12 +1,20 @@
 import type { InsforgeConfig } from './config-schema.js';
 
-export type DiffChange = {
-  section: 'auth';
-  op: 'modify';
-  key: 'allowed_redirect_urls';
-  from: string[];
-  to: string[];
-};
+export type DiffChange =
+  | {
+      section: 'auth';
+      op: 'modify';
+      key: 'allowed_redirect_urls';
+      from: string[];
+      to: string[];
+    }
+  | {
+      section: 'deployments';
+      op: 'modify';
+      key: 'subdomain';
+      from: string | null;
+      to: string | null;
+    };
 
 export interface DiffSummary {
   add: number;
@@ -48,6 +56,27 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
         section: 'auth',
         op: 'modify',
         key: 'allowed_redirect_urls',
+        from: fromV,
+        to: toV,
+      });
+    }
+  }
+
+  const fileDeployments = file.deployments;
+  const liveDeployments = live.deployments ?? {};
+  if (fileDeployments && 'subdomain' in fileDeployments) {
+    const fromV = liveDeployments.subdomain ?? null;
+    // Empty-string in TOML means "clear the slug" — TOML has no null literal,
+    // so this is the only way the user can express "unset" without deleting
+    // the line. The PUT body sends slug: null which the backend interprets
+    // as clear.
+    const rawTo = fileDeployments.subdomain;
+    const toV = rawTo === null || rawTo === '' ? null : rawTo;
+    if (fromV !== toV) {
+      changes.push({
+        section: 'deployments',
+        op: 'modify',
+        key: 'subdomain',
         from: fromV,
         to: toV,
       });

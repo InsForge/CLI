@@ -27,6 +27,9 @@ import type { DiffChange } from './config-diff.js';
 
 type RawMetadata = {
   auth?: Record<string, unknown>;
+  // Cloud-only slice. Self-host backends omit the key entirely — that's the
+  // signal we use to gate [deployments] writes (self-host can't honor them).
+  deployments?: Record<string, unknown>;
 };
 
 /**
@@ -41,6 +44,15 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
       raw.auth !== null &&
       typeof raw.auth === 'object' &&
       'allowedRedirectUrls' in raw.auth
+    );
+  }
+  if (change.section === 'deployments' && change.key === 'subdomain') {
+    // Presence-only probe: cloud backends always carry `customSlug` in the
+    // slice (null when unset); self-host omits the whole `deployments` key.
+    return (
+      raw?.deployments !== undefined &&
+      raw.deployments !== null &&
+      typeof raw.deployments === 'object'
     );
   }
   return false;
