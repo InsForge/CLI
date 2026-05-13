@@ -78,6 +78,18 @@ describe('runAiSetup', () => {
     expect(result.mismatched).toEqual(['OPENROUTER_API_KEY']);
   });
 
+  it('skips an existing matching OpenRouter key', async () => {
+    writeFileSync(join(dir, '.env.local'), 'OPENROUTER_API_KEY=sk-or-secret\n');
+
+    const result = await runAiSetup({ json: true });
+
+    expect(readFileSync(join(dir, '.env.local'), 'utf-8')).toBe(
+      'OPENROUTER_API_KEY=sk-or-secret\n',
+    );
+    expect(result.added).toEqual([]);
+    expect(result.skipped).toEqual(['OPENROUTER_API_KEY']);
+  });
+
   it('respects --env-file paths and does not add non-local env files to gitignore', async () => {
     const result = await runAiSetup({ json: true, envFile: '.env' });
 
@@ -95,6 +107,14 @@ describe('ensureLocalEnvIgnored', () => {
     writeFileSync(join(dir, '.gitignore'), '.env*\n');
     expect(ensureLocalEnvIgnored(dir, '.env.local')).toBe(false);
     expect(readFileSync(join(dir, '.gitignore'), 'utf-8')).toBe('.env*\n');
+  });
+
+  it('adds .env*.local for non-default local env files when only .env.local is ignored', () => {
+    writeFileSync(join(dir, '.gitignore'), '.env.local\n');
+    expect(ensureLocalEnvIgnored(dir, '.env.staging.local')).toBe(true);
+    expect(readFileSync(join(dir, '.gitignore'), 'utf-8')).toBe(
+      '.env.local\n\n# Local environment secrets\n.env*.local\n',
+    );
   });
 
   it('does not update gitignore for env files outside the project', () => {

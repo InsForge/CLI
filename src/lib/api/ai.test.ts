@@ -13,7 +13,7 @@ describe('getOpenRouterApiKey', () => {
   it('fetches the OpenRouter key from the AI backend endpoint', async () => {
     const { ossFetch } = await import('./oss.js');
     (ossFetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      json: async () => ({ apiKey: 'sk-or-test', maskedKey: 'sk-or-****test' }),
+      json: async () => ({ apiKey: ' sk-or-test ', maskedKey: ' sk-or-****test ' }),
     });
 
     await expect(getOpenRouterApiKey()).resolves.toEqual({
@@ -27,6 +27,15 @@ describe('getOpenRouterApiKey', () => {
     const { ossFetch } = await import('./oss.js');
     (ossFetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       json: async () => ({ maskedKey: 'sk-or-****test' }),
+    });
+
+    await expect(getOpenRouterApiKey()).rejects.toThrow(/returned no OpenRouter API key/);
+  });
+
+  it('throws a clear error when the backend returns a whitespace-only key', async () => {
+    const { ossFetch } = await import('./oss.js');
+    (ossFetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      json: async () => ({ apiKey: '   ', maskedKey: 'sk-or-****test' }),
     });
 
     await expect(getOpenRouterApiKey()).rejects.toThrow(/returned no OpenRouter API key/);

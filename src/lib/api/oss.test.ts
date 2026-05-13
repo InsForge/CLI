@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { isMaskedDatabasePassword, spliceDatabasePassword } from './oss.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as config from '../config.js';
+import { isMaskedDatabasePassword, ossFetch, spliceDatabasePassword } from './oss.js';
+import type { ProjectConfig } from '../../types.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('spliceDatabasePassword', () => {
   // Real shape from cloud `/api/metadata/database-connection-string`
@@ -45,5 +51,29 @@ describe('isMaskedDatabasePassword', () => {
   });
   it('does not flag empty string (caller checks emptiness separately)', () => {
     expect(isMaskedDatabasePassword('')).toBe(false);
+  });
+});
+
+describe('ossFetch', () => {
+  it('shows an AI-specific 404 message for backends without Model Gateway setup', async () => {
+    vi.spyOn(config, 'getProjectConfig').mockReturnValue({
+      project_id: 'p1',
+      project_name: 'demo',
+      org_id: 'o1',
+      appkey: 'app',
+      region: 'us-east',
+      api_key: 'ik_test',
+      oss_host: 'https://app.us-east.insforge.app',
+    } satisfies ProjectConfig);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(ossFetch('/api/ai/openrouter/api-key')).rejects.toThrow(
+      /Upgrade your InsForge project to a version with Model Gateway support/,
+    );
   });
 });

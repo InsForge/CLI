@@ -9,6 +9,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { getRootOpts, handleError, ProjectNotLinkedError } from '../../lib/errors.js';
 import { upsertEnvFile } from '../../lib/env-writer.js';
 import { outputInfo, outputJson, outputSuccess } from '../../lib/output.js';
+import { isInteractive } from '../../lib/prompts.js';
 
 const DEFAULT_ENV_FILE = '.env.local';
 const OPENROUTER_ENV_KEY = 'OPENROUTER_API_KEY';
@@ -62,7 +63,16 @@ export async function runAiSetup(opts: RunAiSetupOptions): Promise<AiSetupResult
     outputSuccess(`Linked to InsForge project: ${project.project_name} (${project.project_id})`);
   }
 
-  const key = await getOpenRouterApiKey();
+  const spinner = !opts.json && isInteractive ? clack.spinner() : null;
+  spinner?.start('Fetching OpenRouter key...');
+  let key: Awaited<ReturnType<typeof getOpenRouterApiKey>>;
+  try {
+    key = await getOpenRouterApiKey();
+    spinner?.stop('Fetched OpenRouter key.');
+  } catch (err) {
+    spinner?.stop('Could not fetch OpenRouter key.');
+    throw err;
+  }
   const envFile = opts.envFile ?? DEFAULT_ENV_FILE;
   const envPath = resolve(process.cwd(), envFile);
   const envLabel = displayPath(envPath);
@@ -144,11 +154,12 @@ export function ensureLocalEnvIgnored(cwd: string, envFile: string): boolean {
   const gitignorePath = join(cwd, '.gitignore');
   const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
   const lines = new Set(existing.split(/\r?\n/).map((line) => line.trim()));
+  const envBasename = envFile.replace(/\\/g, '/').split('/').pop() ?? envFile;
   if (
     lines.has('.env*') ||
     lines.has('.env.*') ||
     lines.has('.env*.local') ||
-    lines.has('.env.local')
+    (lines.has('.env.local') && envBasename === '.env.local')
   ) {
     return false;
   }

@@ -154,6 +154,10 @@ export async function ossFetch(
       message = 'Database migrations are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin about database migration support.';
     }
 
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/ai')) {
+      message = 'AI Model Gateway setup is not available on this backend.\nUpgrade your InsForge project to a version with Model Gateway support, or keep using the legacy @insforge/sdk AI modules for projects that still rely on the older AI API surface.';
+    }
+
     throw new CLIError(message);
   }
 
