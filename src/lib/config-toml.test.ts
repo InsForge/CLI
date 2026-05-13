@@ -110,6 +110,18 @@ min_interval_seconds = -1
 `;
     expect(() => parseConfigToml(toml)).toThrow(/min_interval_seconds.*non-negative/);
   });
+
+  it('rejects port outside 1-65535', () => {
+    expect(() => parseConfigToml('[auth.smtp]\nport = 0\n')).toThrow(
+      /port.*1 and 65535/,
+    );
+    expect(() => parseConfigToml('[auth.smtp]\nport = -1\n')).toThrow(
+      /port.*1 and 65535/,
+    );
+    expect(() => parseConfigToml('[auth.smtp]\nport = 70000\n')).toThrow(
+      /port.*1 and 65535/,
+    );
+  });
 });
 
 describe('stringifyConfigToml — auth.smtp', () => {
@@ -131,6 +143,21 @@ describe('stringifyConfigToml — auth.smtp', () => {
     expect(out).toContain('[auth.smtp]');
     expect(out).toContain('password = "env(SMTP_PASSWORD)"');
     expect(out).toContain('insforge secrets add SMTP_PASSWORD');
+  });
+
+  it('discovery comment names the actual env ref, not the SMTP_PASSWORD default', () => {
+    // When the user names their secret PROD_SMTP_PASS, the hint that tells
+    // them how to provision it must point at PROD_SMTP_PASS — pointing at
+    // SMTP_PASSWORD would have them create the wrong secret.
+    const out = stringifyConfigToml({
+      auth: {
+        smtp: {
+          password: 'env(PROD_SMTP_PASS)',
+        },
+      },
+    });
+    expect(out).toContain('insforge secrets add PROD_SMTP_PASS');
+    expect(out).not.toContain('insforge secrets add SMTP_PASSWORD');
   });
 
   it('omits password line entirely when password is undefined', () => {

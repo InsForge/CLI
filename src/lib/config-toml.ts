@@ -1,5 +1,6 @@
 import * as smolToml from 'smol-toml';
 import { validateConfig, type InsforgeConfig, type SmtpConfig } from './config-schema.js';
+import { parseEnvRef } from './config-secrets.js';
 
 export function parseConfigToml(input: string): InsforgeConfig {
   let parsed: unknown;
@@ -67,9 +68,13 @@ function renderSmtpFields(smtp: SmtpConfig, lines: string[]): void {
   if (smtp.username !== undefined) lines.push(`username = ${JSON.stringify(smtp.username)}`);
   if (smtp.password !== undefined) {
     // password is always an env() ref at this point (schema validator rejects
-    // literals at parse time). Emit a comment about how to set the actual
-    // value so the user can discover the workflow from a fresh export.
-    lines.push('# password is managed via secrets — run `insforge secrets add SMTP_PASSWORD <value>`');
+    // literals at parse time). Emit a comment naming the *actual* secret —
+    // hardcoding SMTP_PASSWORD here would mislead anyone who named their
+    // ref differently (e.g. env(PROD_SMTP_PASS)).
+    const secretName = parseEnvRef(smtp.password) ?? 'SMTP_PASSWORD';
+    lines.push(
+      `# password is managed via secrets — run \`insforge secrets add ${secretName} "<value>"\``,
+    );
     lines.push(`password = ${JSON.stringify(smtp.password)}`);
   }
   if (smtp.sender_email !== undefined) {

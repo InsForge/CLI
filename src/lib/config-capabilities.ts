@@ -65,6 +65,11 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
       typeof raw.deployments === 'object'
     );
   }
+  // Exhaustiveness check — if a new DiffChange variant lands without a
+  // matching probe, TS errors at compile time instead of silently dumping
+  // every apply of that section into skipped[] forever.
+  const _exhaustive: never = change;
+  void _exhaustive;
   return false;
 }
 

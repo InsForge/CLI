@@ -142,8 +142,16 @@ function validateSmtp(input: unknown): SmtpConfig {
   }
 
   if ('port' in obj) {
-    if (typeof obj.port !== 'number' || !Number.isInteger(obj.port)) {
-      throw new ConfigValidationError('auth.smtp.port', 'must be an integer');
+    if (
+      typeof obj.port !== 'number' ||
+      !Number.isInteger(obj.port) ||
+      obj.port < 1 ||
+      obj.port > 65535
+    ) {
+      throw new ConfigValidationError(
+        'auth.smtp.port',
+        'must be an integer between 1 and 65535',
+      );
     }
     out.port = obj.port;
   }
