@@ -186,6 +186,20 @@ npx @insforge/cli docs storage rest-api       # Show REST API storage docs
 
 ---
 
+### AI — `npx @insforge/cli ai`
+
+Configure local development for the InsForge Model Gateway. The setup command fetches the linked project's active OpenRouter key from the InsForge backend and writes it as the server-only `OPENROUTER_API_KEY` variable.
+
+```bash
+npx @insforge/cli ai setup
+npx @insforge/cli ai setup --env-file .env
+npx @insforge/cli ai setup --json
+```
+
+By default the CLI writes `.env.local` and adds `.env*.local` to `.gitignore` when needed. For deployments such as Vercel, add `OPENROUTER_API_KEY` to the provider's server/runtime environment. Do not rename the key to `NEXT_PUBLIC_`, `VITE_`, or `PUBLIC_`; those prefixes expose values to browser code.
+
+---
+
 ### Database — `npx @insforge/cli db`
 
 #### `npx @insforge/cli db query <sql>`
