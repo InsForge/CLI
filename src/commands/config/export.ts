@@ -80,7 +80,12 @@ export function registerConfigExportCommand(cfg: Command): void {
           skipped.push('auth.allowed_redirect_urls');
         }
 
-        if (authSlice && 'smtpConfig' in authSlice && authSlice.smtpConfig) {
+        if (
+          authSlice &&
+          typeof authSlice === 'object' &&
+          'smtpConfig' in authSlice &&
+          authSlice.smtpConfig
+        ) {
           const s = authSlice.smtpConfig;
           config.auth = config.auth ?? {};
           config.auth.smtp = {
