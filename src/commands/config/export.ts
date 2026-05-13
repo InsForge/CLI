@@ -27,6 +27,12 @@ interface RawAuthMetadata {
 
 interface RawMetadataResponse {
   auth?: RawAuthMetadata;
+  // Cloud-only slice. Self-host or pre-#1259 backends omit the key
+  // entirely; presence is the signal the CLI uses to decide whether to
+  // emit a [deployments] section.
+  deployments?: {
+    customSlug?: string | null;
+  };
 }
 
 export function registerConfigExportCommand(cfg: Command): void {
@@ -105,6 +111,20 @@ export function registerConfigExportCommand(cfg: Command): void {
           };
         } else {
           skipped.push('auth.smtp');
+        }
+
+        const deploymentsSlice = raw?.deployments;
+        if (deploymentsSlice && typeof deploymentsSlice === 'object') {
+          // Cloud backend exposes the slice. Only emit a value when a slug
+          // is actually set — an unset slug means the project is on its
+          // default URL, and surfacing subdomain = "" in the TOML would
+          // imply "clear on apply" (and fail the backend's 3-char min).
+          if (typeof deploymentsSlice.customSlug === 'string' && deploymentsSlice.customSlug) {
+            config.deployments = { subdomain: deploymentsSlice.customSlug };
+          }
+        } else {
+          // Self-host or pre-#1259 backend — slice missing entirely.
+          skipped.push('deployments.subdomain');
         }
 
         const toml = stringifyConfigToml(config);

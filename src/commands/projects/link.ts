@@ -118,7 +118,7 @@ export function registerProjectLinkCommand(program: Command): void {
               outputJson({ success: true, skills_only: true });
             } else {
               clack.note(
-                `Open your coding agent (Claude Code, Codex, Cursor, etc.) and ask it to build something. It will walk you through provisioning an InsForge project when needed.`,
+                `Open your coding agent (Claude Code, Codex, Cursor, etc.) and ask it to build something. It will walk you through provisioning an InsForge project when needed. If you're not signed in yet, your browser will open for sign-in at that point.`,
                 "What's next",
               );
             }

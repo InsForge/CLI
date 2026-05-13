@@ -169,3 +169,43 @@ describe('stringifyConfigToml — auth.smtp', () => {
     expect(parseConfigToml(stringifyConfigToml(original))).toEqual(original);
   });
 });
+
+describe('parseConfigToml — [deployments]', () => {
+  it('parses subdomain as a string', () => {
+    expect(parseConfigToml('[deployments]\nsubdomain = "my-app"\n')).toEqual({
+      deployments: { subdomain: 'my-app' },
+    });
+  });
+
+  it('parses empty subdomain (the clear-slug signal)', () => {
+    // TOML has no null literal, so "" is the convention for "unset on apply".
+    // The diff layer normalizes this to null before sending.
+    expect(parseConfigToml('[deployments]\nsubdomain = ""\n')).toEqual({
+      deployments: { subdomain: '' },
+    });
+  });
+
+  it('rejects non-string subdomain', () => {
+    expect(() => parseConfigToml('[deployments]\nsubdomain = 42\n')).toThrow(
+      /subdomain.*string or null/,
+    );
+  });
+});
+
+describe('stringifyConfigToml — [deployments]', () => {
+  it('emits [deployments] section when subdomain is a non-empty string', () => {
+    const out = stringifyConfigToml({ deployments: { subdomain: 'my-app' } });
+    expect(out).toContain('[deployments]');
+    expect(out).toContain('subdomain = "my-app"');
+  });
+
+  it('omits the section when subdomain is null', () => {
+    const out = stringifyConfigToml({ deployments: { subdomain: null } });
+    expect(out).not.toContain('[deployments]');
+  });
+
+  it('omits the section when subdomain is empty string (avoid emitting clear-signal in export)', () => {
+    const out = stringifyConfigToml({ deployments: { subdomain: '' } });
+    expect(out).not.toContain('[deployments]');
+  });
+});

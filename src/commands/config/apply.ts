@@ -30,6 +30,12 @@ interface RawAuthMetadata {
 
 interface RawMetadataResponse {
   auth?: RawAuthMetadata;
+  // Cloud-only slice (InsForge#1259). Self-host or pre-#1259 backends omit
+  // the key entirely; the capability gate uses presence/absence to decide
+  // whether [deployments] writes are honored.
+  deployments?: {
+    customSlug?: string | null;
+  };
 }
 
 export function registerConfigApplyCommand(cfg: Command): void {
@@ -158,6 +164,9 @@ function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
       min_interval_seconds: s.minIntervalSeconds ?? 60,
     };
   }
+  if (raw.deployments) {
+    live.deployments = { subdomain: raw.deployments.customSlug ?? null };
+  }
   return live;
 }
 
@@ -198,6 +207,17 @@ async function applyChange(change: DiffChange): Promise<void> {
     await ossFetch('/api/auth/smtp-config', {
       method: 'PUT',
       body: JSON.stringify(body),
+    });
+    return;
+  }
+  if (change.section === 'deployments' && change.key === 'subdomain') {
+    // Backend (updateSlugRequestSchema) accepts string | null; the diff
+    // layer already normalized empty-string to null. A conflict on a
+    // taken slug returns 409 — ossFetch surfaces that as a CLIError with
+    // the backend's "Slug is already taken" message.
+    await ossFetch('/api/deployments/slug', {
+      method: 'PUT',
+      body: JSON.stringify({ slug: change.to }),
     });
     return;
   }

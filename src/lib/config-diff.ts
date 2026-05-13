@@ -26,6 +26,13 @@ export type DiffChange =
        * When set, the password is force-resent even if nothing else changed.
        */
       passwordEnvRef?: string;
+    }
+  | {
+      section: 'deployments';
+      op: 'modify';
+      key: 'subdomain';
+      from: string | null;
+      to: string | null;
     };
 
 /**
@@ -93,6 +100,9 @@ export interface LiveConfig {
     allowed_redirect_urls?: string[];
     smtp?: LiveSmtpState;
   };
+  deployments?: {
+    subdomain?: string | null;
+  };
 }
 
 /**
@@ -125,6 +135,27 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
   if (fileAuth?.smtp !== undefined) {
     const smtpChange = diffSmtp(liveAuth.smtp, fileAuth.smtp);
     if (smtpChange) changes.push(smtpChange);
+  }
+
+  const fileDeployments = file.deployments;
+  const liveDeployments = live.deployments ?? {};
+  if (fileDeployments && 'subdomain' in fileDeployments) {
+    const fromV = liveDeployments.subdomain ?? null;
+    // Empty-string in TOML means "clear the slug" — TOML has no null literal,
+    // so this is the only way the user can express "unset" without deleting
+    // the line. The PUT body sends slug: null which the backend interprets
+    // as clear.
+    const rawTo = fileDeployments.subdomain;
+    const toV = rawTo === null || rawTo === '' ? null : rawTo;
+    if (fromV !== toV) {
+      changes.push({
+        section: 'deployments',
+        op: 'modify',
+        key: 'subdomain',
+        from: fromV,
+        to: toV,
+      });
+    }
   }
 
   return { changes, summary: summarize(changes) };

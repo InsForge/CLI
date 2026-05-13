@@ -45,6 +45,18 @@ export function stringifyConfigToml(config: InsforgeConfig): string {
     }
   }
 
+  if (config.deployments) {
+    // TOML has no null literal, and "" would be ambiguous (clear vs unset).
+    // Convention: omit the section entirely when subdomain is null/undefined.
+    // To clear an existing slug via apply, the user writes subdomain = "" —
+    // the diff/apply layer normalizes empty string to null.
+    if (typeof config.deployments.subdomain === 'string' && config.deployments.subdomain !== '') {
+      lines.push('[deployments]');
+      lines.push(`subdomain = ${JSON.stringify(config.deployments.subdomain)}`);
+      lines.push('');
+    }
+  }
+
   return lines.join('\n').replace(/\n+$/, '\n');
 }
 

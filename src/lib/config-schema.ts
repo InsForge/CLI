@@ -11,6 +11,7 @@ import { validateSensitiveString } from './config-secrets.js';
 export interface InsforgeConfig {
   project_id?: string;
   auth?: AuthConfig;
+  deployments?: DeploymentsConfig;
 }
 
 export interface AuthConfig {
@@ -34,6 +35,11 @@ export interface SmtpConfig {
   sender_email?: string;
   sender_name?: string;
   min_interval_seconds?: number;
+}
+
+export interface DeploymentsConfig {
+  // null clears the slug; absent in TOML means default-keep.
+  subdomain?: string | null;
 }
 
 export class ConfigValidationError extends Error {
@@ -62,6 +68,31 @@ export function validateConfig(input: unknown): InsforgeConfig {
   }
 
   if ('auth' in obj) out.auth = validateAuth(obj.auth);
+  if ('deployments' in obj) out.deployments = validateDeployments(obj.deployments);
+
+  return out;
+}
+
+function validateDeployments(input: unknown): DeploymentsConfig {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ConfigValidationError('deployments', 'must be an object');
+  }
+  const obj = input as Record<string, unknown>;
+  const out: DeploymentsConfig = {};
+
+  if ('subdomain' in obj) {
+    const v = obj.subdomain;
+    // Accept null (clear slug) or string. Slug format validation lives on
+    // the backend (single source of truth: updateSlugRequestSchema) so the
+    // CLI doesn't drift from server rules.
+    if (v !== null && typeof v !== 'string') {
+      throw new ConfigValidationError(
+        'deployments.subdomain',
+        'must be a string or null',
+      );
+    }
+    out.subdomain = v;
+  }
 
   return out;
 }

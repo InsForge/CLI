@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spliceDatabasePassword } from './oss.js';
+import { isMaskedDatabasePassword, spliceDatabasePassword } from './oss.js';
 
 describe('spliceDatabasePassword', () => {
   // Real shape from cloud `/api/metadata/database-connection-string`
@@ -26,5 +26,24 @@ describe('spliceDatabasePassword', () => {
     const m = 'postgresql://postgres:********@db.host.app:5432/insforge?options=user%3D%40admin';
     const result = spliceDatabasePassword(m, 'realpw');
     expect(result).toBe('postgresql://postgres:realpw@db.host.app:5432/insforge?options=user%3D%40admin');
+  });
+});
+
+describe('isMaskedDatabasePassword', () => {
+  it('detects the platform`s standard 8-star mask', () => {
+    expect(isMaskedDatabasePassword('********')).toBe(true);
+  });
+  it('detects any run of `*` (in case the platform shortens or lengthens it)', () => {
+    expect(isMaskedDatabasePassword('*')).toBe(true);
+    expect(isMaskedDatabasePassword('***')).toBe(true);
+    expect(isMaskedDatabasePassword('****************')).toBe(true);
+  });
+  it('does not flag real passwords (even ones that happen to contain `*`)', () => {
+    expect(isMaskedDatabasePassword('66666b99c46288a34220009437d8a3c2')).toBe(false);
+    expect(isMaskedDatabasePassword('p*ssw0rd')).toBe(false);
+    expect(isMaskedDatabasePassword('*real*')).toBe(false);
+  });
+  it('does not flag empty string (caller checks emptiness separately)', () => {
+    expect(isMaskedDatabasePassword('')).toBe(false);
   });
 });

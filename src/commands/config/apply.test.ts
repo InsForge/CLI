@@ -378,3 +378,132 @@ sender_name = "App"
     rmSync(tmp, { recursive: true, force: true });
   });
 });
+
+describe('config apply — deployments.subdomain', () => {
+  it('PUTs /api/deployments/slug with the new slug when cloud backend exposes the slice', async () => {
+    nextMetadataResponse = {
+      auth: { allowedRedirectUrls: [] },
+      deployments: { customSlug: null },
+    };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[deployments]\nsubdomain = "my-app"\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    const result = docs[0] as { applied: unknown[]; skipped: unknown[] };
+    expect(result.applied).toHaveLength(1);
+    expect(result.skipped).toHaveLength(0);
+
+    const putCalls = ossFetchMock.mock.calls.filter(
+      (c) => c[0] === '/api/deployments/slug' && c[1]?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(1);
+    expect(JSON.parse(putCalls[0][1]!.body as string)).toEqual({ slug: 'my-app' });
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('clears the slug when TOML carries an empty subdomain (PUT slug: null)', async () => {
+    nextMetadataResponse = {
+      auth: { allowedRedirectUrls: [] },
+      deployments: { customSlug: 'existing-slug' },
+    };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[deployments]\nsubdomain = ""\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    const result = docs[0] as { applied: unknown[]; skipped: unknown[] };
+    expect(result.applied).toHaveLength(1);
+
+    const putCalls = ossFetchMock.mock.calls.filter(
+      (c) => c[0] === '/api/deployments/slug' && c[1]?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(1);
+    expect(JSON.parse(putCalls[0][1]!.body as string)).toEqual({ slug: null });
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('no-op when TOML matches live slug (default-keep)', async () => {
+    nextMetadataResponse = {
+      auth: { allowedRedirectUrls: [] },
+      deployments: { customSlug: 'my-app' },
+    };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[deployments]\nsubdomain = "my-app"\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    // When the diff is empty, the apply path emits { applied: false } via
+    // the no-changes shortcut — the assertion that matters is that no PUT
+    // is issued.
+    const result = docs[0] as { applied: false | unknown[] };
+    expect(result.applied).toBe(false);
+
+    const putCalls = ossFetchMock.mock.calls.filter((c) => c[1]?.method === 'PUT');
+    expect(putCalls).toHaveLength(0);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('skips with named warning when backend predates the deployments slice (self-host or pre-#1259)', async () => {
+    // Critical version-skew case: a backend without the deployments metadata
+    // field must NOT receive a PUT to /api/deployments/slug — on self-host
+    // that endpoint 503s ("Custom slugs are only available in cloud
+    // environment"), and on a pre-#1259 backend the metadata round-trip
+    // wouldn't have detected our intent at all.
+    nextMetadataResponse = { auth: { allowedRedirectUrls: [] } };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[deployments]\nsubdomain = "my-app"\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    const result = docs[0] as {
+      applied: unknown[];
+      skipped: Array<{ key: string; reason: string }>;
+    };
+    expect(result.applied).toHaveLength(0);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0].key).toBe('deployments.subdomain');
+
+    const putCalls = ossFetchMock.mock.calls.filter(
+      (c) => c[0] === '/api/deployments/slug' && c[1]?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(0);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+});
