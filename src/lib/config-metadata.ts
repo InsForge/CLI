@@ -62,8 +62,13 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
   // anything from a wrong-shaped slice instead of crashing the command.
   const a = isPlainObject(raw.auth) ? raw.auth : undefined;
 
-  if (a?.allowedRedirectUrls !== undefined) {
-    live.auth!.allowed_redirect_urls = a.allowedRedirectUrls;
+  if (a && 'allowedRedirectUrls' in a) {
+    // Belt-and-braces: even after the auth-slice typeof guard, a malformed
+    // payload could ship `allowedRedirectUrls: "https://..."` (string) or
+    // `null` and crash `normalizeUrlList` / TOML rendering downstream. Coerce
+    // a wrong-shaped value to `[]` so the diff layer just shows the user
+    // their TOML's URLs as additions.
+    live.auth!.allowed_redirect_urls = asStringArray(a.allowedRedirectUrls) ?? [];
   }
   if (a && 'requireEmailVerification' in a) {
     live.auth!.require_email_verification = a.requireEmailVerification ?? false;
@@ -102,7 +107,10 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
       require_special_char: a.requireSpecialChar ?? false,
     };
   }
-  if (a?.smtpConfig) {
+  // Build live.smtp only when the backend has actual data. `smtpConfig: null`
+  // means the backend supports SMTP but no row exists yet — the diff layer's
+  // empty-state defaults already cover that case.
+  if (isPlainObject(a?.smtpConfig)) {
     const s = a.smtpConfig;
     live.auth!.smtp = {
       enabled: s.enabled ?? false,
@@ -126,6 +134,10 @@ function isPlainObject<T extends object>(v: T | undefined | null | unknown): v i
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
+function asStringArray(v: unknown): string[] | null {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : null;
+}
+
 /**
  * Project the raw metadata response onto an InsforgeConfig suitable for
  * writing back as `insforge.toml`. Mirrors liveFromMetadata's presence
@@ -147,8 +159,10 @@ export function configFromMetadata(raw: RawMetadataResponse): {
   const a = isPlainObject(raw.auth) ? raw.auth : undefined;
 
   if (a && 'allowedRedirectUrls' in a) {
+    // Wrong-shaped value (non-array) still counts as "supported" — fall back
+    // to [] for the TOML rather than crashing the export.
     config.auth = config.auth ?? {};
-    config.auth.allowed_redirect_urls = a.allowedRedirectUrls ?? [];
+    config.auth.allowed_redirect_urls = asStringArray(a.allowedRedirectUrls) ?? [];
   } else {
     skipped.push('auth.allowed_redirect_urls');
   }
@@ -211,23 +225,30 @@ export function configFromMetadata(raw: RawMetadataResponse): {
     skipped.push('auth.password');
   }
 
-  if (a && 'smtpConfig' in a && a.smtpConfig) {
+  // Presence-based gating to match the rest of the file: `smtpConfig` key
+  // exists ⇒ backend supports SMTP, even when its value is null (no row yet).
+  // Only emit the [auth.smtp] block when there's actual data to render.
+  if (a && 'smtpConfig' in a) {
     const s = a.smtpConfig;
-    config.auth = config.auth ?? {};
-    config.auth.smtp = {
-      enabled: s.enabled ?? false,
-      host: s.host ?? '',
-      port: s.port ?? 587,
-      username: s.username ?? '',
-      // When backend has a password set, emit a deterministic env() placeholder
-      // so the user knows which secret to define. We do NOT round-trip the
-      // value (it never leaves the backend). Re-applying this TOML force-resends
-      // from the secrets store — see config-diff.ts for the force-resend rationale.
-      ...(s.hasPassword ? { password: 'env(SMTP_PASSWORD)' } : {}),
-      sender_email: s.senderEmail ?? '',
-      sender_name: s.senderName ?? '',
-      min_interval_seconds: s.minIntervalSeconds ?? 60,
-    };
+    if (isPlainObject(s)) {
+      config.auth = config.auth ?? {};
+      config.auth.smtp = {
+        enabled: s.enabled ?? false,
+        host: s.host ?? '',
+        port: s.port ?? 587,
+        username: s.username ?? '',
+        // When backend has a password set, emit a deterministic env() placeholder
+        // so the user knows which secret to define. We do NOT round-trip the
+        // value (it never leaves the backend). Re-applying this TOML force-resends
+        // from the secrets store — see config-diff.ts for the force-resend rationale.
+        ...(s.hasPassword ? { password: 'env(SMTP_PASSWORD)' } : {}),
+        sender_email: s.senderEmail ?? '',
+        sender_name: s.senderName ?? '',
+        min_interval_seconds: s.minIntervalSeconds ?? 60,
+      };
+    }
+    // smtpConfig: null is "supported but blank" — don't emit a block, don't
+    // mark as skipped. Matches capability-probe semantics.
   } else {
     skipped.push('auth.smtp');
   }

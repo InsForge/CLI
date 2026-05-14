@@ -101,6 +101,23 @@ describe('liveFromMetadata', () => {
       expect(live).toEqual({ auth: {} });
     }
   });
+
+  it('coerces non-array allowedRedirectUrls to [] rather than crashing diff/render', () => {
+    // Belt-and-braces: even with a typed RawAuthMetadata, a malformed
+    // payload could ship a string here. `normalizeUrlList` would throw on
+    // `.sort()` over a string, so coerce safely.
+    const live = liveFromMetadata({
+      auth: { allowedRedirectUrls: 'https://oops.com' as unknown as string[] },
+    });
+    expect(live.auth?.allowed_redirect_urls).toEqual([]);
+  });
+
+  it('omits live.smtp when backend returns smtpConfig: null', () => {
+    // null = "SMTP is supported but no row yet". The diff layer fills the
+    // empty-state defaults; live.smtp stays undefined to signal that.
+    const live = liveFromMetadata({ auth: { smtpConfig: null as never } });
+    expect(live.auth?.smtp).toBeUndefined();
+  });
 });
 
 describe('configFromMetadata', () => {
@@ -191,6 +208,28 @@ describe('configFromMetadata', () => {
       expect(skipped).toContain('auth.allowed_redirect_urls');
       expect(skipped).toContain('auth.password');
     }
+  });
+
+  it('falls back to [] when allowedRedirectUrls is wrong-shaped (still supported)', () => {
+    const { config, skipped } = configFromMetadata({
+      auth: { allowedRedirectUrls: 'https://oops.com' as unknown as string[] },
+    });
+    expect(config.auth?.allowed_redirect_urls).toEqual([]);
+    // Field is still considered supported — backend exposed the key, just
+    // with a malformed value. Skipping it would hide the bug from the user.
+    expect(skipped).not.toContain('auth.allowed_redirect_urls');
+  });
+
+  it('treats smtpConfig: null as supported-but-empty (no [auth.smtp] block, NOT in skipped)', () => {
+    // Presence-based capability gating: the key exists in the response, so
+    // the backend supports SMTP — there's just no row yet. Marking it as
+    // skipped would tell the user "your backend doesn't support SMTP" which
+    // is false. Matches metadataSupports() in config-capabilities.ts.
+    const { config, skipped } = configFromMetadata({
+      auth: { smtpConfig: null as never },
+    });
+    expect(config.auth?.smtp).toBeUndefined();
+    expect(skipped).not.toContain('auth.smtp');
   });
 
   it('emits env(SMTP_PASSWORD) placeholder when hasPassword is true', () => {
