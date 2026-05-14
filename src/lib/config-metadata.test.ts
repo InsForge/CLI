@@ -91,6 +91,16 @@ describe('liveFromMetadata', () => {
   it('omits deployments when slice is absent (self-host)', () => {
     expect(liveFromMetadata({ auth: { allowedRedirectUrls: [] } }).deployments).toBeUndefined();
   });
+
+  it('treats a malformed auth slice as absent rather than crashing', () => {
+    // A server returning auth: "oops" or auth: 42 must not crash `config plan`
+    // — `'key' in primitive` throws a TypeError. Treat any non-object slice as
+    // "this backend exposes nothing" so the command degrades gracefully.
+    for (const bad of ['oops', 42, true, [], null] as unknown[]) {
+      const live = liveFromMetadata({ auth: bad as never });
+      expect(live).toEqual({ auth: {} });
+    }
+  });
 });
 
 describe('configFromMetadata', () => {
@@ -172,6 +182,15 @@ describe('configFromMetadata', () => {
       deployments: { customSlug: null },
     });
     expect(config.deployments).toBeUndefined();
+  });
+
+  it('treats a malformed auth slice as absent and reports every field skipped', () => {
+    for (const bad of ['oops', 42, true, [], null] as unknown[]) {
+      const { config, skipped } = configFromMetadata({ auth: bad as never });
+      expect(config.auth).toBeUndefined();
+      expect(skipped).toContain('auth.allowed_redirect_urls');
+      expect(skipped).toContain('auth.password');
+    }
   });
 
   it('emits env(SMTP_PASSWORD) placeholder when hasPassword is true', () => {

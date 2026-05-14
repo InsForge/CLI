@@ -57,7 +57,10 @@ export interface RawMetadataResponse {
  */
 export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
   const live: LiveConfig = { auth: {} };
-  const a = raw.auth;
+  // Guard against a malformed response (auth: "string" / number / null) —
+  // the `in` operator throws a TypeError on non-objects, so refuse to read
+  // anything from a wrong-shaped slice instead of crashing the command.
+  const a = isPlainObject(raw.auth) ? raw.auth : undefined;
 
   if (a?.allowedRedirectUrls !== undefined) {
     live.auth!.allowed_redirect_urls = a.allowedRedirectUrls;
@@ -112,10 +115,14 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
       min_interval_seconds: s.minIntervalSeconds ?? 60,
     };
   }
-  if (raw.deployments) {
+  if (isPlainObject(raw.deployments)) {
     live.deployments = { subdomain: raw.deployments.customSlug ?? null };
   }
   return live;
+}
+
+function isPlainObject<T>(v: T | unknown): v is T {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
 /**
@@ -134,7 +141,9 @@ export function configFromMetadata(raw: RawMetadataResponse): {
 } {
   const config: InsforgeConfig = {};
   const skipped: string[] = [];
-  const a = raw.auth;
+  // Same defensive narrowing as liveFromMetadata — a non-object auth slice
+  // means "this backend exposes nothing", not "crash on `in`".
+  const a = isPlainObject(raw.auth) ? raw.auth : undefined;
 
   if (a && 'allowedRedirectUrls' in a) {
     config.auth = config.auth ?? {};
@@ -222,8 +231,8 @@ export function configFromMetadata(raw: RawMetadataResponse): {
     skipped.push('auth.smtp');
   }
 
-  const d = raw.deployments;
-  if (d && typeof d === 'object') {
+  const d = isPlainObject(raw.deployments) ? raw.deployments : undefined;
+  if (d) {
     // Cloud backend exposes the slice. Only emit a value when a slug is
     // actually set — an unset slug means the project is on its default URL,
     // and surfacing subdomain = "" in the TOML would imply "clear on apply"
