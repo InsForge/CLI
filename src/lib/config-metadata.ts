@@ -115,13 +115,14 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
       min_interval_seconds: s.minIntervalSeconds ?? 60,
     };
   }
-  if (isPlainObject(raw.deployments)) {
-    live.deployments = { subdomain: raw.deployments.customSlug ?? null };
+  const d = raw.deployments;
+  if (isPlainObject(d)) {
+    live.deployments = { subdomain: d.customSlug ?? null };
   }
   return live;
 }
 
-function isPlainObject<T>(v: T | unknown): v is T {
+function isPlainObject<T extends object>(v: T | undefined | null | unknown): v is T {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
