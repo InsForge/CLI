@@ -25,11 +25,14 @@
 
 import type { DiffChange } from './config-diff.js';
 
+// The probe takes the metadata response loosely-typed: typed shapes from
+// callers (RawMetadataResponse) and Record<string, unknown> both satisfy
+// this. Runtime checks below verify the actual structure before reading.
 type RawMetadata = {
-  auth?: Record<string, unknown>;
+  auth?: unknown;
   // Cloud-only slice. Self-host backends omit the key entirely — that's the
   // signal we use to gate [deployments] writes (self-host can't honor them).
-  deployments?: Record<string, unknown>;
+  deployments?: unknown;
 };
 
 /**
@@ -39,22 +42,28 @@ type RawMetadata = {
  */
 export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean {
   if (change.section === 'auth' && change.key === 'allowed_redirect_urls') {
-    return (
-      raw?.auth !== undefined &&
-      raw.auth !== null &&
-      typeof raw.auth === 'object' &&
-      'allowedRedirectUrls' in raw.auth
-    );
+    return hasAuthKey(raw, 'allowedRedirectUrls');
+  }
+  if (change.section === 'auth' && change.key === 'require_email_verification') {
+    return hasAuthKey(raw, 'requireEmailVerification');
+  }
+  if (change.section === 'auth' && change.key === 'verify_email_method') {
+    return hasAuthKey(raw, 'verifyEmailMethod');
+  }
+  if (change.section === 'auth' && change.key === 'reset_password_method') {
+    return hasAuthKey(raw, 'resetPasswordMethod');
+  }
+  if (change.section === 'auth.password') {
+    // Per-key probes. The backend exposes each password policy field as a
+    // flat key under `auth` (not a nested passwordPolicy object), so a
+    // legacy backend that only added e.g. passwordMinLength but not the
+    // require_* flags would still get partial support.
+    return hasAuthKey(raw, AUTH_PASSWORD_WIRE_KEY[change.key]);
   }
   if (change.section === 'auth.smtp') {
     // SMTP is whole-object: a backend either exposes `smtpConfig` in
     // /api/metadata (and accepts PUT /api/auth/smtp-config) or doesn't.
-    return (
-      raw?.auth !== undefined &&
-      raw.auth !== null &&
-      typeof raw.auth === 'object' &&
-      'smtpConfig' in raw.auth
-    );
+    return hasAuthKey(raw, 'smtpConfig');
   }
   if (change.section === 'deployments' && change.key === 'subdomain') {
     // Presence-only probe: cloud backends always carry `customSlug` in the
@@ -73,10 +82,41 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
   return false;
 }
 
+function hasAuthKey(raw: RawMetadata, key: string): boolean {
+  const auth = raw?.auth;
+  return auth !== undefined && auth !== null && typeof auth === 'object' && key in auth;
+}
+
+// Maps TOML keys under [auth.password] to the flat camelCase fields the
+// backend emits on /api/metadata's auth slice. Single source of truth used
+// by both the capability probe and the apply dispatcher (via authPasswordWireKey).
+const AUTH_PASSWORD_WIRE_KEY: Record<
+  'min_length' | 'require_number' | 'require_lowercase' | 'require_uppercase' | 'require_special_char',
+  string
+> = {
+  min_length: 'passwordMinLength',
+  require_number: 'requireNumber',
+  require_lowercase: 'requireLowercase',
+  require_uppercase: 'requireUppercase',
+  require_special_char: 'requireSpecialChar',
+};
+
 /**
  * Human-readable path for a change, used in skipped/applied summaries.
  */
 export function changePath(change: DiffChange): string {
   if (change.section === 'auth.smtp') return 'auth.smtp';
   return `${change.section}.${change.key}`;
+}
+
+/**
+ * Wire-format key for an auth.password.* TOML field. Exposed so apply.ts can
+ * build the PUT body without duplicating the camelCase mapping. Keeping this
+ * here (next to the probe that uses the same table) means a future field add
+ * touches one place.
+ */
+export function authPasswordWireKey(
+  key: 'min_length' | 'require_number' | 'require_lowercase' | 'require_uppercase' | 'require_special_char',
+): string {
+  return AUTH_PASSWORD_WIRE_KEY[key];
 }

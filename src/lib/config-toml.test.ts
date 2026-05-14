@@ -197,6 +197,161 @@ describe('stringifyConfigToml — auth.smtp', () => {
   });
 });
 
+describe('parseConfigToml — auth verification flags', () => {
+  it('parses require_email_verification as a boolean', () => {
+    const toml = `
+[auth]
+require_email_verification = true
+`;
+    expect(parseConfigToml(toml)).toEqual({
+      auth: { require_email_verification: true },
+    });
+  });
+
+  it('rejects non-boolean require_email_verification', () => {
+    expect(() =>
+      parseConfigToml('[auth]\nrequire_email_verification = "yes"\n'),
+    ).toThrow(/require_email_verification.*boolean/);
+  });
+
+  it('parses verify_email_method as "code" or "link"', () => {
+    expect(parseConfigToml('[auth]\nverify_email_method = "code"\n')).toEqual({
+      auth: { verify_email_method: 'code' },
+    });
+    expect(parseConfigToml('[auth]\nverify_email_method = "link"\n')).toEqual({
+      auth: { verify_email_method: 'link' },
+    });
+  });
+
+  it('rejects unknown verify_email_method value', () => {
+    expect(() =>
+      parseConfigToml('[auth]\nverify_email_method = "magic"\n'),
+    ).toThrow(/verify_email_method.*code.*link/);
+  });
+
+  it('parses reset_password_method as "code" or "link"', () => {
+    expect(
+      parseConfigToml('[auth]\nreset_password_method = "link"\n'),
+    ).toEqual({ auth: { reset_password_method: 'link' } });
+  });
+});
+
+describe('parseConfigToml — [auth.password]', () => {
+  it('parses a full password policy', () => {
+    const toml = `
+[auth.password]
+min_length = 12
+require_number = true
+require_lowercase = true
+require_uppercase = false
+require_special_char = true
+`;
+    expect(parseConfigToml(toml)).toEqual({
+      auth: {
+        password: {
+          min_length: 12,
+          require_number: true,
+          require_lowercase: true,
+          require_uppercase: false,
+          require_special_char: true,
+        },
+      },
+    });
+  });
+
+  it('accepts a partial policy (default-keep semantics)', () => {
+    expect(parseConfigToml('[auth.password]\nmin_length = 16\n')).toEqual({
+      auth: { password: { min_length: 16 } },
+    });
+  });
+
+  it('rejects min_length below 4', () => {
+    expect(() =>
+      parseConfigToml('[auth.password]\nmin_length = 3\n'),
+    ).toThrow(/min_length.*4 and 128/);
+  });
+
+  it('rejects min_length above 128', () => {
+    expect(() =>
+      parseConfigToml('[auth.password]\nmin_length = 200\n'),
+    ).toThrow(/min_length.*4 and 128/);
+  });
+
+  it('rejects non-integer min_length', () => {
+    expect(() =>
+      parseConfigToml('[auth.password]\nmin_length = 8.5\n'),
+    ).toThrow(/min_length.*4 and 128/);
+  });
+
+  it('rejects non-boolean require_* field', () => {
+    expect(() =>
+      parseConfigToml('[auth.password]\nrequire_number = "yes"\n'),
+    ).toThrow(/auth\.password\.require_number.*boolean/);
+  });
+});
+
+describe('stringifyConfigToml — auth flags + password', () => {
+  it('emits the three auth flags directly under [auth]', () => {
+    const out = stringifyConfigToml({
+      auth: {
+        require_email_verification: true,
+        verify_email_method: 'link',
+        reset_password_method: 'code',
+      },
+    });
+    expect(out).toContain('[auth]');
+    expect(out).toContain('require_email_verification = true');
+    expect(out).toContain('verify_email_method = "link"');
+    expect(out).toContain('reset_password_method = "code"');
+  });
+
+  it('emits [auth.password] as a sub-table after [auth]', () => {
+    const out = stringifyConfigToml({
+      auth: {
+        require_email_verification: true,
+        password: {
+          min_length: 12,
+          require_number: true,
+        },
+      },
+    });
+    const authIdx = out.indexOf('[auth]');
+    const pwIdx = out.indexOf('[auth.password]');
+    expect(authIdx).toBeGreaterThanOrEqual(0);
+    expect(pwIdx).toBeGreaterThan(authIdx);
+    expect(out).toContain('min_length = 12');
+    expect(out).toContain('require_number = true');
+  });
+
+  it('omits unspecified password fields (preserves partial policy)', () => {
+    const out = stringifyConfigToml({
+      auth: { password: { min_length: 8 } },
+    });
+    expect(out).toContain('[auth.password]');
+    expect(out).toContain('min_length = 8');
+    expect(out).not.toContain('require_number');
+  });
+
+  it('round-trips a full auth + password config', () => {
+    const original = {
+      auth: {
+        allowed_redirect_urls: ['https://a.com'],
+        require_email_verification: true,
+        verify_email_method: 'link' as const,
+        reset_password_method: 'code' as const,
+        password: {
+          min_length: 12,
+          require_number: true,
+          require_lowercase: true,
+          require_uppercase: true,
+          require_special_char: true,
+        },
+      },
+    };
+    expect(parseConfigToml(stringifyConfigToml(original))).toEqual(original);
+  });
+});
+
 describe('parseConfigToml — [deployments]', () => {
   it('parses subdomain as a string', () => {
     expect(parseConfigToml('[deployments]\nsubdomain = "my-app"\n')).toEqual({

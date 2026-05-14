@@ -14,9 +14,30 @@ export interface InsforgeConfig {
   deployments?: DeploymentsConfig;
 }
 
+export type VerificationMethod = 'code' | 'link';
+
 export interface AuthConfig {
   allowed_redirect_urls?: string[];
+  require_email_verification?: boolean;
+  verify_email_method?: VerificationMethod;
+  reset_password_method?: VerificationMethod;
+  password?: PasswordConfig;
   smtp?: SmtpConfig;
+}
+
+/**
+ * Password policy enforced at signup / reset. All fields are independent —
+ * a partial [auth.password] block in TOML applies only the fields it names,
+ * preserving the rest (default-keep). Mirrors the flat camelCase fields the
+ * backend exposes on `authConfig` (passwordMinLength, requireNumber, etc.);
+ * the nested table is a CLI-side ergonomic — the wire still sends them flat.
+ */
+export interface PasswordConfig {
+  min_length?: number;
+  require_number?: boolean;
+  require_lowercase?: boolean;
+  require_uppercase?: boolean;
+  require_special_char?: boolean;
 }
 
 /**
@@ -115,7 +136,78 @@ function validateAuth(input: unknown): AuthConfig {
     out.allowed_redirect_urls = v;
   }
 
+  if ('require_email_verification' in obj) {
+    if (typeof obj.require_email_verification !== 'boolean') {
+      throw new ConfigValidationError(
+        'auth.require_email_verification',
+        'must be a boolean',
+      );
+    }
+    out.require_email_verification = obj.require_email_verification;
+  }
+
+  if ('verify_email_method' in obj) {
+    out.verify_email_method = validateVerificationMethod(
+      'auth.verify_email_method',
+      obj.verify_email_method,
+    );
+  }
+
+  if ('reset_password_method' in obj) {
+    out.reset_password_method = validateVerificationMethod(
+      'auth.reset_password_method',
+      obj.reset_password_method,
+    );
+  }
+
+  if ('password' in obj) out.password = validatePassword(obj.password);
   if ('smtp' in obj) out.smtp = validateSmtp(obj.smtp);
+
+  return out;
+}
+
+function validateVerificationMethod(path: string, value: unknown): VerificationMethod {
+  if (value !== 'code' && value !== 'link') {
+    throw new ConfigValidationError(path, 'must be "code" or "link"');
+  }
+  return value;
+}
+
+function validatePassword(input: unknown): PasswordConfig {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ConfigValidationError('auth.password', 'must be a table');
+  }
+  const obj = input as Record<string, unknown>;
+  const out: PasswordConfig = {};
+
+  if ('min_length' in obj) {
+    if (
+      typeof obj.min_length !== 'number' ||
+      !Number.isInteger(obj.min_length) ||
+      obj.min_length < 4 ||
+      obj.min_length > 128
+    ) {
+      throw new ConfigValidationError(
+        'auth.password.min_length',
+        'must be an integer between 4 and 128',
+      );
+    }
+    out.min_length = obj.min_length;
+  }
+
+  for (const key of [
+    'require_number',
+    'require_lowercase',
+    'require_uppercase',
+    'require_special_char',
+  ] as const) {
+    if (key in obj) {
+      if (typeof obj[key] !== 'boolean') {
+        throw new ConfigValidationError(`auth.password.${key}`, 'must be a boolean');
+      }
+      out[key] = obj[key] as boolean;
+    }
+  }
 
   return out;
 }

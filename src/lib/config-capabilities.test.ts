@@ -87,8 +87,86 @@ describe('metadataSupports — deployments.subdomain', () => {
   });
 });
 
+describe('metadataSupports — auth verification flags', () => {
+  it('probes requireEmailVerification by presence', () => {
+    const ch: DiffChange = {
+      section: 'auth',
+      op: 'modify',
+      key: 'require_email_verification',
+      from: false,
+      to: true,
+    };
+    expect(metadataSupports({ auth: { requireEmailVerification: false } }, ch)).toBe(true);
+    expect(metadataSupports({ auth: {} }, ch)).toBe(false);
+  });
+
+  it('probes verifyEmailMethod and resetPasswordMethod by presence', () => {
+    const verify: DiffChange = {
+      section: 'auth',
+      op: 'modify',
+      key: 'verify_email_method',
+      from: 'code',
+      to: 'link',
+    };
+    const reset: DiffChange = {
+      section: 'auth',
+      op: 'modify',
+      key: 'reset_password_method',
+      from: 'code',
+      to: 'link',
+    };
+    const raw = { auth: { verifyEmailMethod: 'code', resetPasswordMethod: 'code' } };
+    expect(metadataSupports(raw, verify)).toBe(true);
+    expect(metadataSupports(raw, reset)).toBe(true);
+    expect(metadataSupports({ auth: {} }, verify)).toBe(false);
+    expect(metadataSupports({ auth: {} }, reset)).toBe(false);
+  });
+});
+
+describe('metadataSupports — [auth.password] per-field', () => {
+  const minLengthChange: DiffChange = {
+    section: 'auth.password',
+    op: 'modify',
+    key: 'min_length',
+    from: 8,
+    to: 12,
+  };
+  const requireNumberChange: DiffChange = {
+    section: 'auth.password',
+    op: 'modify',
+    key: 'require_number',
+    from: false,
+    to: true,
+  };
+
+  it('returns true when the matching flat camelCase key is present', () => {
+    expect(metadataSupports({ auth: { passwordMinLength: 8 } }, minLengthChange)).toBe(true);
+    expect(metadataSupports({ auth: { requireNumber: true } }, requireNumberChange)).toBe(true);
+  });
+
+  it('returns false when the matching key is absent', () => {
+    // Backend exposed min_length but not require_number — only the supported
+    // field passes the probe. Lets a future backend ship the policy fields
+    // piecemeal without breaking the CLI.
+    expect(metadataSupports({ auth: { passwordMinLength: 8 } }, requireNumberChange)).toBe(false);
+    expect(metadataSupports({ auth: {} }, minLengthChange)).toBe(false);
+  });
+});
+
 describe('changePath', () => {
   it('joins section and key with a dot', () => {
     expect(changePath(change)).toBe('auth.allowed_redirect_urls');
+  });
+
+  it('renders auth.password.* fields with the full path', () => {
+    expect(
+      changePath({
+        section: 'auth.password',
+        op: 'modify',
+        key: 'min_length',
+        from: 8,
+        to: 12,
+      }),
+    ).toBe('auth.password.min_length');
   });
 });

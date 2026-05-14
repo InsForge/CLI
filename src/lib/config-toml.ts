@@ -1,5 +1,11 @@
 import * as smolToml from 'smol-toml';
-import { validateConfig, type InsforgeConfig, type SmtpConfig } from './config-schema.js';
+import {
+  validateConfig,
+  type AuthConfig,
+  type InsforgeConfig,
+  type PasswordConfig,
+  type SmtpConfig,
+} from './config-schema.js';
 import { parseEnvRef } from './config-secrets.js';
 
 export function parseConfigToml(input: string): InsforgeConfig {
@@ -14,8 +20,8 @@ export function parseConfigToml(input: string): InsforgeConfig {
 
 /**
  * Render a normalized config back to TOML. Section ordering is deterministic
- * (project_id → auth → auth.smtp) so diffs are stable across runs of
- * `insforge config export`.
+ * (project_id → auth → auth.password → auth.smtp → deployments) so diffs
+ * are stable across runs of `insforge config export`.
  *
  * The renderer is intentionally hand-rolled rather than using smol-toml's
  * stringify: smol-toml doesn't preserve field order, and we want a stable
@@ -31,13 +37,16 @@ export function stringifyConfigToml(config: InsforgeConfig): string {
 
   if (config.auth) {
     lines.push('[auth]');
-    if (config.auth.allowed_redirect_urls !== undefined) {
-      const urls = config.auth.allowed_redirect_urls
-        .map((u) => JSON.stringify(u))
-        .join(', ');
-      lines.push(`allowed_redirect_urls = [${urls}]`);
-    }
+    renderAuthFlatFields(config.auth, lines);
     lines.push('');
+
+    // Sub-tables emit in fixed order so exported TOML is stable across runs;
+    // smol-toml's stringify would reorder these without our guarantee.
+    if (config.auth.password !== undefined) {
+      lines.push('[auth.password]');
+      renderPasswordFields(config.auth.password, lines);
+      lines.push('');
+    }
 
     if (config.auth.smtp !== undefined) {
       lines.push('[auth.smtp]');
@@ -59,6 +68,36 @@ export function stringifyConfigToml(config: InsforgeConfig): string {
   }
 
   return lines.join('\n').replace(/\n+$/, '\n');
+}
+
+function renderAuthFlatFields(auth: AuthConfig, lines: string[]): void {
+  if (auth.allowed_redirect_urls !== undefined) {
+    const urls = auth.allowed_redirect_urls.map((u) => JSON.stringify(u)).join(', ');
+    lines.push(`allowed_redirect_urls = [${urls}]`);
+  }
+  if (auth.require_email_verification !== undefined) {
+    lines.push(`require_email_verification = ${auth.require_email_verification}`);
+  }
+  if (auth.verify_email_method !== undefined) {
+    lines.push(`verify_email_method = ${JSON.stringify(auth.verify_email_method)}`);
+  }
+  if (auth.reset_password_method !== undefined) {
+    lines.push(`reset_password_method = ${JSON.stringify(auth.reset_password_method)}`);
+  }
+}
+
+function renderPasswordFields(pw: PasswordConfig, lines: string[]): void {
+  if (pw.min_length !== undefined) lines.push(`min_length = ${pw.min_length}`);
+  if (pw.require_number !== undefined) lines.push(`require_number = ${pw.require_number}`);
+  if (pw.require_lowercase !== undefined) {
+    lines.push(`require_lowercase = ${pw.require_lowercase}`);
+  }
+  if (pw.require_uppercase !== undefined) {
+    lines.push(`require_uppercase = ${pw.require_uppercase}`);
+  }
+  if (pw.require_special_char !== undefined) {
+    lines.push(`require_special_char = ${pw.require_special_char}`);
+  }
 }
 
 function renderSmtpFields(smtp: SmtpConfig, lines: string[]): void {

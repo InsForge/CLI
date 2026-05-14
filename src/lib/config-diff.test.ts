@@ -223,3 +223,153 @@ describe('diffConfig — auth.smtp', () => {
     expect(sections).toEqual(['auth', 'auth.smtp']);
   });
 });
+
+describe('diffConfig — auth verification flags', () => {
+  it('emits a single change when require_email_verification flips', () => {
+    const result = diffConfig({
+      live: { auth: { require_email_verification: false } },
+      file: { auth: { require_email_verification: true } },
+    });
+    expect(result.changes).toEqual([
+      {
+        section: 'auth',
+        op: 'modify',
+        key: 'require_email_verification',
+        from: false,
+        to: true,
+      },
+    ]);
+  });
+
+  it('treats absent live as default false for require_email_verification', () => {
+    // Legacy backend that didn't expose the field — diff fills in the
+    // documented default so the change "shows up" sensibly on first apply.
+    const result = diffConfig({
+      live: { auth: {} },
+      file: { auth: { require_email_verification: true } },
+    });
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0]).toMatchObject({
+      key: 'require_email_verification',
+      from: false,
+      to: true,
+    });
+  });
+
+  it('treats matching require_email_verification as no-op', () => {
+    expect(
+      diffConfig({
+        live: { auth: { require_email_verification: true } },
+        file: { auth: { require_email_verification: true } },
+      }).changes,
+    ).toEqual([]);
+  });
+
+  it('emits one change per verify/reset method swap', () => {
+    const result = diffConfig({
+      live: {
+        auth: { verify_email_method: 'code', reset_password_method: 'code' },
+      },
+      file: {
+        auth: { verify_email_method: 'link', reset_password_method: 'link' },
+      },
+    });
+    expect(result.changes.map((c) => c.key).sort()).toEqual([
+      'reset_password_method',
+      'verify_email_method',
+    ]);
+  });
+
+  it('treats absent live verify_email_method as default "code"', () => {
+    expect(
+      diffConfig({
+        live: { auth: {} },
+        file: { auth: { verify_email_method: 'code' } },
+      }).changes,
+    ).toEqual([]);
+  });
+});
+
+describe('diffConfig — [auth.password]', () => {
+  const LIVE_POLICY = {
+    min_length: 8,
+    require_number: false,
+    require_lowercase: false,
+    require_uppercase: false,
+    require_special_char: false,
+  };
+
+  it('emits per-field changes when policy fields differ', () => {
+    const result = diffConfig({
+      live: { auth: { password: LIVE_POLICY } },
+      file: {
+        auth: {
+          password: { min_length: 12, require_number: true },
+        },
+      },
+    });
+    expect(result.changes).toHaveLength(2);
+    expect(result.changes.map((c) => c.key).sort()).toEqual([
+      'min_length',
+      'require_number',
+    ]);
+    for (const c of result.changes) {
+      expect(c.section).toBe('auth.password');
+    }
+  });
+
+  it('treats matching policy fields as no-op', () => {
+    expect(
+      diffConfig({
+        live: { auth: { password: LIVE_POLICY } },
+        file: { auth: { password: { min_length: 8, require_number: false } } },
+      }).changes,
+    ).toEqual([]);
+  });
+
+  it('preserves unspecified password fields (default-keep)', () => {
+    // file changes min_length only; the require_* flags should not appear
+    // as diff entries even though their live values differ from the file's
+    // omitted defaults.
+    const result = diffConfig({
+      live: {
+        auth: {
+          password: {
+            min_length: 8,
+            require_number: true,
+            require_lowercase: true,
+            require_uppercase: true,
+            require_special_char: true,
+          },
+        },
+      },
+      file: { auth: { password: { min_length: 16 } } },
+    });
+    expect(result.changes).toEqual([
+      {
+        section: 'auth.password',
+        op: 'modify',
+        key: 'min_length',
+        from: 8,
+        to: 16,
+      },
+    ]);
+  });
+
+  it('falls back to backend defaults when live policy is missing', () => {
+    // Legacy backend that didn't expose any policy fields.
+    const result = diffConfig({
+      live: { auth: {} },
+      file: { auth: { password: { min_length: 12 } } },
+    });
+    expect(result.changes).toEqual([
+      {
+        section: 'auth.password',
+        op: 'modify',
+        key: 'min_length',
+        from: 8,
+        to: 12,
+      },
+    ]);
+  });
+});

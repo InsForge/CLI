@@ -8,32 +8,8 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { stringifyConfigToml } from '../../lib/config-toml.js';
-import type { InsforgeConfig } from '../../lib/config-schema.js';
+import { configFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
-
-interface RawAuthMetadata {
-  allowedRedirectUrls?: string[];
-  smtpConfig?: {
-    enabled?: boolean;
-    host?: string;
-    port?: number;
-    username?: string;
-    hasPassword?: boolean;
-    senderEmail?: string;
-    senderName?: string;
-    minIntervalSeconds?: number;
-  };
-}
-
-interface RawMetadataResponse {
-  auth?: RawAuthMetadata;
-  // Cloud-only slice. Self-host or pre-#1259 backends omit the key
-  // entirely; presence is the signal the CLI uses to decide whether to
-  // emit a [deployments] section.
-  deployments?: {
-    customSlug?: string | null;
-  };
-}
 
 export function registerConfigExportCommand(cfg: Command): void {
   cfg
@@ -70,62 +46,10 @@ export function registerConfigExportCommand(cfg: Command): void {
         const res = await ossFetch('/api/metadata');
         const raw = (await res.json()) as RawMetadataResponse;
 
-        // Only emit sections the backend actually exposes. The TOML file
-        // should describe what THIS backend can do — not aspirational fields
-        // that would break on apply. Probe presence in the raw response;
-        // an older backend without the field gets an empty config,
-        // not a TOML littered with defaults that pretend to work.
-        const config: InsforgeConfig = {};
-        const skipped: string[] = [];
-
-        const authSlice = raw?.auth;
-        if (authSlice && typeof authSlice === 'object' && 'allowedRedirectUrls' in authSlice) {
-          config.auth = config.auth ?? {};
-          config.auth.allowed_redirect_urls = authSlice.allowedRedirectUrls ?? [];
-        } else {
-          skipped.push('auth.allowed_redirect_urls');
-        }
-
-        if (
-          authSlice &&
-          typeof authSlice === 'object' &&
-          'smtpConfig' in authSlice &&
-          authSlice.smtpConfig
-        ) {
-          const s = authSlice.smtpConfig;
-          config.auth = config.auth ?? {};
-          config.auth.smtp = {
-            enabled: s.enabled ?? false,
-            host: s.host ?? '',
-            port: s.port ?? 587,
-            username: s.username ?? '',
-            // When backend has a password set, emit a deterministic env()
-            // placeholder so the user knows which secret to define. We do
-            // NOT round-trip the value (it never leaves the backend).
-            // Re-applying this TOML force-resends from the secrets store
-            // — see config-diff.ts for the force-resend rationale.
-            ...(s.hasPassword ? { password: 'env(SMTP_PASSWORD)' } : {}),
-            sender_email: s.senderEmail ?? '',
-            sender_name: s.senderName ?? '',
-            min_interval_seconds: s.minIntervalSeconds ?? 60,
-          };
-        } else {
-          skipped.push('auth.smtp');
-        }
-
-        const deploymentsSlice = raw?.deployments;
-        if (deploymentsSlice && typeof deploymentsSlice === 'object') {
-          // Cloud backend exposes the slice. Only emit a value when a slug
-          // is actually set — an unset slug means the project is on its
-          // default URL, and surfacing subdomain = "" in the TOML would
-          // imply "clear on apply" (and fail the backend's 3-char min).
-          if (typeof deploymentsSlice.customSlug === 'string' && deploymentsSlice.customSlug) {
-            config.deployments = { subdomain: deploymentsSlice.customSlug };
-          }
-        } else {
-          // Self-host or pre-#1259 backend — slice missing entirely.
-          skipped.push('deployments.subdomain');
-        }
+        // Field detection lives in config-metadata.ts alongside liveFromMetadata
+        // so apply/plan/export read the same response the same way. Adding a
+        // new field touches one place, not three.
+        const { config, skipped } = configFromMetadata(raw);
 
         const toml = stringifyConfigToml(config);
         writeFileSync(target, toml, 'utf8');
