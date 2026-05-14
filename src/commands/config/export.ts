@@ -9,31 +9,8 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { stringifyConfigToml } from '../../lib/config-toml.js';
 import type { InsforgeConfig } from '../../lib/config-schema.js';
+import type { RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
-
-interface RawAuthMetadata {
-  allowedRedirectUrls?: string[];
-  smtpConfig?: {
-    enabled?: boolean;
-    host?: string;
-    port?: number;
-    username?: string;
-    hasPassword?: boolean;
-    senderEmail?: string;
-    senderName?: string;
-    minIntervalSeconds?: number;
-  };
-}
-
-interface RawMetadataResponse {
-  auth?: RawAuthMetadata;
-  // Cloud-only slice. Self-host or pre-#1259 backends omit the key
-  // entirely; presence is the signal the CLI uses to decide whether to
-  // emit a [deployments] section.
-  deployments?: {
-    customSlug?: string | null;
-  };
-}
 
 export function registerConfigExportCommand(cfg: Command): void {
   cfg
@@ -79,20 +56,79 @@ export function registerConfigExportCommand(cfg: Command): void {
         const skipped: string[] = [];
 
         const authSlice = raw?.auth;
-        if (authSlice && typeof authSlice === 'object' && 'allowedRedirectUrls' in authSlice) {
+        const authObj =
+          authSlice && typeof authSlice === 'object' ? authSlice : undefined;
+
+        if (authObj && 'allowedRedirectUrls' in authObj) {
           config.auth = config.auth ?? {};
-          config.auth.allowed_redirect_urls = authSlice.allowedRedirectUrls ?? [];
+          config.auth.allowed_redirect_urls = authObj.allowedRedirectUrls ?? [];
         } else {
           skipped.push('auth.allowed_redirect_urls');
         }
 
+        if (authObj && 'requireEmailVerification' in authObj) {
+          config.auth = config.auth ?? {};
+          config.auth.require_email_verification = authObj.requireEmailVerification ?? false;
+        } else {
+          skipped.push('auth.require_email_verification');
+        }
+
         if (
-          authSlice &&
-          typeof authSlice === 'object' &&
-          'smtpConfig' in authSlice &&
-          authSlice.smtpConfig
+          authObj &&
+          'verifyEmailMethod' in authObj &&
+          (authObj.verifyEmailMethod === 'code' || authObj.verifyEmailMethod === 'link')
         ) {
-          const s = authSlice.smtpConfig;
+          config.auth = config.auth ?? {};
+          config.auth.verify_email_method = authObj.verifyEmailMethod;
+        } else {
+          skipped.push('auth.verify_email_method');
+        }
+
+        if (
+          authObj &&
+          'resetPasswordMethod' in authObj &&
+          (authObj.resetPasswordMethod === 'code' || authObj.resetPasswordMethod === 'link')
+        ) {
+          config.auth = config.auth ?? {};
+          config.auth.reset_password_method = authObj.resetPasswordMethod;
+        } else {
+          skipped.push('auth.reset_password_method');
+        }
+
+        // Emit [auth.password] only when the backend exposes at least one
+        // policy field. Each present field copies through; missing ones stay
+        // out of the TOML so re-applying the export is a no-op (default-keep).
+        if (
+          authObj &&
+          ('passwordMinLength' in authObj ||
+            'requireNumber' in authObj ||
+            'requireLowercase' in authObj ||
+            'requireUppercase' in authObj ||
+            'requireSpecialChar' in authObj)
+        ) {
+          config.auth = config.auth ?? {};
+          config.auth.password = {};
+          if ('passwordMinLength' in authObj) {
+            config.auth.password.min_length = authObj.passwordMinLength ?? 8;
+          }
+          if ('requireNumber' in authObj) {
+            config.auth.password.require_number = authObj.requireNumber ?? false;
+          }
+          if ('requireLowercase' in authObj) {
+            config.auth.password.require_lowercase = authObj.requireLowercase ?? false;
+          }
+          if ('requireUppercase' in authObj) {
+            config.auth.password.require_uppercase = authObj.requireUppercase ?? false;
+          }
+          if ('requireSpecialChar' in authObj) {
+            config.auth.password.require_special_char = authObj.requireSpecialChar ?? false;
+          }
+        } else {
+          skipped.push('auth.password');
+        }
+
+        if (authObj && 'smtpConfig' in authObj && authObj.smtpConfig) {
+          const s = authObj.smtpConfig;
           config.auth = config.auth ?? {};
           config.auth.smtp = {
             enabled: s.enabled ?? false,

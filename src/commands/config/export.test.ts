@@ -107,9 +107,15 @@ describe('config export (capability probe)', () => {
       'https://b.com',
     ]);
     expect(result.config.auth?.smtp).toBeDefined();
-    // No deployments slice in this fixture — that section gets skipped, but
-    // the auth slice still produces a valid TOML.
-    expect(result.skipped).toEqual(['deployments.subdomain']);
+    // Only allowedRedirectUrls and smtpConfig are in the fixture; everything
+    // else (verification flags, password policy, deployments) gets skipped.
+    expect(result.skipped.sort()).toEqual([
+      'auth.password',
+      'auth.require_email_verification',
+      'auth.reset_password_method',
+      'auth.verify_email_method',
+      'deployments.subdomain',
+    ]);
 
     const written = readFileSync(target, 'utf8');
     expect(written).toContain('allowed_redirect_urls');
@@ -213,7 +219,11 @@ describe('config export (capability probe)', () => {
     expect(result.config.auth).toBeUndefined();
     expect(result.skipped.sort()).toEqual([
       'auth.allowed_redirect_urls',
+      'auth.password',
+      'auth.require_email_verification',
+      'auth.reset_password_method',
       'auth.smtp',
+      'auth.verify_email_method',
       'deployments.subdomain',
     ]);
     // File is still written so future apply cycles work — just empty.
@@ -243,9 +253,15 @@ describe('config export (capability probe)', () => {
       skipped: string[];
     };
     expect(result.config.deployments).toEqual({ subdomain: 'my-app' });
-    // No smtpConfig in fixture → that section gets skipped, but the
-    // deployments section still emits cleanly.
-    expect(result.skipped).toEqual(['auth.smtp']);
+    // No smtpConfig or auth.* fields in fixture → those sections get skipped,
+    // but the deployments section still emits cleanly.
+    expect(result.skipped.sort()).toEqual([
+      'auth.password',
+      'auth.require_email_verification',
+      'auth.reset_password_method',
+      'auth.smtp',
+      'auth.verify_email_method',
+    ]);
 
     const written = readFileSync(target, 'utf8');
     expect(written).toContain('[deployments]');
@@ -278,7 +294,13 @@ describe('config export (capability probe)', () => {
       skipped: string[];
     };
     expect(result.config.deployments).toBeUndefined();
-    expect(result.skipped).toEqual(['auth.smtp']);
+    expect(result.skipped.sort()).toEqual([
+      'auth.password',
+      'auth.require_email_verification',
+      'auth.reset_password_method',
+      'auth.smtp',
+      'auth.verify_email_method',
+    ]);
 
     const written = readFileSync(target, 'utf8');
     expect(written).not.toContain('[deployments]');

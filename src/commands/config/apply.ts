@@ -8,35 +8,16 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { parseConfigToml } from '../../lib/config-toml.js';
-import { diffConfig, type DiffChange, type LiveConfig } from '../../lib/config-diff.js';
+import { diffConfig, type DiffChange } from '../../lib/config-diff.js';
 import { formatPlan } from '../../lib/config-format.js';
-import { metadataSupports, changePath } from '../../lib/config-capabilities.js';
+import {
+  metadataSupports,
+  changePath,
+  authPasswordWireKey,
+} from '../../lib/config-capabilities.js';
 import { resolveEnvRef } from '../../lib/config-secrets.js';
+import { liveFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
-
-interface RawAuthMetadata {
-  allowedRedirectUrls?: string[];
-  smtpConfig?: {
-    enabled?: boolean;
-    host?: string;
-    port?: number;
-    username?: string;
-    hasPassword?: boolean;
-    senderEmail?: string;
-    senderName?: string;
-    minIntervalSeconds?: number;
-  };
-}
-
-interface RawMetadataResponse {
-  auth?: RawAuthMetadata;
-  // Cloud-only slice (InsForge#1259). Self-host or pre-#1259 backends omit
-  // the key entirely; the capability gate uses presence/absence to decide
-  // whether [deployments] writes are honored.
-  deployments?: {
-    customSlug?: string | null;
-  };
-}
 
 export function registerConfigApplyCommand(cfg: Command): void {
   cfg
@@ -146,35 +127,44 @@ export function registerConfigApplyCommand(cfg: Command): void {
     });
 }
 
-function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
-  const live: LiveConfig = { auth: {} };
-  if (raw.auth?.allowedRedirectUrls !== undefined) {
-    live.auth!.allowed_redirect_urls = raw.auth.allowedRedirectUrls;
-  }
-  if (raw.auth?.smtpConfig) {
-    const s = raw.auth.smtpConfig;
-    live.auth!.smtp = {
-      enabled: s.enabled ?? false,
-      host: s.host ?? '',
-      port: s.port ?? 587,
-      username: s.username ?? '',
-      hasPassword: s.hasPassword ?? false,
-      sender_email: s.senderEmail ?? '',
-      sender_name: s.senderName ?? '',
-      min_interval_seconds: s.minIntervalSeconds ?? 60,
-    };
-  }
-  if (raw.deployments) {
-    live.deployments = { subdomain: raw.deployments.customSlug ?? null };
-  }
-  return live;
-}
-
 async function applyChange(change: DiffChange): Promise<void> {
   if (change.section === 'auth' && change.key === 'allowed_redirect_urls') {
     await ossFetch('/api/auth/config', {
       method: 'PUT',
       body: JSON.stringify({ allowedRedirectUrls: change.to }),
+    });
+    return;
+  }
+  if (change.section === 'auth' && change.key === 'require_email_verification') {
+    await ossFetch('/api/auth/config', {
+      method: 'PUT',
+      body: JSON.stringify({ requireEmailVerification: change.to }),
+    });
+    return;
+  }
+  if (change.section === 'auth' && change.key === 'verify_email_method') {
+    await ossFetch('/api/auth/config', {
+      method: 'PUT',
+      body: JSON.stringify({ verifyEmailMethod: change.to }),
+    });
+    return;
+  }
+  if (change.section === 'auth' && change.key === 'reset_password_method') {
+    await ossFetch('/api/auth/config', {
+      method: 'PUT',
+      body: JSON.stringify({ resetPasswordMethod: change.to }),
+    });
+    return;
+  }
+  if (change.section === 'auth.password') {
+    // Each password policy field is independently dispatched — same endpoint,
+    // partial body. The capability gate already confirmed the field exists on
+    // this backend; the wire key is centralized in config-capabilities so a
+    // future rename touches one place.
+    const wireKey = authPasswordWireKey(change.key);
+    await ossFetch('/api/auth/config', {
+      method: 'PUT',
+      body: JSON.stringify({ [wireKey]: change.to }),
     });
     return;
   }

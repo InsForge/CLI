@@ -10,7 +10,7 @@ import { parseConfigToml } from '../../lib/config-toml.js';
 import { diffConfig } from '../../lib/config-diff.js';
 import { formatPlan } from '../../lib/config-format.js';
 import { metadataSupports, changePath } from '../../lib/config-capabilities.js';
-import type { InsforgeConfig } from '../../lib/config-schema.js';
+import { liveFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
 export function registerConfigPlanCommand(cfg: Command): void {
@@ -28,12 +28,8 @@ export function registerConfigPlanCommand(cfg: Command): void {
         const file = parseConfigToml(tomlSource);
 
         const res = await ossFetch('/api/metadata');
-        const raw = (await res.json()) as {
-          auth?: { allowedRedirectUrls?: string[] };
-        };
-        const live: InsforgeConfig = {
-          auth: { allowed_redirect_urls: raw.auth?.allowedRedirectUrls ?? [] },
-        };
+        const raw = (await res.json()) as RawMetadataResponse;
+        const live = liveFromMetadata(raw);
 
         const result = diffConfig({ live, file });
 

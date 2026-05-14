@@ -1,9 +1,20 @@
-import type { InsforgeConfig, SmtpConfig } from './config-schema.js';
+import type {
+  InsforgeConfig,
+  PasswordConfig,
+  SmtpConfig,
+  VerificationMethod,
+} from './config-schema.js';
 import { parseEnvRef } from './config-secrets.js';
 
 /**
  * A single declarative change the file would impose on live state. Discriminated
  * union: each variant maps to one backend endpoint at apply time.
+ *
+ * The auth flags and every auth.password.* field all hit the SAME endpoint
+ * (PUT /api/auth/config) but stay independent variants on purpose: each is
+ * capability-gated and applied separately, so a partial write succeeds on
+ * backends that only support a subset. Per-change PUTs are idempotent and
+ * preserve "default-keep" semantics for unspecified fields.
  */
 export type DiffChange =
   | {
@@ -12,6 +23,41 @@ export type DiffChange =
       key: 'allowed_redirect_urls';
       from: string[];
       to: string[];
+    }
+  | {
+      section: 'auth';
+      op: 'modify';
+      key: 'require_email_verification';
+      from: boolean;
+      to: boolean;
+    }
+  | {
+      section: 'auth';
+      op: 'modify';
+      key: 'verify_email_method';
+      from: VerificationMethod;
+      to: VerificationMethod;
+    }
+  | {
+      section: 'auth';
+      op: 'modify';
+      key: 'reset_password_method';
+      from: VerificationMethod;
+      to: VerificationMethod;
+    }
+  | {
+      section: 'auth.password';
+      op: 'modify';
+      key: 'min_length';
+      from: number;
+      to: number;
+    }
+  | {
+      section: 'auth.password';
+      op: 'modify';
+      key: 'require_number' | 'require_lowercase' | 'require_uppercase' | 'require_special_char';
+      from: boolean;
+      to: boolean;
     }
   | {
       section: 'auth.smtp';
@@ -98,11 +144,23 @@ export interface DiffInput {
 export interface LiveConfig {
   auth?: {
     allowed_redirect_urls?: string[];
+    require_email_verification?: boolean;
+    verify_email_method?: VerificationMethod;
+    reset_password_method?: VerificationMethod;
+    password?: LivePasswordPolicy;
     smtp?: LiveSmtpState;
   };
   deployments?: {
     subdomain?: string | null;
   };
+}
+
+export interface LivePasswordPolicy {
+  min_length: number;
+  require_number: boolean;
+  require_lowercase: boolean;
+  require_uppercase: boolean;
+  require_special_char: boolean;
 }
 
 /**
@@ -132,6 +190,54 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
     }
   }
 
+  if (fileAuth && 'require_email_verification' in fileAuth) {
+    const fromV = liveAuth.require_email_verification ?? false;
+    const toV = fileAuth.require_email_verification ?? false;
+    if (fromV !== toV) {
+      changes.push({
+        section: 'auth',
+        op: 'modify',
+        key: 'require_email_verification',
+        from: fromV,
+        to: toV,
+      });
+    }
+  }
+
+  if (fileAuth?.verify_email_method) {
+    // 'code' matches the backend default for an unset live row; treating
+    // absent live as 'code' avoids a spurious diff on fresh projects.
+    const fromV: VerificationMethod = liveAuth.verify_email_method ?? 'code';
+    const toV = fileAuth.verify_email_method;
+    if (fromV !== toV) {
+      changes.push({
+        section: 'auth',
+        op: 'modify',
+        key: 'verify_email_method',
+        from: fromV,
+        to: toV,
+      });
+    }
+  }
+
+  if (fileAuth?.reset_password_method) {
+    const fromV: VerificationMethod = liveAuth.reset_password_method ?? 'code';
+    const toV = fileAuth.reset_password_method;
+    if (fromV !== toV) {
+      changes.push({
+        section: 'auth',
+        op: 'modify',
+        key: 'reset_password_method',
+        from: fromV,
+        to: toV,
+      });
+    }
+  }
+
+  if (fileAuth?.password) {
+    diffPassword(liveAuth.password, fileAuth.password, changes);
+  }
+
   if (fileAuth?.smtp !== undefined) {
     const smtpChange = diffSmtp(liveAuth.smtp, fileAuth.smtp);
     if (smtpChange) changes.push(smtpChange);
@@ -146,7 +252,10 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
     // the line. The PUT body sends slug: null which the backend interprets
     // as clear.
     const rawTo = fileDeployments.subdomain;
-    const toV = rawTo === null || rawTo === '' ? null : rawTo;
+    // `subdomain?: string | null` widens to include undefined under exactOptionalPropertyTypes.
+    // Treat absent / null / empty-string all as "clear".
+    const toV: string | null =
+      rawTo === null || rawTo === undefined || rawTo === '' ? null : rawTo;
     if (fromV !== toV) {
       changes.push({
         section: 'deployments',
@@ -159,6 +268,52 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
   }
 
   return { changes, summary: summarize(changes) };
+}
+
+/**
+ * Per-key diff of the password policy. Unlike SMTP this is NOT whole-object:
+ * a partial [auth.password] block in TOML applies only the fields it names,
+ * preserving the rest of live state. Mirrors the existing per-key pattern of
+ * allowed_redirect_urls / require_email_verification.
+ *
+ * Empty-live (legacy backend that doesn't expose the policy) falls back to
+ * the documented backend defaults so the diff still shows the user what the
+ * file would impose.
+ */
+function diffPassword(
+  live: LivePasswordPolicy | undefined,
+  file: PasswordConfig,
+  changes: DiffChange[],
+): void {
+  const liveView = live ?? EMPTY_PASSWORD_POLICY;
+
+  if (file.min_length !== undefined && liveView.min_length !== file.min_length) {
+    changes.push({
+      section: 'auth.password',
+      op: 'modify',
+      key: 'min_length',
+      from: liveView.min_length,
+      to: file.min_length,
+    });
+  }
+  for (const key of [
+    'require_number',
+    'require_lowercase',
+    'require_uppercase',
+    'require_special_char',
+  ] as const) {
+    const fromV = liveView[key];
+    const toV = file[key];
+    if (toV !== undefined && fromV !== toV) {
+      changes.push({
+        section: 'auth.password',
+        op: 'modify',
+        key,
+        from: fromV,
+        to: toV,
+      });
+    }
+  }
 }
 
 /**
@@ -257,6 +412,18 @@ const EMPTY_SMTP_VIEW: SmtpDiffView = {
   sender_email: '',
   sender_name: '',
   min_interval_seconds: 60,
+};
+
+// Backend defaults for auth.password fields when the live row is missing
+// (legacy backend or fresh project). Mirrors `authConfigSchema` defaults in
+// shared-schemas: any drift here will surface as a spurious diff on first
+// apply against an older backend.
+const EMPTY_PASSWORD_POLICY: LivePasswordPolicy = {
+  min_length: 8,
+  require_number: false,
+  require_lowercase: false,
+  require_uppercase: false,
+  require_special_char: false,
 };
 
 function summarize(changes: DiffChange[]): DiffSummary {
