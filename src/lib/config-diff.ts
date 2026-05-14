@@ -204,7 +204,11 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
     }
   }
 
-  if (fileAuth?.verify_email_method) {
+  // Match the `'key' in fileAuth` pattern used for require_email_verification.
+  // Truthy checks happen to work today (both enum values are truthy) but would
+  // silently misbehave if a future VerificationMethod value (e.g. literal "0")
+  // were added.
+  if (fileAuth && 'verify_email_method' in fileAuth && fileAuth.verify_email_method) {
     // 'code' matches the backend default for an unset live row; treating
     // absent live as 'code' avoids a spurious diff on fresh projects.
     const fromV: VerificationMethod = liveAuth.verify_email_method ?? 'code';
@@ -220,7 +224,7 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
     }
   }
 
-  if (fileAuth?.reset_password_method) {
+  if (fileAuth && 'reset_password_method' in fileAuth && fileAuth.reset_password_method) {
     const fromV: VerificationMethod = liveAuth.reset_password_method ?? 'code';
     const toV = fileAuth.reset_password_method;
     if (fromV !== toV) {
