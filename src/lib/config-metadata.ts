@@ -123,9 +123,15 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
       min_interval_seconds: s.minIntervalSeconds ?? 60,
     };
   }
-  const d = raw.deployments;
-  if (isPlainObject(d)) {
-    live.deployments = { subdomain: d.customSlug ?? null };
+  const d = isPlainObject(raw.deployments) ? raw.deployments : undefined;
+  if (d) {
+    // Match the string-shape guard in configFromMetadata: a wrong-typed
+    // customSlug (e.g. `123`) degrades to null rather than leaking into
+    // live.deployments.subdomain — the diff layer would otherwise compare
+    // numbers to strings and produce nonsense changes.
+    live.deployments = {
+      subdomain: typeof d.customSlug === 'string' && d.customSlug ? d.customSlug : null,
+    };
   }
   return live;
 }

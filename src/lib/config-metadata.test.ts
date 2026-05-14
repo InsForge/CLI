@@ -112,6 +112,15 @@ describe('liveFromMetadata', () => {
     expect(live.auth?.allowed_redirect_urls).toEqual([]);
   });
 
+  it('coerces non-string customSlug to null instead of propagating an invalid live shape', () => {
+    // The diff layer compares subdomain as a string|null. A leaked number
+    // would produce nonsense changes; tighten the projection at the source.
+    const live = liveFromMetadata({
+      deployments: { customSlug: 123 as unknown as string },
+    });
+    expect(live.deployments?.subdomain).toBeNull();
+  });
+
   it('omits live.smtp when backend returns smtpConfig: null', () => {
     // null = "SMTP is supported but no row yet". The diff layer fills the
     // empty-state defaults; live.smtp stays undefined to signal that.
