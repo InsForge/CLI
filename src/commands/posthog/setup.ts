@@ -15,7 +15,6 @@ import {
   fetchPosthogConnection,
   pollPosthogConnection,
   startPosthogCliFlow,
-  type PosthogConnectionResponse,
 } from '../../lib/api/posthog.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 
@@ -26,8 +25,18 @@ const MAX_TRANSIENT_RETRIES = 5;
 interface SetupResult {
   /** Whether the dashboard connection already existed (skipped OAuth) or was just established. */
   dashboardConnection: 'already-connected' | 'newly-connected';
-  wizardExitCode: number;
+  /** True when JSON mode skipped the wizard step (wizard is interactive and incompatible with piped stdio). */
+  wizardSkipped: boolean;
+  /** Wizard process exit code; only set when wizardSkipped is false. */
+  wizardExitCode?: number;
+  /** Command the caller should run to complete the wizard step; only set when wizardSkipped is true. */
+  wizardCommand?: string;
 }
+
+// `npx` is installed as `npx.cmd` on Windows; passing the bare name to spawn
+// without a shell results in ENOENT. Use the platform-specific binary.
+const NPX_COMMAND = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const WIZARD_COMMAND = `${NPX_COMMAND} -y @posthog/wizard@latest`;
 
 export function registerPosthogSetupCommand(program: Command): void {
   program
@@ -89,16 +98,27 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
   // 3. Ensure dashboard connection exists
   const dashboardConnection = await ensureDashboardConnection(proj.project_id, token, opts);
 
-  // 4. Run the official PostHog wizard for app-code wiring
-  if (!opts.json) {
-    outputInfo('Running the official PostHog setup wizard to wire PostHog into your app...');
-    outputInfo(
-      pc.dim('(it will open a browser for OAuth and let you pick a PostHog project)'),
-    );
+  // 4. Run the official PostHog wizard for app-code wiring.
+  //
+  // JSON mode is for scripted / headless callers, but the wizard is interactive
+  // (terminal TUI for framework + project selection, browser OAuth). Skip it
+  // and surface the command so the caller can run it themselves under a real
+  // TTY; piping its stdio would either hang or swallow the prompts.
+  if (opts.json) {
+    return {
+      dashboardConnection,
+      wizardSkipped: true,
+      wizardCommand: WIZARD_COMMAND,
+    };
   }
 
-  const wizardResult = spawnSync('npx', ['-y', '@posthog/wizard@latest'], {
-    stdio: opts.json ? 'pipe' : 'inherit',
+  outputInfo('Running the official PostHog setup wizard to wire PostHog into your app...');
+  outputInfo(
+    pc.dim('(it will open a browser for OAuth and let you pick a PostHog project)'),
+  );
+
+  const wizardResult = spawnSync(NPX_COMMAND, ['-y', '@posthog/wizard@latest'], {
+    stdio: 'inherit',
     env: process.env,
   });
 
@@ -106,16 +126,25 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
     throw new CLIError(`Failed to launch PostHog wizard: ${wizardResult.error.message}`);
   }
   const exitCode = wizardResult.status ?? 1;
+  // Treat user-initiated cancellation (Ctrl+C → 130 / SIGINT) as a clean exit
+  // rather than an error; the user just chose to abort the wizard step.
+  if (wizardResult.signal === 'SIGINT' || exitCode === 130) {
+    clack.outro('Setup cancelled.');
+    return {
+      dashboardConnection,
+      wizardSkipped: false,
+      wizardExitCode: exitCode,
+    };
+  }
   if (exitCode !== 0) {
     throw new CLIError(`PostHog wizard exited with code ${exitCode}.`);
   }
 
-  if (!opts.json) {
-    clack.outro('Done. Open the Analytics page in your InsForge dashboard to view data.');
-  }
+  clack.outro('Done. Open the Analytics page in your InsForge dashboard to view data.');
 
   return {
     dashboardConnection,
+    wizardSkipped: false,
     wizardExitCode: exitCode,
   };
 }
@@ -154,7 +183,7 @@ async function runConnectFlow(
   token: string,
   authorizeUrl: string,
   opts: RunSetupOpts,
-): Promise<PosthogConnectionResponse> {
+): Promise<void> {
   if (opts.json) {
     // JSON mode: keep stdout clean for the final result object. Print the
     // URL to stderr so a human can copy it if the browser fails to open.
@@ -180,7 +209,7 @@ async function runConnectFlow(
   spinner?.start('Waiting for InsForge dashboard connection... (timeout: 15 minutes)');
 
   try {
-    const conn = await pollPosthogConnection(
+    await pollPosthogConnection(
       projectId,
       token,
       {
@@ -199,7 +228,6 @@ async function runConnectFlow(
       opts.apiUrl,
     );
     spinner?.stop('InsForge dashboard connection received.');
-    return conn;
   } catch (err) {
     spinner?.stop('InsForge dashboard connection wait failed.');
     throw err;
