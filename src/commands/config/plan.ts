@@ -22,8 +22,9 @@ export function registerConfigPlanCommand(cfg: Command): void {
     .option('--file <path>', 'path to insforge.toml', 'insforge.toml')
     .action(async (opts, cmd) => {
       const { json } = getRootOpts(cmd);
-      const projectConfig = getProjectConfig();
+      let projectConfig: ReturnType<typeof getProjectConfig> = null;
       try {
+        projectConfig = getProjectConfig();
         await requireAuth();
 
         const tomlPath = resolve(process.cwd(), opts.file);
@@ -57,6 +58,7 @@ export function registerConfigPlanCommand(cfg: Command): void {
             );
           }
         }
+        await reportCliUsage('cli.config.plan', true);
         trackConfig('plan', projectConfig, {
           json_mode: !!json,
           changes_count: result.changes.length,
@@ -66,13 +68,13 @@ export function registerConfigPlanCommand(cfg: Command): void {
           ),
           outcome: 'success',
         });
-        await reportCliUsage('cli.config.plan', true);
       } catch (err) {
+        await reportCliUsage('cli.config.plan', false);
         trackConfig('plan', projectConfig, {
           json_mode: !!json,
           outcome: 'error',
         });
-        await reportCliUsage('cli.config.plan', false);
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();

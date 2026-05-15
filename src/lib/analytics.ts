@@ -83,8 +83,13 @@ export function trackConfig(
 }
 
 export async function shutdownAnalytics(): Promise<void> {
+  if (!client) return;
+  const c = client;
+  // Null the reference first so concurrent/duplicate calls (e.g. catch path
+  // + finally) don't double-shutdown.
+  client = null;
   try {
-    if (client) await client.shutdown();
+    await c.shutdown();
   } catch {
     // ignore
   }

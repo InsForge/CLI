@@ -21,8 +21,9 @@ export function registerConfigExportCommand(cfg: Command): void {
     .option('--force', 'overwrite without confirmation')
     .action(async (opts, cmd) => {
       const { json } = getRootOpts(cmd);
-      const projectConfig = getProjectConfig();
+      let projectConfig: ReturnType<typeof getProjectConfig> = null;
       try {
+        projectConfig = getProjectConfig();
         await requireAuth();
 
         const target = resolve(process.cwd(), opts.out);
@@ -42,6 +43,7 @@ export function registerConfigExportCommand(cfg: Command): void {
           });
           if (!ok || p.isCancel(ok)) {
             console.log('Aborted.');
+            await reportCliUsage('cli.config.export', true);
             trackConfig('export', projectConfig, {
               json_mode: !!json,
               force: !!opts.force,
@@ -76,20 +78,21 @@ export function registerConfigExportCommand(cfg: Command): void {
             );
           }
         }
+        await reportCliUsage('cli.config.export', true);
         trackConfig('export', projectConfig, {
           json_mode: !!json,
           force: !!opts.force,
           skipped_count: skipped.length,
           outcome: 'success',
         });
-        await reportCliUsage('cli.config.export', true);
       } catch (err) {
+        await reportCliUsage('cli.config.export', false);
         trackConfig('export', projectConfig, {
           json_mode: !!json,
           force: !!opts.force,
           outcome: 'error',
         });
-        await reportCliUsage('cli.config.export', false);
+        await shutdownAnalytics();
         handleError(err, json);
       } finally {
         await shutdownAnalytics();
