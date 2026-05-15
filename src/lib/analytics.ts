@@ -61,9 +61,35 @@ export function trackPayments(
   });
 }
 
+// Config commands (apply/plan/export) operate against an OSS backend and may
+// run without a linked cloud project, so the ProjectConfig is optional.
+// Pure-OSS runs fall back to FAKE_PROJECT_ID as the distinct ID — same
+// convention `create`/`link` use when no project context exists yet.
+export function trackConfig(
+  subcommand: string,
+  config: ProjectConfig | null,
+  properties?: Record<string, unknown>,
+): void {
+  const distinctId = config?.project_id ?? FAKE_PROJECT_ID;
+  captureEvent(distinctId, 'cli_config_invoked', {
+    subcommand,
+    project_id: config?.project_id,
+    project_name: config?.project_name,
+    org_id: config?.org_id,
+    region: config?.region,
+    oss_mode: !config || config.project_id === FAKE_PROJECT_ID,
+    ...properties,
+  });
+}
+
 export async function shutdownAnalytics(): Promise<void> {
+  if (!client) return;
+  const c = client;
+  // Null the reference first so concurrent/duplicate calls (e.g. catch path
+  // + finally) don't double-shutdown.
+  client = null;
   try {
-    if (client) await client.shutdown();
+    await c.shutdown();
   } catch {
     // ignore
   }

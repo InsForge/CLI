@@ -10,6 +10,8 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { stringifyConfigToml } from '../../lib/config-toml.js';
 import { configFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
+import { getProjectConfig } from '../../lib/config.js';
 
 export function registerConfigExportCommand(cfg: Command): void {
   cfg
@@ -19,7 +21,9 @@ export function registerConfigExportCommand(cfg: Command): void {
     .option('--force', 'overwrite without confirmation')
     .action(async (opts, cmd) => {
       const { json } = getRootOpts(cmd);
+      let projectConfig: ReturnType<typeof getProjectConfig> = null;
       try {
+        projectConfig = getProjectConfig();
         await requireAuth();
 
         const target = resolve(process.cwd(), opts.out);
@@ -39,6 +43,12 @@ export function registerConfigExportCommand(cfg: Command): void {
           });
           if (!ok || p.isCancel(ok)) {
             console.log('Aborted.');
+            await reportCliUsage('cli.config.export', true);
+            trackConfig('export', projectConfig, {
+              json_mode: !!json,
+              force: !!opts.force,
+              outcome: 'aborted',
+            });
             return;
           }
         }
@@ -69,9 +79,23 @@ export function registerConfigExportCommand(cfg: Command): void {
           }
         }
         await reportCliUsage('cli.config.export', true);
+        trackConfig('export', projectConfig, {
+          json_mode: !!json,
+          force: !!opts.force,
+          skipped_count: skipped.length,
+          outcome: 'success',
+        });
       } catch (err) {
         await reportCliUsage('cli.config.export', false);
+        trackConfig('export', projectConfig, {
+          json_mode: !!json,
+          force: !!opts.force,
+          outcome: 'error',
+        });
+        await shutdownAnalytics();
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

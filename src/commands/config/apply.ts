@@ -18,6 +18,8 @@ import {
 import { resolveEnvRef } from '../../lib/config-secrets.js';
 import { liveFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
+import { getProjectConfig } from '../../lib/config.js';
 
 export function registerConfigApplyCommand(cfg: Command): void {
   cfg
@@ -28,7 +30,9 @@ export function registerConfigApplyCommand(cfg: Command): void {
     .option('--auto-approve', 'skip confirmation prompt')
     .action(async (opts, cmd) => {
       const { json, yes } = getRootOpts(cmd);
+      let projectConfig: ReturnType<typeof getProjectConfig> = null;
       try {
+        projectConfig = getProjectConfig();
         await requireAuth();
 
         const tomlPath = resolve(process.cwd(), opts.file);
@@ -41,6 +45,9 @@ export function registerConfigApplyCommand(cfg: Command): void {
 
         const result = diffConfig({ live, file });
         const approved = opts.autoApprove || yes;
+        const sectionsChanged = Array.from(
+          new Set(result.changes.map((c) => changePath(c))),
+        );
 
         // Render the plan immediately in interactive mode so the user can read
         // it before confirming. In --json mode hold output until the end so
@@ -56,6 +63,13 @@ export function registerConfigApplyCommand(cfg: Command): void {
             );
           }
           await reportCliUsage('cli.config.apply', true);
+          trackConfig('apply', projectConfig, {
+            dry_run: !!opts.dryRun,
+            json_mode: !!json,
+            changes_count: result.changes.length,
+            sections_changed: sectionsChanged,
+            outcome: result.changes.length === 0 ? 'no_changes' : 'dry_run',
+          });
           return;
         }
 
@@ -76,6 +90,12 @@ export function registerConfigApplyCommand(cfg: Command): void {
           if (!ok || p.isCancel(ok)) {
             console.log('Aborted.');
             await reportCliUsage('cli.config.apply', true);
+            trackConfig('apply', projectConfig, {
+              json_mode: !!json,
+              changes_count: result.changes.length,
+              sections_changed: sectionsChanged,
+              outcome: 'aborted',
+            });
             return;
           }
         }
@@ -120,9 +140,27 @@ export function registerConfigApplyCommand(cfg: Command): void {
           }
         }
         await reportCliUsage('cli.config.apply', true);
+        trackConfig('apply', projectConfig, {
+          auto_approved: !!approved,
+          json_mode: !!json,
+          changes_count: result.changes.length,
+          applied_count: applied.length,
+          skipped_count: skipped.length,
+          sections_changed: sectionsChanged,
+          outcome: applied.length > 0 ? 'applied' : 'all_skipped',
+        });
       } catch (err) {
         await reportCliUsage('cli.config.apply', false);
+        trackConfig('apply', projectConfig, {
+          json_mode: !!json,
+          outcome: 'error',
+        });
+        // Flush before handleError() calls process.exit(), otherwise the
+        // queued event is lost when the event loop terminates.
+        await shutdownAnalytics();
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }
