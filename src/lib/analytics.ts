@@ -5,18 +5,9 @@ import { FAKE_PROJECT_ID } from './config.js';
 const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
-// User-facing opt-out. Accepts the values someone is most likely to set when
-// they want analytics off (`0`, `false`, `no`, case-insensitive). Build-time
-// no-op (missing POSTHOG_API_KEY) still works independently for OSS forks.
-function telemetryDisabled(): boolean {
-  const v = (process.env.INSFORGE_TELEMETRY ?? '').toLowerCase();
-  return v === '0' || v === 'false' || v === 'no';
-}
-
 let client: PostHog | null = null;
 
 function getClient(): PostHog | null {
-  if (telemetryDisabled()) return null;
   if (!POSTHOG_API_KEY) return null;
   if (!client) {
     client = new PostHog(POSTHOG_API_KEY, { host: POSTHOG_HOST });
