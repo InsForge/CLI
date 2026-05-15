@@ -29,14 +29,13 @@ vi.mock('@clack/prompts', async (orig) => {
     intro: vi.fn(),
     outro: vi.fn(),
     note: clackNoteMock,
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    log: { info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn() },
     spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), message: vi.fn() })),
   };
 });
 
 const outputMock = vi.hoisted(() => ({
   outputJson: vi.fn(),
-  outputInfo: vi.fn(),
   outputSuccess: vi.fn(),
 }));
 vi.mock('../../lib/output.js', () => outputMock);
@@ -80,7 +79,6 @@ beforeEach(() => {
   apiMock.pollPosthogConnection.mockReset();
   apiMock.fetchPosthogConnection.mockReset();
   outputMock.outputJson.mockReset();
-  outputMock.outputInfo.mockReset();
   outputMock.outputSuccess.mockReset();
   clackNoteMock.mockReset();
   configMock.getProjectConfig.mockReturnValue({ project_id: 'p1', project_name: 'Test Project' });
