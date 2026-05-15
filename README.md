@@ -674,17 +674,28 @@ Skill files are written to per-agent directories (e.g. `.claude/`, `.cursor/`, `
 
 The CLI reports anonymous usage events to [PostHog](https://posthog.com) so we can understand which features are being used and prioritize improvements.
 
-Analytics are enabled by default in the published npm package. If you build the CLI from source without setting `POSTHOG_API_KEY` at build time, analytics become a no-op automatically.
+We capture only non-sensitive metadata: the command name, subcommand, outcome (success / error / aborted), flag shape (e.g. `dry_run`, `json_mode`), section names from `insforge.toml` schema (e.g. `auth.smtp`), region, and an OSS-vs-cloud flag. We never send SQL, TOML file contents, credentials, environment variable values, or any free text you type.
+
+Analytics are enabled by default in the published npm package. To turn them off, set:
+
+```bash
+export INSFORGE_TELEMETRY=0
+```
+
+Also accepts `false` or `no` (case-insensitive). With the variable set, the CLI never constructs the PostHog client and never opens a network connection for telemetry.
+
+If you build the CLI from source without setting `POSTHOG_API_KEY` at build time, analytics become a no-op automatically.
 
 ## Environment Variables
 
-| Variable                | Description                        |
-| ----------------------- | ---------------------------------- |
-| `INSFORGE_ACCESS_TOKEN` | Override the stored access token   |
-| `INSFORGE_PROJECT_ID`   | Override the linked project ID     |
-| `INSFORGE_API_URL`      | Override the Platform API URL      |
-| `INSFORGE_EMAIL`        | Email for non-interactive login    |
-| `INSFORGE_PASSWORD`     | Password for non-interactive login |
+| Variable                | Description                                                     |
+| ----------------------- | --------------------------------------------------------------- |
+| `INSFORGE_ACCESS_TOKEN` | Override the stored access token                                |
+| `INSFORGE_PROJECT_ID`   | Override the linked project ID                                  |
+| `INSFORGE_API_URL`      | Override the Platform API URL                                   |
+| `INSFORGE_EMAIL`        | Email for non-interactive login                                 |
+| `INSFORGE_PASSWORD`     | Password for non-interactive login                              |
+| `INSFORGE_TELEMETRY`    | Set to `0` / `false` / `no` to disable anonymous usage analytics |
 
 ## Non-Interactive / CI Usage
 

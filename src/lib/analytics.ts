@@ -5,9 +5,18 @@ import { FAKE_PROJECT_ID } from './config.js';
 const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
+// User-facing opt-out. Accepts the values someone is most likely to set when
+// they want analytics off (`0`, `false`, `no`, case-insensitive). Build-time
+// no-op (missing POSTHOG_API_KEY) still works independently for OSS forks.
+function telemetryDisabled(): boolean {
+  const v = (process.env.INSFORGE_TELEMETRY ?? '').toLowerCase();
+  return v === '0' || v === 'false' || v === 'no';
+}
+
 let client: PostHog | null = null;
 
 function getClient(): PostHog | null {
+  if (telemetryDisabled()) return null;
   if (!POSTHOG_API_KEY) return null;
   if (!client) {
     client = new PostHog(POSTHOG_API_KEY, { host: POSTHOG_HOST });
@@ -57,6 +66,27 @@ export function trackPayments(
     org_id: config.org_id,
     region: config.region,
     oss_mode: config.project_id === FAKE_PROJECT_ID,
+    ...properties,
+  });
+}
+
+// Config commands (apply/plan/export) operate against an OSS backend and may
+// run without a linked cloud project, so the ProjectConfig is optional.
+// Pure-OSS runs fall back to FAKE_PROJECT_ID as the distinct ID — same
+// convention `create`/`link` use when no project context exists yet.
+export function trackConfig(
+  subcommand: string,
+  config: ProjectConfig | null,
+  properties?: Record<string, unknown>,
+): void {
+  const distinctId = config?.project_id ?? FAKE_PROJECT_ID;
+  captureEvent(distinctId, 'cli_config_invoked', {
+    subcommand,
+    project_id: config?.project_id,
+    project_name: config?.project_name,
+    org_id: config?.org_id,
+    region: config?.region,
+    oss_mode: !config || config.project_id === FAKE_PROJECT_ID,
     ...properties,
   });
 }

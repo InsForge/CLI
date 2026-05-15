@@ -12,6 +12,8 @@ import { formatPlan } from '../../lib/config-format.js';
 import { metadataSupports, changePath } from '../../lib/config-capabilities.js';
 import { liveFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
+import { getProjectConfig } from '../../lib/config.js';
 
 export function registerConfigPlanCommand(cfg: Command): void {
   cfg
@@ -20,6 +22,7 @@ export function registerConfigPlanCommand(cfg: Command): void {
     .option('--file <path>', 'path to insforge.toml', 'insforge.toml')
     .action(async (opts, cmd) => {
       const { json } = getRootOpts(cmd);
+      const projectConfig = getProjectConfig();
       try {
         await requireAuth();
 
@@ -54,10 +57,25 @@ export function registerConfigPlanCommand(cfg: Command): void {
             );
           }
         }
+        trackConfig('plan', projectConfig, {
+          json_mode: !!json,
+          changes_count: result.changes.length,
+          skipped_count: skipped.length,
+          sections_changed: Array.from(
+            new Set(result.changes.map((c) => changePath(c))),
+          ),
+          outcome: 'success',
+        });
         await reportCliUsage('cli.config.plan', true);
       } catch (err) {
+        trackConfig('plan', projectConfig, {
+          json_mode: !!json,
+          outcome: 'error',
+        });
         await reportCliUsage('cli.config.plan', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

@@ -10,6 +10,8 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { stringifyConfigToml } from '../../lib/config-toml.js';
 import { configFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
+import { getProjectConfig } from '../../lib/config.js';
 
 export function registerConfigExportCommand(cfg: Command): void {
   cfg
@@ -19,6 +21,7 @@ export function registerConfigExportCommand(cfg: Command): void {
     .option('--force', 'overwrite without confirmation')
     .action(async (opts, cmd) => {
       const { json } = getRootOpts(cmd);
+      const projectConfig = getProjectConfig();
       try {
         await requireAuth();
 
@@ -39,6 +42,11 @@ export function registerConfigExportCommand(cfg: Command): void {
           });
           if (!ok || p.isCancel(ok)) {
             console.log('Aborted.');
+            trackConfig('export', projectConfig, {
+              json_mode: !!json,
+              force: !!opts.force,
+              outcome: 'aborted',
+            });
             return;
           }
         }
@@ -68,10 +76,23 @@ export function registerConfigExportCommand(cfg: Command): void {
             );
           }
         }
+        trackConfig('export', projectConfig, {
+          json_mode: !!json,
+          force: !!opts.force,
+          skipped_count: skipped.length,
+          outcome: 'success',
+        });
         await reportCliUsage('cli.config.export', true);
       } catch (err) {
+        trackConfig('export', projectConfig, {
+          json_mode: !!json,
+          force: !!opts.force,
+          outcome: 'error',
+        });
         await reportCliUsage('cli.config.export', false);
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }
