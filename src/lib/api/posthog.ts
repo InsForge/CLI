@@ -260,57 +260,6 @@ export async function startPosthogCliFlow(
   throw new CLIError('PostHog cli-start returned an unexpected response shape.');
 }
 
-export interface PosthogCliCredentials {
-  apiKey: string;            // phc_
-  personalApiKey: string;    // phx_
-  posthogProjectId: string | number;
-  region: string;
-  host: string;
-  status?: string;
-}
-
-/**
- * GET /integrations/posthog/v1/cli-credentials?project_id=<id>
- *
- * Returns phx_ in addition to phc_ so the CLI can spawn
- * `npx @posthog/wizard --ci --api-key <phx_>`. Same membership rules as
- * /connection — gated by `authenticate` middleware on cloud-backend.
- */
-export async function fetchPosthogCliCredentials(
-  projectId: string,
-  jwt: string,
-  apiUrl?: string,
-): Promise<PosthogCliCredentials> {
-  const baseUrl = getPlatformApiUrl(apiUrl);
-  const url = `${baseUrl}/integrations/posthog/v1/cli-credentials?project_id=${encodeURIComponent(projectId)}`;
-
-  let res: Response;
-  try {
-    res = await fetchWithTimeout(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        Accept: 'application/json',
-      },
-    });
-  } catch (err) {
-    throw new CLIError(`Failed to fetch CLI credentials: ${formatFetchError(err, url)}`);
-  }
-
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new CLIError(
-      `Failed to fetch CLI credentials (HTTP ${res.status}): ${body.error ?? res.statusText}`,
-    );
-  }
-
-  const data = (await res.json()) as Partial<PosthogCliCredentials>;
-  if (!data.apiKey || !data.personalApiKey || !data.posthogProjectId || !data.region || !data.host) {
-    throw new CLIError('CLI credentials response is missing required fields.');
-  }
-  return data as PosthogCliCredentials;
-}
-
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
