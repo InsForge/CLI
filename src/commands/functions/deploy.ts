@@ -1,5 +1,4 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
@@ -7,6 +6,16 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import type { FunctionResponse } from '../../types.js';
+
+export function resolveDeployFilePath(opts: { file?: string }): string {
+  if (!opts.file) {
+    throw new CLIError('Missing required option: --file <path>');
+  }
+  if (!existsSync(opts.file)) {
+    throw new CLIError(`Source file not found: ${opts.file}`);
+  }
+  return opts.file;
+}
 
 export function registerFunctionsDeployCommand(functionsCmd: Command): void {
   functionsCmd
@@ -20,14 +29,7 @@ export function registerFunctionsDeployCommand(functionsCmd: Command): void {
       try {
         await requireAuth();
 
-        // Resolve source file
-        const filePath = opts.file ?? join(process.cwd(), 'insforge', 'functions', slug, 'index.ts');
-        if (!existsSync(filePath)) {
-          throw new CLIError(
-            `Source file not found: ${filePath}\n` +
-            `Specify --file <path> or create ${join('insforge', 'functions', slug, 'index.ts')}`,
-          );
-        }
+        const filePath = resolveDeployFilePath(opts);
 
         const code = readFileSync(filePath, 'utf-8');
         const name = opts.name ?? slug;
