@@ -2,10 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { reportMarketplaceDownload } from './create';
+import { downloadMarketplaceTemplate, reportMarketplaceDownload } from './create';
+import type { ProjectConfig } from '../types';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const createSource: string = readFileSync(join(here, 'create.ts'), 'utf8');
+
+const dummyProjectConfig = {} as ProjectConfig;
 
 describe('reportMarketplaceDownload', () => {
   const fetchMock = vi.fn();
@@ -52,6 +55,38 @@ describe('reportMarketplaceDownload', () => {
     await expect(
       reportMarketplaceDownload('chatbot', 'https://api.insforge.dev'),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('downloadMarketplaceTemplate slug validation', () => {
+  // Slug must shape-match the registry regex before we touch the filesystem.
+  // This blocks path traversal (../, /abs, etc.) before path.join can be abused.
+
+  it('rejects parent-directory traversal', async () => {
+    await expect(
+      downloadMarketplaceTemplate('../etc', dummyProjectConfig, true),
+    ).rejects.toThrow(/Invalid --marketplace slug/);
+  });
+
+  it('rejects absolute path slugs', async () => {
+    await expect(
+      downloadMarketplaceTemplate('/etc/passwd', dummyProjectConfig, true),
+    ).rejects.toThrow(/Invalid --marketplace slug/);
+  });
+
+  it('rejects slugs with uppercase or special chars', async () => {
+    await expect(
+      downloadMarketplaceTemplate('FooBar', dummyProjectConfig, true),
+    ).rejects.toThrow(/Invalid --marketplace slug/);
+    await expect(
+      downloadMarketplaceTemplate('foo bar', dummyProjectConfig, true),
+    ).rejects.toThrow(/Invalid --marketplace slug/);
+  });
+
+  it('rejects empty slug', async () => {
+    await expect(
+      downloadMarketplaceTemplate('', dummyProjectConfig, true),
+    ).rejects.toThrow(/Invalid --marketplace slug/);
   });
 });
 

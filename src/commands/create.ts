@@ -33,6 +33,7 @@ const execFileAsync = promisify(execFile);
 // validate the values so a hostile env var can't slip in extra git options.
 const SAFE_REPO_PATTERN = /^(https?:\/\/|git@)[A-Za-z0-9._:/@~+-]+(\.git)?$/;
 const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
+const SAFE_MARKETPLACE_SLUG = /^[a-z0-9][a-z0-9-]{0,99}$/;
 
 export type Framework = 'react' | 'nextjs';
 
@@ -710,6 +711,13 @@ export async function downloadMarketplaceTemplate(
   projectConfig: ProjectConfig,
   json: boolean,
 ): Promise<void> {
+  if (!SAFE_MARKETPLACE_SLUG.test(slug)) {
+    throw new CLIError(
+      `Invalid --marketplace slug "${slug}". Slugs must match ${SAFE_MARKETPLACE_SLUG}.\n` +
+        `Browse available templates: https://insforge.dev/templates`,
+    );
+  }
+
   const s = !json ? clack.spinner() : null;
   s?.start(`Downloading marketplace template "${slug}"...`);
 
@@ -801,7 +809,18 @@ export async function downloadMarketplaceTemplate(
     }
   } catch (err) {
     s?.stop(`Marketplace template "${slug}" download failed`);
-    throw err;
+    if (err instanceof CLIError) {
+      throw err;
+    }
+    const msg = `Failed to download marketplace template "${slug}": ${(err as Error).message}`;
+    if (json) {
+      console.error(JSON.stringify({ warning: msg }));
+    } else {
+      clack.log.warn(msg);
+      clack.log.info(
+        `You can manually clone from: https://github.com/InsForge/insforge-templates/tree/main/${slug}`,
+      );
+    }
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
