@@ -102,11 +102,32 @@ describe('--marketplace flag wiring', () => {
     expect(createSource).toMatch(/if \(opts\.marketplace && opts\.template\)/);
   });
 
+  it('validates the slug at action entry before requireAuth (no orphaned project)', () => {
+    // The action handler must reject a bad slug BEFORE auth + project creation.
+    // Verify the regex check appears before the `await requireAuth(` call so
+    // the defense-in-depth check inside downloadMarketplaceTemplate is not the
+    // only line of defense.
+    const slugCheckIdx = createSource.indexOf(
+      'SAFE_MARKETPLACE_SLUG.test(opts.marketplace',
+    );
+    const requireAuthIdx = createSource.indexOf('await requireAuth(');
+    expect(slugCheckIdx).toBeGreaterThan(0);
+    expect(slugCheckIdx).toBeLessThan(requireAuthIdx);
+  });
+
   it('exposes the marketplace branch ahead of the githubTemplates branch in the download switch', () => {
     const marketplaceIdx = createSource.indexOf('if (opts.marketplace) {');
     const githubIdx = createSource.indexOf('githubTemplates.includes');
     expect(marketplaceIdx).toBeGreaterThan(0);
     expect(githubIdx).toBeGreaterThan(marketplaceIdx);
+  });
+
+  it('gates reportMarketplaceDownload on the downloaded boolean', () => {
+    // The counter ping must only fire when downloadMarketplaceTemplate returns
+    // true — a swallowed network/clone failure (return false) must NOT bump
+    // the marketplace's install count.
+    expect(createSource).toMatch(/const downloaded = await downloadMarketplaceTemplate/);
+    expect(createSource).toMatch(/if \(downloaded\)[\s\S]{0,80}reportMarketplaceDownload/);
   });
 
   it('does NOT emit a PostHog template_selected event with a marketplace property', () => {

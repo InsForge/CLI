@@ -172,6 +172,17 @@ export function registerCreateCommand(program: Command): void {
         if (opts.marketplace && opts.template) {
           throw new CLIError('--marketplace and --template are mutually exclusive');
         }
+        // Validate the marketplace slug up front, BEFORE we authenticate or
+        // create the platform project. The defense-in-depth check inside
+        // downloadMarketplaceTemplate also fires, but by the time that runs
+        // the project is already linked — a bad slug here would otherwise
+        // leave an orphaned project on the user's account.
+        if (opts.marketplace && !SAFE_MARKETPLACE_SLUG.test(opts.marketplace as string)) {
+          throw new CLIError(
+            `Invalid --marketplace slug "${opts.marketplace}". Slugs must match ${SAFE_MARKETPLACE_SLUG}.\n` +
+              `Browse available templates: https://insforge.dev/templates`,
+          );
+        }
         await requireAuth(apiUrl, false);
 
         if (!json) {
@@ -361,8 +372,20 @@ export function registerCreateCommand(program: Command): void {
         // 7. Download template or seed env for blank projects
         const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
         if (opts.marketplace) {
-          await downloadMarketplaceTemplate(opts.marketplace as string, projectConfig, json);
-          void reportMarketplaceDownload(opts.marketplace as string, apiUrl ?? 'https://api.insforge.dev');
+          // Counter only fires if the template actually landed on disk —
+          // a swallowed network/clone failure returns false so we don't
+          // record phantom installs in the marketplace's download stats.
+          const downloaded = await downloadMarketplaceTemplate(
+            opts.marketplace as string,
+            projectConfig,
+            json,
+          );
+          if (downloaded) {
+            void reportMarketplaceDownload(
+              opts.marketplace as string,
+              apiUrl ?? 'https://api.insforge.dev',
+            );
+          }
         } else if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {
@@ -710,7 +733,7 @@ export async function downloadMarketplaceTemplate(
   slug: string,
   projectConfig: ProjectConfig,
   json: boolean,
-): Promise<void> {
+): Promise<boolean> {
   if (!SAFE_MARKETPLACE_SLUG.test(slug)) {
     throw new CLIError(
       `Invalid --marketplace slug "${slug}". Slugs must match ${SAFE_MARKETPLACE_SLUG}.\n` +
@@ -807,6 +830,12 @@ export async function downloadMarketplaceTemplate(
         }
       }
     }
+
+    // Reached only after clone + copy + (optional) env seeding + (optional)
+    // db_init.sql all completed without throwing. Returning true here lets
+    // the call site decide whether to fire the download counter; a swallowed
+    // failure below returns false so we don't record phantom installs.
+    return true;
   } catch (err) {
     s?.stop(`Marketplace template "${slug}" download failed`);
     if (err instanceof CLIError) {
@@ -821,6 +850,7 @@ export async function downloadMarketplaceTemplate(
         `You can manually clone from: https://github.com/InsForge/insforge-templates/tree/main/${slug}`,
       );
     }
+    return false;
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
