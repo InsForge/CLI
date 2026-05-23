@@ -33,6 +33,7 @@ const execFileAsync = promisify(execFile);
 // validate the values so a hostile env var can't slip in extra git options.
 const SAFE_REPO_PATTERN = /^(https?:\/\/|git@)[A-Za-z0-9._:/@~+-]+(\.git)?$/;
 const SAFE_BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/;
+const SAFE_MARKETPLACE_SLUG = /^[a-z0-9][a-z0-9-]{0,99}$/;
 
 export type Framework = 'react' | 'nextjs';
 
@@ -163,10 +164,25 @@ export function registerCreateCommand(program: Command): void {
     .option('--org-id <id>', 'Organization ID')
     .option('--region <region>', 'Deployment region (us-east, us-west, eu-central, ap-southeast)')
     .option('--template <template>', 'Template to use: react, nextjs, chatbot, crm, e-commerce, todo, or empty')
+    .option('--marketplace <slug>', 'Install a marketplace template by slug (browse: https://insforge.dev/templates)')
     .option('--auth <provider>', 'Wire a third-party auth provider into the chosen template (currently: better-auth)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
+        if (opts.marketplace && opts.template) {
+          throw new CLIError('--marketplace and --template are mutually exclusive');
+        }
+        // Validate the marketplace slug up front, BEFORE we authenticate or
+        // create the platform project. The defense-in-depth check inside
+        // downloadMarketplaceTemplate also fires, but by the time that runs
+        // the project is already linked — a bad slug here would otherwise
+        // leave an orphaned project on the user's account.
+        if (opts.marketplace && !SAFE_MARKETPLACE_SLUG.test(opts.marketplace as string)) {
+          throw new CLIError(
+            `Invalid --marketplace slug "${opts.marketplace}". Slugs must match ${SAFE_MARKETPLACE_SLUG}.\n` +
+              `Browse available templates: https://insforge.dev/templates`,
+          );
+        }
         await requireAuth(apiUrl, false);
 
         if (!json) {
@@ -238,6 +254,13 @@ export function registerCreateCommand(program: Command): void {
 
         if (template && !validTemplates.includes(template)) {
           throw new CLIError(`Invalid template "${template}". Valid options: ${validTemplates.join(', ')}`);
+        }
+        // Marketplace skips the interactive picker — discovery is web-only — but otherwise
+        // behaves like a regular template install (creates ./<projectName>/ subdir). Setting
+        // `template` to the slug makes `hasTemplate` true downstream; the download switch
+        // below short-circuits to the marketplace branch ahead of the githubTemplates check.
+        if (opts.marketplace) {
+          template = opts.marketplace as string;
         }
         if (!template) {
           if (json) {
@@ -348,7 +371,23 @@ export function registerCreateCommand(program: Command): void {
 
         // 7. Download template or seed env for blank projects
         const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
-        if (githubTemplates.includes(template!)) {
+        if (opts.marketplace) {
+          // Marketplace reuses downloadGitHubTemplate — same git-clone + copy +
+          // env-seed + db_init flow. Slug was already validated at action
+          // entry; counter only fires when the boolean comes back true so a
+          // swallowed clone failure doesn't record a phantom install.
+          const downloaded = await downloadGitHubTemplate(
+            opts.marketplace as string,
+            projectConfig,
+            json,
+          );
+          if (downloaded) {
+            void reportMarketplaceDownload(
+              opts.marketplace as string,
+              apiUrl ?? 'https://api.insforge.dev',
+            );
+          }
+        } else if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
         } else if (hasTemplate) {
           await downloadTemplate(template as Framework, projectConfig, projectName, json, apiUrl);
@@ -585,7 +624,7 @@ export async function downloadGitHubTemplate(
   templateName: string,
   projectConfig: ProjectConfig,
   json: boolean,
-): Promise<void> {
+): Promise<boolean> {
   const s = !json ? clack.spinner() : null;
   s?.start(`Downloading ${templateName} template...`);
 
@@ -677,6 +716,12 @@ export async function downloadGitHubTemplate(
         }
       }
     }
+
+    // Reached only after clone + copy + (optional) env seeding + (optional)
+    // db_init.sql all completed without throwing. Callers (currently the
+    // --marketplace path) gate the marketplace download counter on this
+    // boolean so swallowed failures below don't count as installs.
+    return true;
   } catch (err) {
     s?.stop(`${templateName} template download failed`);
     const msg = `Failed to download ${templateName} template: ${(err as Error).message}`;
@@ -686,8 +731,30 @@ export async function downloadGitHubTemplate(
       clack.log.warn(msg);
       clack.log.info('You can manually clone from: https://github.com/InsForge/insforge-templates');
     }
+    return false;
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
+/**
+ * Fire-and-forget POST to the marketplace download counter.
+ * Network errors and non-2xx responses are swallowed — a transient
+ * counter blip must not kill the install. The DB counter is the source
+ * of truth; PostHog is intentionally not used (per spec §6.3).
+ */
+export async function reportMarketplaceDownload(slug: string, apiUrl: string): Promise<void> {
+  try {
+    const res = await fetch(`${apiUrl}/templates/v1/${encodeURIComponent(slug)}/downloads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) {
+      // Swallow — best-effort counter ping.
+      return;
+    }
+  } catch {
+    // Swallow — best-effort counter ping.
+  }
+}
