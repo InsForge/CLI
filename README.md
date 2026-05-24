@@ -670,6 +670,8 @@ It also installs [`find-skills`](https://github.com/vercel-labs/skills) so agent
 
 Skill files are written to per-agent directories (e.g. `.claude/`, `.cursor/`, `.windsurf/`) and are automatically added to your `.gitignore`. You can re-run `npx @insforge/cli link` at any time to reinstall or update skills.
 
+For bare agent harnesses that follow the open [agents.md](https://agents.md) standard (a single `AGENTS.md` at the project root) rather than the per-agent skill directories, the CLI also writes an `AGENTS.md` into your project. It contains a delimited `<!-- INSFORGE:START -->…<!-- INSFORGE:END -->` block with InsForge context (where credentials live, when to reach for the SDK vs. the CLI, and a few correctness patterns). If you already have an `AGENTS.md`, the block is appended once and refreshed in place on subsequent runs, leaving your own content untouched. Unlike the per-agent skill files, `AGENTS.md` is **not** gitignored, so you can commit and share it.
+
 ## Analytics
 
 The CLI reports anonymous usage events to [PostHog](https://posthog.com) so we can understand which features are being used and prioritize improvements.

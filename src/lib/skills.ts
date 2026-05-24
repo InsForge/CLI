@@ -3,6 +3,7 @@ import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import * as clack from '@clack/prompts';
+import { writeLocalAgentsMd } from './agents-md.js';
 import { getProjectConfig } from './config.js';
 
 const execAsync = promisify(exec);
@@ -137,6 +138,16 @@ export async function installSkills(json: boolean, authProvider?: string): Promi
 
   try {
     updateGitignore();
+  } catch {
+    // non-critical, silently ignore
+  }
+
+  // Drop an AGENTS.md in the project root so bare "true harness" agents that
+  // follow the open agents.md standard (and don't read the per-agent skill
+  // dirs) still get InsForge context. Left out of .gitignore on purpose so it
+  // can be committed and shared. Best-effort — never block create/link.
+  try {
+    writeLocalAgentsMd(json);
   } catch {
     // non-critical, silently ignore
   }
