@@ -69,17 +69,20 @@ export function mergeAgentsMd(existing: string | null, config: ProjectConfig | n
   }
 
   const startIdx = existing.indexOf(AGENTS_MD_START);
-  // Search for the END marker after the matched START so a stray END marker in
-  // the user's own content above the block can't break in-place replacement
-  // (which would append a duplicate block on the next run).
-  const endIdx =
-    startIdx === -1 ? -1 : existing.indexOf(AGENTS_MD_END, startIdx + AGENTS_MD_START.length);
-  if (startIdx !== -1 && endIdx > startIdx) {
-    const before = existing.slice(0, startIdx);
-    const after = existing.slice(endIdx + AGENTS_MD_END.length);
+  if (startIdx !== -1) {
+    // Close the block at the END marker that follows this START (not the first
+    // END in the file, which could be a stray marker in the user's own content
+    // above the block). If the block was corrupted by removing its END marker,
+    // replace from START through end-of-file so we recover in place instead of
+    // appending a duplicate block on the next run.
+    const endMarkerIdx = existing.indexOf(AGENTS_MD_END, startIdx + AGENTS_MD_START.length);
+    let before = existing.slice(0, startIdx);
+    if (before.length > 0 && !before.endsWith('\n')) before += '\n';
+    const after = endMarkerIdx === -1 ? '\n' : existing.slice(endMarkerIdx + AGENTS_MD_END.length);
     return `${before}${block}${after}`;
   }
 
+  // No InsForge block yet — append it, separated by a blank line.
   return `${existing.replace(/\s+$/, '')}\n\n${block}\n`;
 }
 

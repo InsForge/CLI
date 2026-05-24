@@ -110,6 +110,26 @@ describe('mergeAgentsMd', () => {
     expect(out).toContain('# AGENTS.md');
   });
 
+  it('recovers in place (no duplicate) when the END marker was deleted', () => {
+    // User corrupts the managed block by removing only its END marker, leaving
+    // an orphaned START. A rerun must replace from START to EOF, not append a
+    // second block (which a later run could use to eat content between blocks).
+    const corrupted = `# Mine\n\n${AGENTS_MD_START}\nstale insforge block, end marker gone\n`;
+    const first = mergeAgentsMd(corrupted, config);
+    const second = mergeAgentsMd(first, config);
+    expect(first.match(/INSFORGE:START/g)).toHaveLength(1);
+    expect(first).toContain(AGENTS_MD_END);
+    expect(first).toContain('# Mine');
+    expect(second).toBe(first); // idempotent after recovery
+  });
+
+  it('inserts a newline when user content directly precedes the block', () => {
+    const existing = `Title ${AGENTS_MD_START}old${AGENTS_MD_END}\n`;
+    const out = mergeAgentsMd(existing, config);
+    expect(out).toContain(`Title \n${AGENTS_MD_START}`);
+    expect(out).not.toContain(`Title ${AGENTS_MD_START}`);
+  });
+
   it('stays idempotent when user content above the block mentions the END marker', () => {
     // A stray END marker in the user's own prose must not be mistaken for the
     // block's terminator, which would skip in-place replacement and duplicate.
