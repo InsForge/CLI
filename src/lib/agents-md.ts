@@ -69,7 +69,11 @@ export function mergeAgentsMd(existing: string | null, config: ProjectConfig | n
   }
 
   const startIdx = existing.indexOf(AGENTS_MD_START);
-  const endIdx = existing.indexOf(AGENTS_MD_END);
+  // Search for the END marker after the matched START so a stray END marker in
+  // the user's own content above the block can't break in-place replacement
+  // (which would append a duplicate block on the next run).
+  const endIdx =
+    startIdx === -1 ? -1 : existing.indexOf(AGENTS_MD_END, startIdx + AGENTS_MD_START.length);
   if (startIdx !== -1 && endIdx > startIdx) {
     const before = existing.slice(0, startIdx);
     const after = existing.slice(endIdx + AGENTS_MD_END.length);

@@ -109,6 +109,17 @@ describe('mergeAgentsMd', () => {
     const out = mergeAgentsMd('   \n', config);
     expect(out).toContain('# AGENTS.md');
   });
+
+  it('stays idempotent when user content above the block mentions the END marker', () => {
+    // A stray END marker in the user's own prose must not be mistaken for the
+    // block's terminator, which would skip in-place replacement and duplicate.
+    const userPrefix = `# Notes\n\nDo not edit \`${AGENTS_MD_END}\` in my docs.\n\n`;
+    const first = mergeAgentsMd(`${userPrefix}placeholder\n`, config);
+    const second = mergeAgentsMd(first, config);
+    expect(second).toBe(first); // idempotent
+    expect(second.match(/INSFORGE:START/g)).toHaveLength(1);
+    expect(second).toContain('Do not edit');
+  });
 });
 
 describe('writeLocalAgentsMd', () => {
