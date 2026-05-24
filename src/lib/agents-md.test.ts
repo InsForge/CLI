@@ -40,6 +40,23 @@ describe('buildInsforgeBlock', () => {
     expect(block.toLowerCase()).toContain('before implementing');
   });
 
+  it('names the specific skills the CLI installs', () => {
+    const block = buildInsforgeBlock(null);
+    for (const skill of [
+      '`insforge`',
+      '`insforge-cli`',
+      '`insforge-debug`',
+      '`insforge-integrations`',
+      '`find-skills`',
+    ]) {
+      expect(block).toContain(skill);
+    }
+  });
+
+  it('does not recommend the `insforge docs` command', () => {
+    expect(buildInsforgeBlock(null)).not.toContain('insforge docs');
+  });
+
   it('includes the high-leverage correctness patterns', () => {
     const block = buildInsforgeBlock(null);
     expect(block).toContain('insert([{');

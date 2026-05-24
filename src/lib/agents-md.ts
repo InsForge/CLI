@@ -33,10 +33,13 @@ export function buildInsforgeBlock(config: ProjectConfig | null): string {
   }
 
   lines.push(
-    '- **Skills:** detailed InsForge skills are installed for supported coding agents. Before implementing any InsForge feature (database queries, auth, storage, edge functions, realtime, AI, or payments), consult the `insforge` skill or run `insforge docs <feature>` so you generate correct code instead of guessing the API.',
+    '- **Skills:** these InsForge skills are installed for supported coding agents. Reach for them before implementing any InsForge feature instead of guessing the API:',
+    '  - `insforge`: app code with the `@insforge/sdk` client (database CRUD, auth, storage, edge functions, realtime, AI, email, and Stripe payments).',
+    '  - `insforge-cli`: backend and infrastructure via the `insforge` CLI (projects, SQL, migrations, RLS policies, storage buckets, functions, secrets, payment setup, schedules, deploys).',
+    '  - `insforge-debug`: diagnosing failures (SDK/HTTP errors, RLS denials, auth and OAuth issues) and running security or performance audits.',
+    '  - `insforge-integrations`: wiring external auth providers (Clerk, Auth0, WorkOS, Better Auth, etc.) for JWT-based RLS, or the OKX x402 payment facilitator.',
+    '  - `find-skills`: discovering additional skills on demand.',
     '- **Credentials:** app code reads keys from `.env.local`; the CLI reads `.insforge/project.json`. Never hardcode or commit keys.',
-    '- **App code:** use the `@insforge/sdk` client for database, auth, storage, realtime, and AI calls.',
-    '- **Infrastructure:** use the `insforge` CLI (`npx @insforge/cli`) for SQL, migrations, RLS policies, storage buckets, functions, secrets, payments, and deploys.',
     '',
     'Key patterns:',
     '',
