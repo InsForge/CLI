@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackComputeUsage } from './utils.js';
 
 const ENV_KEY_REGEX = /^[A-Z_][A-Z0-9_]*$/;
 
@@ -135,8 +136,10 @@ export function registerComputeUpdateCommand(computeCmd: Command): void {
           if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
         }
         await reportCliUsage('cli.compute.update', true);
+        await trackComputeUsage('update', true);
       } catch (err) {
         await reportCliUsage('cli.compute.update', false);
+        await trackComputeUsage('update', false);
         handleError(err, json);
       }
     });
