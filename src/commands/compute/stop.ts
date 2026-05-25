@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackComputeUsage } from './utils.js';
 
 export function registerComputeStopCommand(computeCmd: Command): void {
   computeCmd
@@ -25,8 +26,10 @@ export function registerComputeStopCommand(computeCmd: Command): void {
           outputSuccess(`Service "${service.name}" stopped.`);
         }
         await reportCliUsage('cli.compute.stop', true);
+        await trackComputeUsage('stop', true);
       } catch (err) {
         await reportCliUsage('cli.compute.stop', false);
+        await trackComputeUsage('stop', false);
         handleError(err, json);
       }
     });

@@ -6,6 +6,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackComputeUsage } from './utils.js';
 import { parseEnvFile } from '../../lib/env-file.js';
 import {
   ensureFlyctlAvailable,
@@ -145,6 +146,14 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
           }
           await reportCliUsage('cli.compute.deploy', true);
+          await trackComputeUsage('deploy', true, {
+            mode: 'image',
+            cpu: opts.cpu,
+            memory,
+            region: opts.region,
+            port,
+            has_env: Boolean(envVars),
+          });
           return;
         }
 
@@ -275,8 +284,17 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         }
 
         await reportCliUsage('cli.compute.deploy', true);
+        await trackComputeUsage('deploy', true, {
+          mode: 'source',
+          cpu: opts.cpu,
+          memory,
+          region: opts.region,
+          port,
+          has_env: Boolean(envVars),
+        });
       } catch (err) {
         await reportCliUsage('cli.compute.deploy', false);
+        await trackComputeUsage('deploy', false, { mode: dir ? 'source' : 'image' });
         handleError(err, json);
       }
     });

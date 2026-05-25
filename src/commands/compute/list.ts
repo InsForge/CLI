@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackComputeUsage } from './utils.js';
 
 export function registerComputeListCommand(computeCmd: Command): void {
   computeCmd
@@ -24,6 +25,7 @@ export function registerComputeListCommand(computeCmd: Command): void {
           if (services.length === 0) {
             console.log('No compute services found.');
             await reportCliUsage('cli.compute.list', true);
+            await trackComputeUsage('list', true);
             return;
           }
           outputTable(
@@ -39,8 +41,10 @@ export function registerComputeListCommand(computeCmd: Command): void {
           );
         }
         await reportCliUsage('cli.compute.list', true);
+        await trackComputeUsage('list', true);
       } catch (err) {
         await reportCliUsage('cli.compute.list', false);
+        await trackComputeUsage('list', false);
         handleError(err, json);
       }
     });

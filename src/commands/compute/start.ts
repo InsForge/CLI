@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackComputeUsage } from './utils.js';
 
 export function registerComputeStartCommand(computeCmd: Command): void {
   computeCmd
@@ -28,8 +29,10 @@ export function registerComputeStartCommand(computeCmd: Command): void {
           }
         }
         await reportCliUsage('cli.compute.start', true);
+        await trackComputeUsage('start', true);
       } catch (err) {
         await reportCliUsage('cli.compute.start', false);
+        await trackComputeUsage('start', false);
         handleError(err, json);
       }
     });

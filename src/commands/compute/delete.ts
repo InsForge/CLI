@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackComputeUsage } from './utils.js';
 
 export function registerComputeDeleteCommand(computeCmd: Command): void {
   computeCmd
@@ -25,8 +26,10 @@ export function registerComputeDeleteCommand(computeCmd: Command): void {
           outputSuccess('Service deleted.');
         }
         await reportCliUsage('cli.compute.delete', true);
+        await trackComputeUsage('delete', true);
       } catch (err) {
         await reportCliUsage('cli.compute.delete', false);
+        await trackComputeUsage('delete', false);
         handleError(err, json);
       }
     });
