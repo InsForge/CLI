@@ -49,6 +49,11 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
       '--env-file <path>',
       'Path to a .env file (KEY=VALUE per line, #-comments + blank lines ok). Mutually exclusive with --env.'
     )
+    .option(
+      '--protocol <protocol>',
+      'Edge protocol: "http" (default) or "tcp" (raw pass-through for Redis, etc.)',
+      'http'
+    )
     .action(async (dir: string | undefined, opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
@@ -67,6 +72,9 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         const port = Number(opts.port);
         if (!Number.isInteger(port) || port < 1 || port > 65535) {
           throw new CLIError(`Invalid --port: ${opts.port}`);
+        }
+        if (opts.protocol !== 'http' && opts.protocol !== 'tcp') {
+          throw new CLIError(`Invalid --protocol: ${opts.protocol} (expected "http" or "tcp")`);
         }
         const memory = Number(opts.memory);
         if (!Number.isInteger(memory) || memory <= 0) {
@@ -108,6 +116,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           region: opts.region,
         };
         if (envVars) baseBody.envVars = envVars;
+        if (opts.protocol === 'tcp') baseBody.protocol = 'tcp';
 
         // ─── Image mode ─────────────────────────────────────────────────
         if (!dir) {
@@ -124,6 +133,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             if (!json) outputInfo(`Found existing service "${opts.name}", updating...`);
             const updateBody: Record<string, unknown> = { ...body };
             delete updateBody.name;
+            if (opts.protocol === 'tcp') updateBody.protocol = 'tcp';
             res = await ossFetch(`/api/compute/services/${encodeURIComponent(existing.id)}`, {
               method: 'PATCH',
               body: JSON.stringify(updateBody),
@@ -141,7 +151,14 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           } else {
             const verb = existing ? 'updated' : 'deployed';
             outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
-            if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
+            if (service.endpointUrl && opts.protocol === 'tcp') {
+              const host = String(service.endpointUrl).replace(/^https?:\/\//, '');
+              console.log(`  Endpoint: ${host}:${service.port} (connect with <scheme>://${host}:${service.port})`);
+              console.log(`  Note: TCP services are reachable from the public internet.`);
+              console.log(`        Configure auth on your container (e.g. redis --requirepass <secret>).`);
+            } else if (service.endpointUrl) {
+              console.log(`  Endpoint: ${service.endpointUrl}`);
+            }
             if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
           }
           await reportCliUsage('cli.compute.deploy', true);
@@ -225,6 +242,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             token: tokenJson.token,
             region: opts.region,
             port,
+            protocol: opts.protocol === 'tcp' ? 'tcp' : 'http',
           }));
         } catch (buildErr) {
           if (!existing) {
@@ -257,6 +275,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           region: opts.region,
         };
         if (envVars) updateBody.envVars = envVars;
+        if (opts.protocol === 'tcp') updateBody.protocol = 'tcp';
 
         const finalRes = await ossFetch(
           `/api/compute/services/${encodeURIComponent(serviceId)}`,
@@ -269,7 +288,14 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         } else {
           const verb = existing ? 'updated' : 'deployed';
           outputSuccess(`Service "${service.name}" ${verb} [${service.status}]`);
-          if (service.endpointUrl) console.log(`  Endpoint: ${service.endpointUrl}`);
+          if (service.endpointUrl && opts.protocol === 'tcp') {
+            const host = String(service.endpointUrl).replace(/^https?:\/\//, '');
+            console.log(`  Endpoint: ${host}:${service.port} (connect with <scheme>://${host}:${service.port})`);
+            console.log(`  Note: TCP services are reachable from the public internet.`);
+            console.log(`        Configure auth on your container (e.g. redis --requirepass <secret>).`);
+          } else if (service.endpointUrl) {
+            console.log(`  Endpoint: ${service.endpointUrl}`);
+          }
           if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
           console.log(`  Image: ${imageRef} (built remotely; no local image to clean up)`);
         }
