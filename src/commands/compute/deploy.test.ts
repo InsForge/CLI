@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type * as ErrorsModule from '../../lib/errors.js';
 
 const ossFetchMock = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/api/oss.js', () => ({ ossFetch: ossFetchMock }));
 vi.mock('../../lib/credentials.js', () => ({ requireAuth: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../../lib/skills.js', () => ({ reportCliUsage: vi.fn() }));
 vi.mock('../../lib/errors.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../lib/errors.js')>();
+  const actual = await importOriginal<typeof ErrorsModule>();
   return {
     ...actual,
     handleError: (err: unknown) => { throw err; },
