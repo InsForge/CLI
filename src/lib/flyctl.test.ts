@@ -377,5 +377,36 @@ describe('flyctlBuildAndPush', () => {
     await expect(flyctlBuildAndPush(baseOpts)).rejects.toThrow();
     expect(unlinkSyncMock).toHaveBeenCalledWith('/tmp/app/fly.toml');
   });
+
+  it('writes a [[services]] TCP stub when protocol=tcp', async () => {
+    existsSyncMock.mockReturnValue(false);
+    const child = makeFakeChild();
+    spawnMock.mockReturnValue(child);
+    driveSuccess(
+      child,
+      'pushing manifest for registry.fly.io/cache-proj@sha256:' + 'a'.repeat(64) + '\n'
+    );
+    await flyctlBuildAndPush({ ...baseOpts, port: 6379, protocol: 'tcp' });
+
+    const [, body] = writeFileSyncMock.mock.calls[0];
+    expect(body).toContain('[[services]]');
+    expect(body).toContain('internal_port = 6379');
+    expect(body).toContain('protocol = "tcp"');
+    expect(body).toContain('[[services.ports]]');
+    expect(body).toContain('port = 6379');
+    expect(body).not.toContain('[http_service]');
+    expect(body).not.toContain('force_https');
+  });
+
+  it('keeps writing [http_service] when protocol=http (default)', async () => {
+    existsSyncMock.mockReturnValue(false);
+    const child = makeFakeChild();
+    spawnMock.mockReturnValue(child);
+    driveSuccess(child, 'pushing manifest for registry.fly.io/foo@sha256:' + 'b'.repeat(64) + '\n');
+    await flyctlBuildAndPush(baseOpts); // no protocol = default
+    const [, body] = writeFileSyncMock.mock.calls[0];
+    expect(body).toContain('[http_service]');
+    expect(body).not.toContain('[[services]]');
+  });
 });
 
