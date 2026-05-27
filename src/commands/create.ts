@@ -382,10 +382,7 @@ export function registerCreateCommand(program: Command): void {
             json,
           );
           if (downloaded) {
-            void reportMarketplaceDownload(
-              opts.marketplace as string,
-              apiUrl ?? 'https://api.insforge.dev',
-            );
+            void reportMarketplaceDownload(opts.marketplace as string);
           }
         } else if (githubTemplates.includes(template!)) {
           await downloadGitHubTemplate(template!, projectConfig, json);
@@ -737,18 +734,25 @@ export async function downloadGitHubTemplate(
   }
 }
 
+// TemplateMarket is a single-tenant InsForge project hosted independently
+// of any per-user backend, so the counter URL is a constant rather than
+// derived from `apiUrl`. The function takes only {slug}; auth + RPC
+// dispatch is handled inside the edge function (no anon key needed here).
+const MARKETPLACE_REPORT_URL =
+  'https://p8n7m7ci.us-east.insforge.app/functions/report-download';
+
 /**
  * Fire-and-forget POST to the marketplace download counter.
  * Network errors and non-2xx responses are swallowed — a transient
  * counter blip must not kill the install. The DB counter is the source
  * of truth; PostHog is intentionally not used (per spec §6.3).
  */
-export async function reportMarketplaceDownload(slug: string, apiUrl: string): Promise<void> {
+export async function reportMarketplaceDownload(slug: string): Promise<void> {
   try {
-    const res = await fetch(`${apiUrl}/templates/v1/${encodeURIComponent(slug)}/downloads`, {
+    const res = await fetch(MARKETPLACE_REPORT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify({ slug }),
     });
     if (!res.ok) {
       // Swallow — best-effort counter ping.

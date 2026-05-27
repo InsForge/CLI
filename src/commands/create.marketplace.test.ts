@@ -19,39 +19,39 @@ describe('reportMarketplaceDownload', () => {
     vi.unstubAllGlobals();
   });
 
-  it('POSTs to /templates/v1/<slug>/downloads on the given apiUrl', async () => {
+  it('POSTs slug body to TemplateMarket /functions/report-download', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ count: 1 }) });
 
-    await reportMarketplaceDownload('chatbot', 'https://api.insforge.dev');
+    await reportMarketplaceDownload('chatbot');
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://api.insforge.dev/templates/v1/chatbot/downloads');
-    expect(init).toMatchObject({ method: 'POST' });
+    expect(url).toBe('https://p8n7m7ci.us-east.insforge.app/functions/report-download');
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'chatbot' }),
+    });
   });
 
-  it('URL-encodes the slug', async () => {
+  it('sends the slug verbatim in the JSON body (no URL encoding hazard)', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ count: 1 }) });
 
-    await reportMarketplaceDownload('weird slug', 'https://api.insforge.dev');
+    await reportMarketplaceDownload('weird slug');
 
-    const [url] = fetchMock.mock.calls[0];
-    expect(url).toContain('weird%20slug');
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.body).toBe(JSON.stringify({ slug: 'weird slug' }));
   });
 
   it('swallows network errors (does not throw)', async () => {
     fetchMock.mockRejectedValue(new Error('ECONNREFUSED'));
 
-    await expect(
-      reportMarketplaceDownload('chatbot', 'https://api.insforge.dev'),
-    ).resolves.toBeUndefined();
+    await expect(reportMarketplaceDownload('chatbot')).resolves.toBeUndefined();
   });
 
   it('swallows non-2xx responses (does not throw)', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
 
-    await expect(
-      reportMarketplaceDownload('chatbot', 'https://api.insforge.dev'),
-    ).resolves.toBeUndefined();
+    await expect(reportMarketplaceDownload('chatbot')).resolves.toBeUndefined();
   });
 });
 
