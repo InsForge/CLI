@@ -739,6 +739,7 @@ export async function downloadGitHubTemplate(
 // derived from `apiUrl`. The function takes only {slug}; auth + RPC
 // dispatch is handled inside the edge function (no anon key needed here).
 const MARKETPLACE_REPORT_URL =
+  process.env.INSFORGE_MARKETPLACE_REPORT_URL ??
   'https://p8n7m7ci.us-east.insforge.app/functions/report-download';
 
 /**
