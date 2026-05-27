@@ -20,14 +20,21 @@ export function registerComputeGetCommand(computeCmd: Command): void {
         if (json) {
           outputJson(service);
         } else {
+          // TCP services have no HTTPS listener — show host:port so users can
+          // copy the value straight into a protocol-native client.
+          const endpoint =
+            service.protocol === 'tcp' && service.endpointUrl && service.port
+              ? `${String(service.endpointUrl).replace(/^https?:\/\//, '')}:${service.port}`
+              : (service.endpointUrl ?? 'n/a');
           outputInfo(`Name:      ${service.name}`);
           outputInfo(`ID:        ${service.id}`);
           outputInfo(`Status:    ${service.status}`);
           outputInfo(`Image:     ${service.imageUrl}`);
+          outputInfo(`Protocol:  ${service.protocol ?? 'http'}`);
           outputInfo(`CPU:       ${service.cpu}`);
           outputInfo(`Memory:    ${service.memory}MB`);
           outputInfo(`Region:    ${service.region}`);
-          outputInfo(`Endpoint:  ${service.endpointUrl ?? 'n/a'}`);
+          outputInfo(`Endpoint:  ${endpoint}`);
           outputInfo(`Created:   ${service.createdAt}`);
         }
         await reportCliUsage('cli.compute.get', true);
