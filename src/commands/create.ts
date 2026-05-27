@@ -750,10 +750,16 @@ const MARKETPLACE_REPORT_URL =
  */
 export async function reportMarketplaceDownload(slug: string): Promise<void> {
   try {
+    // Bounded timeout: the call is `void`-awaited at the call site so the
+    // install command returns immediately, but an unresolved fetch keeps
+    // the Node event loop alive — without a signal the CLI process would
+    // hang for the OS socket timeout (minutes) whenever the marketplace
+    // counter endpoint is unreachable.
     const res = await fetch(MARKETPLACE_REPORT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug }),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
       // Swallow — best-effort counter ping.
