@@ -382,6 +382,9 @@ export function registerCreateCommand(program: Command): void {
             json,
           );
           if (downloaded) {
+            captureEvent(orgId, 'marketplace_template_downloaded', {
+              template: opts.marketplace,
+            });
             void reportMarketplaceDownload(opts.marketplace as string);
           }
         } else if (githubTemplates.includes(template!)) {
@@ -745,8 +748,9 @@ const MARKETPLACE_REPORT_URL =
 /**
  * Fire-and-forget POST to the marketplace download counter.
  * Network errors and non-2xx responses are swallowed — a transient
- * counter blip must not kill the install. The DB counter is the source
- * of truth; PostHog is intentionally not used (per spec §6.3).
+ * counter blip must not kill the install. This DB counter only backs
+ * the download number shown on the template page; PostHog is the
+ * source of truth for download analytics.
  */
 export async function reportMarketplaceDownload(slug: string): Promise<void> {
   try {

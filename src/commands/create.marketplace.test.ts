@@ -93,7 +93,7 @@ describe('--marketplace flag wiring', () => {
     // true — a swallowed network/clone failure (return false) must NOT bump
     // the marketplace's install count.
     expect(createSource).toMatch(/const downloaded = await downloadGitHubTemplate/);
-    expect(createSource).toMatch(/if \(downloaded\)[\s\S]{0,80}reportMarketplaceDownload/);
+    expect(createSource).toMatch(/if \(downloaded\)[\s\S]{0,200}reportMarketplaceDownload/);
   });
 
   it('does NOT emit a PostHog template_selected event with a marketplace property', () => {
