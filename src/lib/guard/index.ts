@@ -31,7 +31,7 @@ function commandPath(cmd: Command): string {
  * Commander awaits async preAction hooks (requires parseAsync), so this can
  * block on the approval page before the command's action runs.
  */
-export async function guardHook(_thisCommand: Command, actionCommand: Command): Promise<void> {
+export async function guardHook(thisCommand: Command, actionCommand: Command): Promise<void> {
   const path = commandPath(actionCommand);
   const args = (actionCommand.processedArgs ?? []).map((a) => (Array.isArray(a) ? a.join(' ') : String(a ?? '')));
   const opts = actionCommand.opts() as Record<string, unknown>;
@@ -50,15 +50,16 @@ export async function guardHook(_thisCommand: Command, actionCommand: Command): 
     return;
   }
 
-  let brief;
-  try {
-    brief = await buildBrief(ctx, risk, command);
-  } catch {
-    // If we cannot even build a brief, fail closed.
-    audit({ ...base, decision: 'failed' });
-    process.stderr.write('  🛑 Guard could not render the operation for review — denied.\n');
-    process.exit(1);
-  }
+  // The calling agent's own explanation of the change + implications, if it
+  // supplied one (`--reason "..."` or INSFORGE_GUARD_SUMMARY). The CLI makes no
+  // LLM call of its own — the agent is the LLM, and it can explain but cannot
+  // downgrade the rule verdict.
+  const agentSummary =
+    (thisCommand.opts().reason as string | undefined) ??
+    process.env.INSFORGE_GUARD_SUMMARY ??
+    null;
+
+  const brief = buildBrief(ctx, risk, command, agentSummary);
 
   const result = await requestApproval(brief);
   audit({ ...base, decision: result });
