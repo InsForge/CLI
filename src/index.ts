@@ -78,6 +78,7 @@ import { registerPosthogSetupCommand } from './commands/posthog/setup.js';
 import { registerConfigCommand } from './commands/config/index.js';
 import { registerAiCommands } from './commands/ai/index.js';
 import { registerMemoryCommands } from './commands/memory/index.js';
+import { guardHook } from './lib/guard/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -103,6 +104,11 @@ program
   .option('--json', 'Output in JSON format')
   .option('--api-url <url>', 'Override Platform API URL')
   .option('-y, --yes', 'Skip confirmation prompts');
+
+// Human-in-the-loop guard: a dispatch-pipeline stage that stops dangerous
+// operations for human approval. Lives in the CLI so it protects every caller
+// (Claude Code, Cursor, scripts, CI, humans) automatically.
+program.hook('preAction', guardHook);
 
 // Top-level commands
 registerLoginCommand(program);
@@ -233,7 +239,7 @@ registerConfigCommand(program);
 if (process.argv.length <= 2 && process.stdout.isTTY) {
   await showInteractiveMenu();
 } else {
-  program.parse();
+  await program.parseAsync();
 }
 
 async function showInteractiveMenu(): Promise<void> {
