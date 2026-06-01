@@ -664,7 +664,7 @@ npx @insforge/cli config plan --file insforge.toml
 npx @insforge/cli config apply --file insforge.toml --auto-approve
 ```
 
-Supported TOML sections include auth redirects and verification flags, password policy, SMTP, auth email templates, storage upload size, realtime/schedule retention, and cloud deployment subdomain:
+Supported TOML sections include auth redirects and verification flags, password policy, SMTP, storage upload size, realtime/schedule retention, and cloud deployment subdomain:
 
 ```toml
 [auth]
@@ -690,10 +690,6 @@ password = "env(SMTP_PASSWORD)"
 sender_email = "noreply@example.com"
 sender_name = "Example"
 min_interval_seconds = 60
-
-[auth.email_templates."reset-password-link"]
-subject = "Reset your password"
-body_html = "<p>Click {{ .ConfirmationURL }}</p>"
 
 [storage]
 max_file_size_mb = 100

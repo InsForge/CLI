@@ -11,7 +11,6 @@ let nextMetadataResponse: unknown = {};
 let nextStorageConfigResponse: unknown;
 let nextRealtimeConfigResponse: unknown;
 let nextSchedulesConfigResponse: unknown;
-let nextEmailTemplatesResponse: unknown;
 // Stash secret values for env() resolution. Map secret name → value.
 const secretsStore: Map<string, string> = new Map();
 const ossFetchMock = vi.fn(async (path: string, init?: RequestInit) => {
@@ -35,12 +34,6 @@ const ossFetchMock = vi.fn(async (path: string, init?: RequestInit) => {
   }
   if (path === '/api/schedules/config' && (!init || init.method === undefined || init.method === 'GET')) {
     return new Response(JSON.stringify(nextSchedulesConfigResponse ?? {}), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
-  if (path === '/api/auth/email-templates' && (!init || init.method === undefined || init.method === 'GET')) {
-    return new Response(JSON.stringify(nextEmailTemplatesResponse ?? {}), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
@@ -124,7 +117,6 @@ beforeEach(() => {
   nextStorageConfigResponse = undefined;
   nextRealtimeConfigResponse = undefined;
   nextSchedulesConfigResponse = undefined;
-  nextEmailTemplatesResponse = undefined;
   tmp = mkdtempSync(join(tmpdir(), 'insforge-apply-test-'));
 });
 
@@ -294,53 +286,6 @@ retention_days = 14
       (c) => c[0] === '/api/schedules/config' && c[1]?.method === 'PATCH',
     );
     expect(JSON.parse(schedulesPatch![1]!.body as string)).toEqual({ retentionDays: 14 });
-
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it('applies auth email templates through /api/auth/email-templates/:type', async () => {
-    nextMetadataResponse = { auth: {} };
-    nextEmailTemplatesResponse = {
-      data: [
-        {
-          templateType: 'reset-password-link',
-          subject: 'Old',
-          bodyHtml: '<p>Old</p>',
-        },
-      ],
-    };
-
-    const tomlPath = join(tmp, 'insforge.toml');
-    writeFileSync(
-      tomlPath,
-      `[auth.email_templates."reset-password-link"]
-subject = "New"
-body_html = "<p>New</p>"
-`,
-    );
-
-    const program = makeProgram();
-    const docs = await runJson(program, [
-      '--json',
-      '--yes',
-      'config',
-      'apply',
-      '--file',
-      tomlPath,
-    ]);
-
-    const result = docs[0] as { applied: unknown[]; skipped: unknown[] };
-    expect(result.applied).toHaveLength(1);
-    expect(result.skipped).toHaveLength(0);
-
-    const putCalls = ossFetchMock.mock.calls.filter(
-      (c) => c[0] === '/api/auth/email-templates/reset-password-link' && c[1]?.method === 'PUT',
-    );
-    expect(putCalls).toHaveLength(1);
-    expect(JSON.parse(putCalls[0][1]!.body as string)).toEqual({
-      subject: 'New',
-      bodyHtml: '<p>New</p>',
-    });
 
     rmSync(tmp, { recursive: true, force: true });
   });

@@ -77,9 +77,6 @@ export function configSupports(input: ConfigSupportInput, change: DiffChange): b
     // /api/metadata (and accepts PUT /api/auth/smtp-config) or doesn't.
     return hasAuthKey(raw, 'smtpConfig');
   }
-  if (change.section === 'auth.email_templates') {
-    return hasEmailTemplate(state, change.key);
-  }
   if (change.section === 'storage' && change.key === 'max_file_size_mb') {
     return hasConfigKey(state?.storageConfig, 'maxFileSizeMb');
   }
@@ -129,13 +126,6 @@ function hasConfigKey(slice: unknown, key: string): boolean {
   return slice !== undefined && slice !== null && typeof slice === 'object' && key in slice;
 }
 
-function hasEmailTemplate(state: RawConfigState | undefined, templateType: string): boolean {
-  return (
-    Array.isArray(state?.emailTemplates) &&
-    state.emailTemplates.some((template) => template.templateType === templateType)
-  );
-}
-
 // Maps TOML keys under [auth.password] to the flat camelCase fields the
 // backend emits on /api/metadata's auth slice. Single source of truth used
 // by both the capability probe and the apply dispatcher (via authPasswordWireKey).
@@ -155,9 +145,6 @@ const AUTH_PASSWORD_WIRE_KEY: Record<
  */
 export function changePath(change: DiffChange): string {
   if (change.section === 'auth.smtp') return 'auth.smtp';
-  if (change.section === 'auth.email_templates') {
-    return `auth.email_templates.${change.key}`;
-  }
   return `${change.section}.${change.key}`;
 }
 

@@ -10,14 +10,12 @@ let nextMetadataResponse: unknown = {};
 let nextStorageConfigResponse: unknown;
 let nextRealtimeConfigResponse: unknown;
 let nextSchedulesConfigResponse: unknown;
-let nextEmailTemplatesResponse: unknown;
 
 const ossFetchMock = vi.fn(async (path: string) => {
   let body: unknown = nextMetadataResponse;
   if (path === '/api/storage/config') body = nextStorageConfigResponse ?? {};
   if (path === '/api/realtime/config') body = nextRealtimeConfigResponse ?? {};
   if (path === '/api/schedules/config') body = nextSchedulesConfigResponse ?? {};
-  if (path === '/api/auth/email-templates') body = nextEmailTemplatesResponse ?? {};
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { 'content-type': 'application/json' },
@@ -80,7 +78,6 @@ beforeEach(() => {
   nextStorageConfigResponse = undefined;
   nextRealtimeConfigResponse = undefined;
   nextSchedulesConfigResponse = undefined;
-  nextEmailTemplatesResponse = undefined;
   tmp = mkdtempSync(join(tmpdir(), 'insforge-export-test-'));
 });
 
@@ -125,7 +122,6 @@ describe('config export (capability probe)', () => {
     // else (verification flags, password policy, deployments) gets skipped.
     expect(result.skipped.sort()).toEqual([
       'auth.disable_signup',
-      'auth.email_templates',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
@@ -153,15 +149,6 @@ describe('config export (capability probe)', () => {
     nextStorageConfigResponse = { maxFileSizeMb: 100 };
     nextRealtimeConfigResponse = { retentionDays: null };
     nextSchedulesConfigResponse = { retentionDays: 14 };
-    nextEmailTemplatesResponse = {
-      data: [
-        {
-          templateType: 'reset-password-link',
-          subject: 'Reset',
-          bodyHtml: '<p>Reset</p>',
-        },
-      ],
-    };
 
     const target = join(tmp, 'insforge.toml');
     const program = makeProgram();
@@ -178,7 +165,6 @@ describe('config export (capability probe)', () => {
       config: {
         auth?: {
           disable_signup?: boolean;
-          email_templates?: Record<string, { subject: string; body_html: string }>;
         };
         storage?: { max_file_size_mb?: number };
         realtime?: { retention_days?: number | null };
@@ -190,20 +176,14 @@ describe('config export (capability probe)', () => {
     expect(result.config.storage).toEqual({ max_file_size_mb: 100 });
     expect(result.config.realtime).toEqual({ retention_days: null });
     expect(result.config.schedules).toEqual({ retention_days: 14 });
-    expect(result.config.auth?.email_templates?.['reset-password-link']).toEqual({
-      subject: 'Reset',
-      body_html: '<p>Reset</p>',
-    });
     expect(result.skipped).not.toContain('storage.max_file_size_mb');
     expect(result.skipped).not.toContain('realtime.retention_days');
     expect(result.skipped).not.toContain('schedules.retention_days');
-    expect(result.skipped).not.toContain('auth.email_templates');
 
     const written = readFileSync(target, 'utf8');
     expect(written).toContain('disable_signup = true');
     expect(written).toContain('[storage]');
     expect(written).toContain('retention_days = 0');
-    expect(written).toContain('[auth.email_templates."reset-password-link"]');
 
     rmSync(tmp, { recursive: true, force: true });
   });
@@ -304,7 +284,6 @@ describe('config export (capability probe)', () => {
     expect(result.skipped.sort()).toEqual([
       'auth.allowed_redirect_urls',
       'auth.disable_signup',
-      'auth.email_templates',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
@@ -346,7 +325,6 @@ describe('config export (capability probe)', () => {
     // but the deployments section still emits cleanly.
     expect(result.skipped.sort()).toEqual([
       'auth.disable_signup',
-      'auth.email_templates',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
@@ -390,7 +368,6 @@ describe('config export (capability probe)', () => {
     expect(result.config.deployments).toBeUndefined();
     expect(result.skipped.sort()).toEqual([
       'auth.disable_signup',
-      'auth.email_templates',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',

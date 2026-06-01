@@ -9,13 +9,7 @@
 // through these two functions so a future field-mapping fix lands in one
 // place rather than diverging across commands.
 
-import {
-  EMAIL_TEMPLATE_TYPES,
-  isEmailTemplateType,
-  type EmailTemplateConfig,
-  type EmailTemplateType,
-  type InsforgeConfig,
-} from './config-schema.js';
+import type { InsforgeConfig } from './config-schema.js';
 import type { LiveConfig } from './config-diff.js';
 
 /**
@@ -54,18 +48,11 @@ export interface RawRetentionConfig {
   retentionDays?: unknown;
 }
 
-export interface RawEmailTemplateMetadata {
-  templateType?: unknown;
-  subject?: unknown;
-  bodyHtml?: unknown;
-}
-
 export interface RawConfigState {
   metadata: RawMetadataResponse;
   storageConfig?: RawStorageConfig;
   realtimeConfig?: RawRetentionConfig;
   schedulesConfig?: RawRetentionConfig;
-  emailTemplates?: RawEmailTemplateMetadata[];
 }
 
 export interface RawMetadataResponse {
@@ -186,12 +173,6 @@ export function liveFromConfigState(state: RawConfigState): LiveConfig {
     live.schedules = { retention_days: schedulesRetention };
   }
 
-  const templates = readEmailTemplates(state.emailTemplates);
-  if (templates !== undefined) {
-    live.auth = live.auth ?? {};
-    live.auth.email_templates = templates;
-  }
-
   return live;
 }
 
@@ -210,27 +191,6 @@ function asNumber(v: unknown): number | undefined {
 function asRetentionDays(v: unknown): number | null | undefined {
   if (v === null) return null;
   return asNumber(v);
-}
-
-function readEmailTemplates(
-  templates: RawEmailTemplateMetadata[] | undefined,
-): Partial<Record<EmailTemplateType, EmailTemplateConfig>> | undefined {
-  if (!Array.isArray(templates)) return undefined;
-  const out: Partial<Record<EmailTemplateType, EmailTemplateConfig>> = {};
-  for (const t of templates) {
-    const templateType = typeof t.templateType === 'string' ? t.templateType : '';
-    if (
-      isEmailTemplateType(templateType) &&
-      typeof t.subject === 'string' &&
-      typeof t.bodyHtml === 'string'
-    ) {
-      out[templateType] = {
-        subject: t.subject,
-        body_html: t.bodyHtml,
-      };
-    }
-  }
-  return out;
 }
 
 /**
@@ -398,24 +358,5 @@ export function configFromConfigState(state: RawConfigState): {
     skipped.push('schedules.retention_days');
   }
 
-  const templates = readEmailTemplates(state.emailTemplates);
-  if (templates !== undefined) {
-    if (hasAnyEmailTemplate(templates)) {
-      config.auth = config.auth ?? {};
-      config.auth.email_templates = {};
-      for (const type of EMAIL_TEMPLATE_TYPES) {
-        if (templates[type]) config.auth.email_templates[type] = templates[type];
-      }
-    }
-  } else {
-    skipped.push('auth.email_templates');
-  }
-
   return { config, skipped };
-}
-
-function hasAnyEmailTemplate(
-  templates: Partial<Record<EmailTemplateType, EmailTemplateConfig>>,
-): boolean {
-  return EMAIL_TEMPLATE_TYPES.some((type) => templates[type] !== undefined);
 }

@@ -1,6 +1,4 @@
 import type {
-  EmailTemplateConfig,
-  EmailTemplateType,
   InsforgeConfig,
   PasswordConfig,
   RetentionConfig,
@@ -83,13 +81,6 @@ export type DiffChange =
        * When set, the password is force-resent even if nothing else changed.
        */
       passwordEnvRef?: string;
-    }
-  | {
-      section: 'auth.email_templates';
-      op: 'modify';
-      key: EmailTemplateType;
-      from: EmailTemplateConfig;
-      to: EmailTemplateConfig;
     }
   | {
       section: 'storage';
@@ -182,7 +173,6 @@ export interface LiveConfig {
     disable_signup?: boolean;
     password?: LivePasswordPolicy;
     smtp?: LiveSmtpState;
-    email_templates?: Partial<Record<EmailTemplateType, EmailTemplateConfig>>;
   };
   storage?: {
     max_file_size_mb?: number;
@@ -304,10 +294,6 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
     if (smtpChange) changes.push(smtpChange);
   }
 
-  if (fileAuth?.email_templates !== undefined) {
-    diffEmailTemplates(liveAuth.email_templates, fileAuth.email_templates, changes);
-  }
-
   if (file.storage !== undefined) {
     diffStorage(live.storage, file.storage, changes);
   }
@@ -386,28 +372,6 @@ function diffPassword(
         section: 'auth.password',
         op: 'modify',
         key,
-        from: fromV,
-        to: toV,
-      });
-    }
-  }
-}
-
-function diffEmailTemplates(
-  live: Partial<Record<EmailTemplateType, EmailTemplateConfig>> | undefined,
-  file: Partial<Record<EmailTemplateType, EmailTemplateConfig>>,
-  changes: DiffChange[],
-): void {
-  for (const [templateType, toV] of Object.entries(file) as Array<
-    [EmailTemplateType, EmailTemplateConfig | undefined]
-  >) {
-    if (!toV) continue;
-    const fromV = live?.[templateType] ?? EMPTY_EMAIL_TEMPLATE;
-    if (fromV.subject !== toV.subject || fromV.body_html !== toV.body_html) {
-      changes.push({
-        section: 'auth.email_templates',
-        op: 'modify',
-        key: templateType,
         from: fromV,
         to: toV,
       });
@@ -555,11 +519,6 @@ const EMPTY_SMTP_VIEW: SmtpDiffView = {
   sender_email: '',
   sender_name: '',
   min_interval_seconds: 60,
-};
-
-const EMPTY_EMAIL_TEMPLATE: EmailTemplateConfig = {
-  subject: '',
-  body_html: '',
 };
 
 const EMPTY_STORAGE_CONFIG = {

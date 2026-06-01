@@ -182,17 +182,6 @@ describe('changePath', () => {
     ).toBe('auth.password.min_length');
   });
 
-  it('renders auth.email_templates paths with the template type', () => {
-    expect(
-      changePath({
-        section: 'auth.email_templates',
-        op: 'modify',
-        key: 'reset-password-link',
-        from: { subject: 'Old', body_html: '<p>Old</p>' },
-        to: { subject: 'New', body_html: '<p>New</p>' },
-      }),
-    ).toBe('auth.email_templates.reset-password-link');
-  });
 });
 
 describe('configSupports — optional endpoint-backed sections', () => {
@@ -230,36 +219,5 @@ describe('configSupports — optional endpoint-backed sections', () => {
         to: 14,
       }),
     ).toBe(true);
-  });
-
-  it('supports email templates only when that template appears in the list response', () => {
-    const state = {
-      metadata: { auth: {} },
-      emailTemplates: [
-        {
-          templateType: 'reset-password-link',
-          subject: 'Reset',
-          bodyHtml: '<p>Reset</p>',
-        },
-      ],
-    };
-    expect(
-      configSupports(state, {
-        section: 'auth.email_templates',
-        op: 'modify',
-        key: 'reset-password-link',
-        from: { subject: 'Old', body_html: '<p>Old</p>' },
-        to: { subject: 'Reset', body_html: '<p>Reset</p>' },
-      }),
-    ).toBe(true);
-    expect(
-      configSupports(state, {
-        section: 'auth.email_templates',
-        op: 'modify',
-        key: 'email-verification-code',
-        from: { subject: 'Old', body_html: '<p>Old</p>' },
-        to: { subject: 'Verify', body_html: '<p>Verify</p>' },
-      }),
-    ).toBe(false);
   });
 });

@@ -245,16 +245,6 @@ async function applyChange(change: DiffChange): Promise<void> {
     });
     return;
   }
-  if (change.section === 'auth.email_templates') {
-    await ossFetch(`/api/auth/email-templates/${encodeURIComponent(change.key)}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        subject: change.to.subject,
-        bodyHtml: change.to.body_html,
-      }),
-    });
-    return;
-  }
   if (change.section === 'storage' && change.key === 'max_file_size_mb') {
     await ossFetch('/api/storage/config', {
       method: 'PUT',

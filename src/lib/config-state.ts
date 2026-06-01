@@ -2,26 +2,20 @@ import { ossFetch } from './api/oss.js';
 import { CLIError } from './errors.js';
 import type {
   RawConfigState,
-  RawEmailTemplateMetadata,
   RawMetadataResponse,
   RawRetentionConfig,
   RawStorageConfig,
 } from './config-metadata.js';
 
-interface RawEmailTemplatesResponse {
-  data?: unknown;
-}
-
 export async function loadConfigState(): Promise<RawConfigState> {
   const metadataRes = await ossFetch('/api/metadata');
   const metadata = (await metadataRes.json()) as RawMetadataResponse;
 
-  const [storageConfig, realtimeConfig, schedulesConfig, emailTemplates] =
+  const [storageConfig, realtimeConfig, schedulesConfig] =
     await Promise.all([
       fetchOptionalJson<RawStorageConfig>('/api/storage/config'),
       fetchOptionalJson<RawRetentionConfig>('/api/realtime/config'),
       fetchOptionalJson<RawRetentionConfig>('/api/schedules/config'),
-      fetchOptionalEmailTemplates(),
     ]);
 
   return {
@@ -29,7 +23,6 @@ export async function loadConfigState(): Promise<RawConfigState> {
     ...(storageConfig !== undefined ? { storageConfig } : {}),
     ...(realtimeConfig !== undefined ? { realtimeConfig } : {}),
     ...(schedulesConfig !== undefined ? { schedulesConfig } : {}),
-    ...(emailTemplates !== undefined ? { emailTemplates } : {}),
   };
 }
 
@@ -43,12 +36,6 @@ async function fetchOptionalJson<T>(path: string): Promise<T | undefined> {
   }
 }
 
-async function fetchOptionalEmailTemplates(): Promise<RawEmailTemplateMetadata[] | undefined> {
-  const body = await fetchOptionalJson<RawEmailTemplatesResponse>('/api/auth/email-templates');
-  if (body === undefined || !Array.isArray(body.data)) return undefined;
-  return body.data.filter(isPlainObject) as RawEmailTemplateMetadata[];
-}
-
 function isOptionalEndpointUnsupported(err: unknown): boolean {
   if (!(err instanceof CLIError)) return false;
   const message = err.message.toLowerCase();
@@ -59,8 +46,4 @@ function isOptionalEndpointUnsupported(err: unknown): boolean {
     message.includes('not available') ||
     message.includes('not enabled')
   );
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === 'object' && !Array.isArray(v);
 }

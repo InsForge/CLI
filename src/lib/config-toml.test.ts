@@ -297,7 +297,7 @@ require_special_char = true
 });
 
 describe('parseConfigToml — additional config sections', () => {
-  it('parses storage, retention, and auth email template sections', () => {
+  it('parses storage and retention sections', () => {
     const toml = `
 [storage]
 max_file_size_mb = 100
@@ -307,32 +307,12 @@ retention_days = 0
 
 [schedules]
 retention_days = 30
-
-[auth.email_templates."reset-password-link"]
-subject = "Reset your password"
-body_html = "<p>Click {{ .ConfirmationURL }}</p>"
 `;
     expect(parseConfigToml(toml)).toEqual({
       storage: { max_file_size_mb: 100 },
       realtime: { retention_days: 0 },
       schedules: { retention_days: 30 },
-      auth: {
-        email_templates: {
-          'reset-password-link': {
-            subject: 'Reset your password',
-            body_html: '<p>Click {{ .ConfirmationURL }}</p>',
-          },
-        },
-      },
     });
-  });
-
-  it('rejects an unknown email template type', () => {
-    expect(() =>
-      parseConfigToml(
-        '[auth.email_templates."welcome"]\nsubject = "Hi"\nbody_html = "<p>Hi</p>"\n',
-      ),
-    ).toThrow(/auth\.email_templates\.welcome.*must be one of/);
   });
 
   it('rejects invalid storage and retention values', () => {
@@ -350,12 +330,6 @@ describe('stringifyConfigToml — additional config sections', () => {
     const original = {
       auth: {
         disable_signup: true,
-        email_templates: {
-          'email-verification-code': {
-            subject: 'Verify',
-            body_html: '<p>{{ .Token }}</p>',
-          },
-        },
       },
       storage: { max_file_size_mb: 100 },
       realtime: { retention_days: 0 },
@@ -363,7 +337,6 @@ describe('stringifyConfigToml — additional config sections', () => {
     };
     const out = stringifyConfigToml(original);
     expect(out).toContain('disable_signup = true');
-    expect(out).toContain('[auth.email_templates."email-verification-code"]');
     expect(out).toContain('[storage]');
     expect(out).toContain('[realtime]');
     expect(out).toContain('[schedules]');

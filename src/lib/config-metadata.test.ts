@@ -277,23 +277,10 @@ describe('liveFromConfigState', () => {
       storageConfig: { maxFileSizeMb: 100 },
       realtimeConfig: { retentionDays: null },
       schedulesConfig: { retentionDays: 14 },
-      emailTemplates: [
-        {
-          templateType: 'reset-password-link',
-          subject: 'Reset',
-          bodyHtml: '<p>Reset</p>',
-        },
-      ],
     });
     expect(live).toMatchObject({
       auth: {
         disable_signup: false,
-        email_templates: {
-          'reset-password-link': {
-            subject: 'Reset',
-            body_html: '<p>Reset</p>',
-          },
-        },
       },
       storage: { max_file_size_mb: 100 },
       realtime: { retention_days: null },
@@ -309,25 +296,13 @@ describe('configFromConfigState', () => {
       storageConfig: { maxFileSizeMb: 100 },
       realtimeConfig: { retentionDays: null },
       schedulesConfig: { retentionDays: 14 },
-      emailTemplates: [
-        {
-          templateType: 'email-verification-code',
-          subject: 'Verify',
-          bodyHtml: '<p>{{ .Token }}</p>',
-        },
-      ],
     });
     expect(config.auth?.disable_signup).toBe(true);
-    expect(config.auth?.email_templates?.['email-verification-code']).toEqual({
-      subject: 'Verify',
-      body_html: '<p>{{ .Token }}</p>',
-    });
     expect(config.storage).toEqual({ max_file_size_mb: 100 });
     expect(config.realtime).toEqual({ retention_days: null });
     expect(config.schedules).toEqual({ retention_days: 14 });
     expect(skipped).not.toContain('storage.max_file_size_mb');
     expect(skipped).not.toContain('realtime.retention_days');
     expect(skipped).not.toContain('schedules.retention_days');
-    expect(skipped).not.toContain('auth.email_templates');
   });
 });

@@ -18,18 +18,6 @@ export interface InsforgeConfig {
 }
 
 export type VerificationMethod = 'code' | 'link';
-export type EmailTemplateType =
-  | 'email-verification-code'
-  | 'email-verification-link'
-  | 'reset-password-code'
-  | 'reset-password-link';
-
-export const EMAIL_TEMPLATE_TYPES: EmailTemplateType[] = [
-  'email-verification-code',
-  'email-verification-link',
-  'reset-password-code',
-  'reset-password-link',
-];
 
 export interface AuthConfig {
   allowed_redirect_urls?: string[];
@@ -39,7 +27,6 @@ export interface AuthConfig {
   disable_signup?: boolean;
   password?: PasswordConfig;
   smtp?: SmtpConfig;
-  email_templates?: Partial<Record<EmailTemplateType, EmailTemplateConfig>>;
 }
 
 /**
@@ -73,11 +60,6 @@ export interface SmtpConfig {
   sender_email?: string;
   sender_name?: string;
   min_interval_seconds?: number;
-}
-
-export interface EmailTemplateConfig {
-  subject: string;
-  body_html: string;
 }
 
 export interface StorageConfig {
@@ -255,9 +237,6 @@ function validateAuth(input: unknown): AuthConfig {
 
   if ('password' in obj) out.password = validatePassword(obj.password);
   if ('smtp' in obj) out.smtp = validateSmtp(obj.smtp);
-  if ('email_templates' in obj) {
-    out.email_templates = validateEmailTemplates(obj.email_templates);
-  }
 
   return out;
 }
@@ -390,50 +369,4 @@ function validateSmtp(input: unknown): SmtpConfig {
   }
 
   return out;
-}
-
-function validateEmailTemplates(input: unknown): Partial<Record<EmailTemplateType, EmailTemplateConfig>> {
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
-    throw new ConfigValidationError('auth.email_templates', 'must be a table');
-  }
-  const obj = input as Record<string, unknown>;
-  const out: Partial<Record<EmailTemplateType, EmailTemplateConfig>> = {};
-
-  for (const [templateType, value] of Object.entries(obj)) {
-    if (!isEmailTemplateType(templateType)) {
-      throw new ConfigValidationError(
-        `auth.email_templates.${templateType}`,
-        `must be one of: ${EMAIL_TEMPLATE_TYPES.join(', ')}`,
-      );
-    }
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-      throw new ConfigValidationError(
-        `auth.email_templates.${templateType}`,
-        'must be a table',
-      );
-    }
-    const template = value as Record<string, unknown>;
-    if (typeof template.subject !== 'string' || template.subject.length === 0) {
-      throw new ConfigValidationError(
-        `auth.email_templates.${templateType}.subject`,
-        'must be a non-empty string',
-      );
-    }
-    if (typeof template.body_html !== 'string' || template.body_html.length === 0) {
-      throw new ConfigValidationError(
-        `auth.email_templates.${templateType}.body_html`,
-        'must be a non-empty string',
-      );
-    }
-    out[templateType] = {
-      subject: template.subject,
-      body_html: template.body_html,
-    };
-  }
-
-  return out;
-}
-
-export function isEmailTemplateType(value: string): value is EmailTemplateType {
-  return (EMAIL_TEMPLATE_TYPES as string[]).includes(value);
 }

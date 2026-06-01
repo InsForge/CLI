@@ -443,38 +443,4 @@ describe('diffConfig — additional config sections', () => {
     ]);
   });
 
-  it('diffs auth email templates by template type', () => {
-    expect(
-      diffConfig({
-        live: {
-          auth: {
-            email_templates: {
-              'reset-password-link': {
-                subject: 'Old',
-                body_html: '<p>Old</p>',
-              },
-            },
-          },
-        },
-        file: {
-          auth: {
-            email_templates: {
-              'reset-password-link': {
-                subject: 'New',
-                body_html: '<p>New</p>',
-              },
-            },
-          },
-        },
-      }).changes,
-    ).toEqual([
-      {
-        section: 'auth.email_templates',
-        op: 'modify',
-        key: 'reset-password-link',
-        from: { subject: 'Old', body_html: '<p>Old</p>' },
-        to: { subject: 'New', body_html: '<p>New</p>' },
-      },
-    ]);
-  });
 });

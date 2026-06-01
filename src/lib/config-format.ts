@@ -53,30 +53,10 @@ function formatChange(c: DiffChange): string {
     }
     return lines.join('\n    ');
   }
-  if (c.section === 'auth.email_templates') {
-    const lines = [`~ ${c.key}:`];
-    if (c.from.subject !== c.to.subject) {
-      lines.push(
-        `    subject: ${formatTextValue(c.from.subject)} → ${formatTextValue(c.to.subject)}`,
-      );
-    }
-    if (c.from.body_html !== c.to.body_html) {
-      lines.push(
-        `    body_html: ${formatTextValue(c.from.body_html)} → ${formatTextValue(c.to.body_html)}`,
-      );
-    }
-    return lines.join('\n    ');
-  }
   if (c.section === 'deployments' && c.key === 'subdomain') {
     const fromLabel = c.from === null ? '(unset)' : JSON.stringify(c.from);
     const toLabel = c.to === null ? '(unset)' : JSON.stringify(c.to);
     return `~ ${c.key}: ${fromLabel} → ${toLabel}`;
   }
   return `~ ${c.key}: ${JSON.stringify(c.from)} → ${JSON.stringify(c.to)}`;
-}
-
-function formatTextValue(value: string): string {
-  const collapsed = value.replace(/\s+/g, ' ').trim();
-  const shortened = collapsed.length > 80 ? `${collapsed.slice(0, 77)}...` : collapsed;
-  return JSON.stringify(shortened);
 }
