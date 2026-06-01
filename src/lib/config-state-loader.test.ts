@@ -33,6 +33,12 @@ describe('loadConfigState', () => {
       realtimeConfig: {},
       schedulesConfig: {},
     });
+    expect(ossFetchMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/metadata',
+      '/api/storage/config',
+      '/api/realtime/config',
+      '/api/schedules/config',
+    ]);
   });
 
   it('surfaces resource-level optional endpoint failures', async () => {
