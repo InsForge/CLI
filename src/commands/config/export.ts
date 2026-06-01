@@ -4,11 +4,11 @@ import { writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { stringifyConfigToml } from '../../lib/config-toml.js';
-import { configFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
+import { configFromConfigState } from '../../lib/config-metadata.js';
+import { loadConfigState } from '../../lib/config-state.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
 import { getProjectConfig } from '../../lib/config.js';
@@ -53,13 +53,10 @@ export function registerConfigExportCommand(cfg: Command): void {
           }
         }
 
-        const res = await ossFetch('/api/metadata');
-        const raw = (await res.json()) as RawMetadataResponse;
-
-        // Field detection lives in config-metadata.ts alongside liveFromMetadata
-        // so apply/plan/export read the same response the same way. Adding a
-        // new field touches one place, not three.
-        const { config, skipped } = configFromMetadata(raw);
+        // Field detection lives in config-metadata.ts alongside liveFromConfigState
+        // so apply/plan/export read the same backend state the same way.
+        const state = await loadConfigState();
+        const { config, skipped } = configFromConfigState(state);
 
         const toml = stringifyConfigToml(config);
         writeFileSync(target, toml, 'utf8');

@@ -654,6 +654,62 @@ Running `npx @insforge/cli link` creates a `.insforge/` directory in your projec
 
 Add `.insforge/` to your `.gitignore` — it contains your project API key.
 
+### Declarative project config — `insforge.toml`
+
+Use `config export`, `config plan`, and `config apply` to manage project settings through `insforge.toml`:
+
+```bash
+npx @insforge/cli config export --out insforge.toml
+npx @insforge/cli config plan --file insforge.toml
+npx @insforge/cli config apply --file insforge.toml --auto-approve
+```
+
+Supported TOML sections include auth redirects and verification flags, password policy, SMTP, auth email templates, storage upload size, realtime/schedule retention, and cloud deployment subdomain:
+
+```toml
+[auth]
+allowed_redirect_urls = ["https://app.example.com"]
+require_email_verification = true
+verify_email_method = "link"
+reset_password_method = "code"
+disable_signup = false
+
+[auth.password]
+min_length = 12
+require_number = true
+require_lowercase = true
+require_uppercase = false
+require_special_char = true
+
+[auth.smtp]
+enabled = true
+host = "smtp.example.com"
+port = 587
+username = "mailer@example.com"
+password = "env(SMTP_PASSWORD)"
+sender_email = "noreply@example.com"
+sender_name = "Example"
+min_interval_seconds = 60
+
+[auth.email_templates."reset-password-link"]
+subject = "Reset your password"
+body_html = "<p>Click {{ .ConfirmationURL }}</p>"
+
+[storage]
+max_file_size_mb = 100
+
+[realtime]
+retention_days = 7
+
+[schedules]
+retention_days = 0 # 0 disables retention cleanup
+
+[deployments]
+subdomain = "my-app"
+```
+
+`config apply` uses backend admin APIs and skips sections that the connected backend version does not expose. It does not manage external provider resources such as OAuth apps, storage bucket lifecycle, realtime channels, deployment environment variables, functions, or secrets.
+
 Global configuration is stored in `~/.insforge/`:
 
 ```

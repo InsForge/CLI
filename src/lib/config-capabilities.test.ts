@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { metadataSupports, changePath } from './config-capabilities.js';
+import { configSupports, metadataSupports, changePath } from './config-capabilities.js';
 import type { DiffChange } from './config-diff.js';
 
 const change: DiffChange = {
@@ -121,6 +121,18 @@ describe('metadataSupports — auth verification flags', () => {
     expect(metadataSupports({ auth: {} }, verify)).toBe(false);
     expect(metadataSupports({ auth: {} }, reset)).toBe(false);
   });
+
+  it('probes disableSignup by presence', () => {
+    const ch: DiffChange = {
+      section: 'auth',
+      op: 'modify',
+      key: 'disable_signup',
+      from: false,
+      to: true,
+    };
+    expect(metadataSupports({ auth: { disableSignup: false } }, ch)).toBe(true);
+    expect(metadataSupports({ auth: {} }, ch)).toBe(false);
+  });
 });
 
 describe('metadataSupports — [auth.password] per-field', () => {
@@ -168,5 +180,86 @@ describe('changePath', () => {
         to: 12,
       }),
     ).toBe('auth.password.min_length');
+  });
+
+  it('renders auth.email_templates paths with the template type', () => {
+    expect(
+      changePath({
+        section: 'auth.email_templates',
+        op: 'modify',
+        key: 'reset-password-link',
+        from: { subject: 'Old', body_html: '<p>Old</p>' },
+        to: { subject: 'New', body_html: '<p>New</p>' },
+      }),
+    ).toBe('auth.email_templates.reset-password-link');
+  });
+});
+
+describe('configSupports — optional endpoint-backed sections', () => {
+  it('supports storage, realtime, and schedules only when optional config keys are present', () => {
+    const state = {
+      metadata: { auth: {} },
+      storageConfig: { maxFileSizeMb: 50 },
+      realtimeConfig: { retentionDays: null },
+      schedulesConfig: { retentionDays: 7 },
+    };
+    expect(
+      configSupports(state, {
+        section: 'storage',
+        op: 'modify',
+        key: 'max_file_size_mb',
+        from: 50,
+        to: 100,
+      }),
+    ).toBe(true);
+    expect(
+      configSupports(state, {
+        section: 'realtime',
+        op: 'modify',
+        key: 'retention_days',
+        from: null,
+        to: 7,
+      }),
+    ).toBe(true);
+    expect(
+      configSupports(state, {
+        section: 'schedules',
+        op: 'modify',
+        key: 'retention_days',
+        from: 7,
+        to: 14,
+      }),
+    ).toBe(true);
+  });
+
+  it('supports email templates only when that template appears in the list response', () => {
+    const state = {
+      metadata: { auth: {} },
+      emailTemplates: [
+        {
+          templateType: 'reset-password-link',
+          subject: 'Reset',
+          bodyHtml: '<p>Reset</p>',
+        },
+      ],
+    };
+    expect(
+      configSupports(state, {
+        section: 'auth.email_templates',
+        op: 'modify',
+        key: 'reset-password-link',
+        from: { subject: 'Old', body_html: '<p>Old</p>' },
+        to: { subject: 'Reset', body_html: '<p>Reset</p>' },
+      }),
+    ).toBe(true);
+    expect(
+      configSupports(state, {
+        section: 'auth.email_templates',
+        op: 'modify',
+        key: 'email-verification-code',
+        from: { subject: 'Old', body_html: '<p>Old</p>' },
+        to: { subject: 'Verify', body_html: '<p>Verify</p>' },
+      }),
+    ).toBe(false);
   });
 });

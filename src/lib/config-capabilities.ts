@@ -24,6 +24,7 @@
 // backend would defeat this probe.
 
 import type { DiffChange } from './config-diff.js';
+import type { RawConfigState, RawMetadataResponse } from './config-metadata.js';
 
 // The probe takes the metadata response loosely-typed: typed shapes from
 // callers (RawMetadataResponse) and Record<string, unknown> both satisfy
@@ -35,12 +36,20 @@ type RawMetadata = {
   deployments?: unknown;
 };
 
+type ConfigSupportInput = RawMetadata | RawConfigState;
+
 /**
  * True iff the backend's metadata response carries the field this change
  * targets. Used to skip unsupported changes before we'd PUT to an endpoint
  * that may silently drop the body.
  */
 export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean {
+  return configSupports({ metadata: raw as RawMetadataResponse }, change);
+}
+
+export function configSupports(input: ConfigSupportInput, change: DiffChange): boolean {
+  const raw = getMetadata(input);
+  const state = isConfigState(input) ? input : undefined;
   if (change.section === 'auth' && change.key === 'allowed_redirect_urls') {
     return hasAuthKey(raw, 'allowedRedirectUrls');
   }
@@ -53,6 +62,9 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
   if (change.section === 'auth' && change.key === 'reset_password_method') {
     return hasAuthKey(raw, 'resetPasswordMethod');
   }
+  if (change.section === 'auth' && change.key === 'disable_signup') {
+    return hasAuthKey(raw, 'disableSignup');
+  }
   if (change.section === 'auth.password') {
     // Per-key probes. The backend exposes each password policy field as a
     // flat key under `auth` (not a nested passwordPolicy object), so a
@@ -64,6 +76,18 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
     // SMTP is whole-object: a backend either exposes `smtpConfig` in
     // /api/metadata (and accepts PUT /api/auth/smtp-config) or doesn't.
     return hasAuthKey(raw, 'smtpConfig');
+  }
+  if (change.section === 'auth.email_templates') {
+    return hasEmailTemplate(state, change.key);
+  }
+  if (change.section === 'storage' && change.key === 'max_file_size_mb') {
+    return hasConfigKey(state?.storageConfig, 'maxFileSizeMb');
+  }
+  if (change.section === 'realtime' && change.key === 'retention_days') {
+    return hasConfigKey(state?.realtimeConfig, 'retentionDays');
+  }
+  if (change.section === 'schedules' && change.key === 'retention_days') {
+    return hasConfigKey(state?.schedulesConfig, 'retentionDays');
   }
   if (change.section === 'deployments' && change.key === 'subdomain') {
     // Presence-only probe: cloud backends always carry `customSlug` in the
@@ -82,9 +106,34 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
   return false;
 }
 
+function getMetadata(input: ConfigSupportInput): RawMetadata {
+  return isConfigState(input) ? input.metadata : input;
+}
+
+function isConfigState(input: ConfigSupportInput): input is RawConfigState {
+  return (
+    input !== null &&
+    typeof input === 'object' &&
+    'metadata' in input &&
+    input.metadata !== null &&
+    typeof input.metadata === 'object'
+  );
+}
+
 function hasAuthKey(raw: RawMetadata, key: string): boolean {
   const auth = raw?.auth;
   return auth !== undefined && auth !== null && typeof auth === 'object' && key in auth;
+}
+
+function hasConfigKey(slice: unknown, key: string): boolean {
+  return slice !== undefined && slice !== null && typeof slice === 'object' && key in slice;
+}
+
+function hasEmailTemplate(state: RawConfigState | undefined, templateType: string): boolean {
+  return (
+    Array.isArray(state?.emailTemplates) &&
+    state.emailTemplates.some((template) => template.templateType === templateType)
+  );
 }
 
 // Maps TOML keys under [auth.password] to the flat camelCase fields the
@@ -106,6 +155,9 @@ const AUTH_PASSWORD_WIRE_KEY: Record<
  */
 export function changePath(change: DiffChange): string {
   if (change.section === 'auth.smtp') return 'auth.smtp';
+  if (change.section === 'auth.email_templates') {
+    return `auth.email_templates.${change.key}`;
+  }
   return `${change.section}.${change.key}`;
 }
 

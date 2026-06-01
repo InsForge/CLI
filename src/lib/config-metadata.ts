@@ -9,7 +9,13 @@
 // through these two functions so a future field-mapping fix lands in one
 // place rather than diverging across commands.
 
-import type { InsforgeConfig } from './config-schema.js';
+import {
+  EMAIL_TEMPLATE_TYPES,
+  isEmailTemplateType,
+  type EmailTemplateConfig,
+  type EmailTemplateType,
+  type InsforgeConfig,
+} from './config-schema.js';
 import type { LiveConfig } from './config-diff.js';
 
 /**
@@ -27,6 +33,7 @@ export interface RawAuthMetadata {
   requireLowercase?: boolean;
   requireUppercase?: boolean;
   requireSpecialChar?: boolean;
+  disableSignup?: boolean;
   smtpConfig?: {
     enabled?: boolean;
     host?: string;
@@ -37,6 +44,28 @@ export interface RawAuthMetadata {
     senderName?: string;
     minIntervalSeconds?: number;
   };
+}
+
+export interface RawStorageConfig {
+  maxFileSizeMb?: unknown;
+}
+
+export interface RawRetentionConfig {
+  retentionDays?: unknown;
+}
+
+export interface RawEmailTemplateMetadata {
+  templateType?: unknown;
+  subject?: unknown;
+  bodyHtml?: unknown;
+}
+
+export interface RawConfigState {
+  metadata: RawMetadataResponse;
+  storageConfig?: RawStorageConfig;
+  realtimeConfig?: RawRetentionConfig;
+  schedulesConfig?: RawRetentionConfig;
+  emailTemplates?: RawEmailTemplateMetadata[];
 }
 
 export interface RawMetadataResponse {
@@ -87,6 +116,9 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
   ) {
     live.auth!.reset_password_method = a.resetPasswordMethod;
   }
+  if (a && 'disableSignup' in a) {
+    live.auth!.disable_signup = a.disableSignup ?? false;
+  }
   // Build the password slice only if the backend exposed at least one field
   // (legacy backends omit the lot). Missing individual fields fall back to
   // the same defaults the diff layer uses, so a backend that adds them
@@ -136,12 +168,69 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
   return live;
 }
 
+export function liveFromConfigState(state: RawConfigState): LiveConfig {
+  const live = liveFromMetadata(state.metadata);
+
+  const maxFileSizeMb = asNumber(state.storageConfig?.maxFileSizeMb);
+  if (maxFileSizeMb !== undefined) {
+    live.storage = { max_file_size_mb: maxFileSizeMb };
+  }
+
+  const realtimeRetention = asRetentionDays(state.realtimeConfig?.retentionDays);
+  if (realtimeRetention !== undefined) {
+    live.realtime = { retention_days: realtimeRetention };
+  }
+
+  const schedulesRetention = asRetentionDays(state.schedulesConfig?.retentionDays);
+  if (schedulesRetention !== undefined) {
+    live.schedules = { retention_days: schedulesRetention };
+  }
+
+  const templates = readEmailTemplates(state.emailTemplates);
+  if (templates !== undefined) {
+    live.auth = live.auth ?? {};
+    live.auth.email_templates = templates;
+  }
+
+  return live;
+}
+
 function isPlainObject<T extends object>(v: T | undefined | null | unknown): v is T {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
 function asStringArray(v: unknown): string[] | null {
   return Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : null;
+}
+
+function asNumber(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isInteger(v) ? v : undefined;
+}
+
+function asRetentionDays(v: unknown): number | null | undefined {
+  if (v === null) return null;
+  return asNumber(v);
+}
+
+function readEmailTemplates(
+  templates: RawEmailTemplateMetadata[] | undefined,
+): Partial<Record<EmailTemplateType, EmailTemplateConfig>> | undefined {
+  if (!Array.isArray(templates)) return undefined;
+  const out: Partial<Record<EmailTemplateType, EmailTemplateConfig>> = {};
+  for (const t of templates) {
+    const templateType = typeof t.templateType === 'string' ? t.templateType : '';
+    if (
+      isEmailTemplateType(templateType) &&
+      typeof t.subject === 'string' &&
+      typeof t.bodyHtml === 'string'
+    ) {
+      out[templateType] = {
+        subject: t.subject,
+        body_html: t.bodyHtml,
+      };
+    }
+  }
+  return out;
 }
 
 /**
@@ -205,6 +294,13 @@ export function configFromMetadata(raw: RawMetadataResponse): {
     config.auth.reset_password_method = a.resetPasswordMethod;
   } else {
     skipped.push('auth.reset_password_method');
+  }
+
+  if (a && 'disableSignup' in a) {
+    config.auth = config.auth ?? {};
+    config.auth.disable_signup = a.disableSignup ?? false;
+  } else {
+    skipped.push('auth.disable_signup');
   }
 
   // Emit [auth.password] only when the backend exposes at least one policy
@@ -273,4 +369,53 @@ export function configFromMetadata(raw: RawMetadataResponse): {
   }
 
   return { config, skipped };
+}
+
+export function configFromConfigState(state: RawConfigState): {
+  config: InsforgeConfig;
+  skipped: string[];
+} {
+  const { config, skipped } = configFromMetadata(state.metadata);
+
+  const maxFileSizeMb = asNumber(state.storageConfig?.maxFileSizeMb);
+  if (maxFileSizeMb !== undefined) {
+    config.storage = { max_file_size_mb: maxFileSizeMb };
+  } else {
+    skipped.push('storage.max_file_size_mb');
+  }
+
+  const realtimeRetention = asRetentionDays(state.realtimeConfig?.retentionDays);
+  if (realtimeRetention !== undefined) {
+    config.realtime = { retention_days: realtimeRetention };
+  } else {
+    skipped.push('realtime.retention_days');
+  }
+
+  const schedulesRetention = asRetentionDays(state.schedulesConfig?.retentionDays);
+  if (schedulesRetention !== undefined) {
+    config.schedules = { retention_days: schedulesRetention };
+  } else {
+    skipped.push('schedules.retention_days');
+  }
+
+  const templates = readEmailTemplates(state.emailTemplates);
+  if (templates !== undefined) {
+    if (hasAnyEmailTemplate(templates)) {
+      config.auth = config.auth ?? {};
+      config.auth.email_templates = {};
+      for (const type of EMAIL_TEMPLATE_TYPES) {
+        if (templates[type]) config.auth.email_templates[type] = templates[type];
+      }
+    }
+  } else {
+    skipped.push('auth.email_templates');
+  }
+
+  return { config, skipped };
+}
+
+function hasAnyEmailTemplate(
+  templates: Partial<Record<EmailTemplateType, EmailTemplateConfig>>,
+): boolean {
+  return EMAIL_TEMPLATE_TYPES.some((type) => templates[type] !== undefined);
 }

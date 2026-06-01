@@ -2,15 +2,15 @@
 import type { Command } from 'commander';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import pc from 'picocolors';
 import { parseConfigToml } from '../../lib/config-toml.js';
 import { diffConfig } from '../../lib/config-diff.js';
 import { formatPlan } from '../../lib/config-format.js';
-import { metadataSupports, changePath } from '../../lib/config-capabilities.js';
-import { liveFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
+import { configSupports, changePath } from '../../lib/config-capabilities.js';
+import { liveFromConfigState } from '../../lib/config-metadata.js';
+import { loadConfigState } from '../../lib/config-state.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
 import { getProjectConfig } from '../../lib/config.js';
@@ -31,9 +31,8 @@ export function registerConfigPlanCommand(cfg: Command): void {
         const tomlSource = readFileSync(tomlPath, 'utf8');
         const file = parseConfigToml(tomlSource);
 
-        const res = await ossFetch('/api/metadata');
-        const raw = (await res.json()) as RawMetadataResponse;
-        const live = liveFromMetadata(raw);
+        const state = await loadConfigState();
+        const live = liveFromConfigState(state);
 
         const result = diffConfig({ live, file });
 
@@ -41,7 +40,7 @@ export function registerConfigPlanCommand(cfg: Command): void {
         // skip unsupported changes; plan surfaces this up front so the user
         // isn't surprised.
         const skipped = result.changes
-          .filter((c) => !metadataSupports(raw, c))
+          .filter((c) => !configSupports(state, c))
           .map((c) => changePath(c));
 
         if (json) {

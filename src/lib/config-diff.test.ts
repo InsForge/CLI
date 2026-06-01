@@ -288,6 +288,23 @@ describe('diffConfig — auth verification flags', () => {
       }).changes,
     ).toEqual([]);
   });
+
+  it('emits a change when disable_signup flips', () => {
+    expect(
+      diffConfig({
+        live: { auth: { disable_signup: false } },
+        file: { auth: { disable_signup: true } },
+      }).changes,
+    ).toEqual([
+      {
+        section: 'auth',
+        op: 'modify',
+        key: 'disable_signup',
+        from: false,
+        to: true,
+      },
+    ]);
+  });
 });
 
 describe('diffConfig — [auth.password]', () => {
@@ -369,6 +386,94 @@ describe('diffConfig — [auth.password]', () => {
         key: 'min_length',
         from: 8,
         to: 12,
+      },
+    ]);
+  });
+});
+
+describe('diffConfig — additional config sections', () => {
+  it('diffs storage max file size', () => {
+    expect(
+      diffConfig({
+        live: { storage: { max_file_size_mb: 50 } },
+        file: { storage: { max_file_size_mb: 100 } },
+      }).changes,
+    ).toEqual([
+      {
+        section: 'storage',
+        op: 'modify',
+        key: 'max_file_size_mb',
+        from: 50,
+        to: 100,
+      },
+    ]);
+  });
+
+  it('normalizes retention_days = 0 to backend null', () => {
+    expect(
+      diffConfig({
+        live: { realtime: { retention_days: 7 } },
+        file: { realtime: { retention_days: 0 } },
+      }).changes,
+    ).toEqual([
+      {
+        section: 'realtime',
+        op: 'modify',
+        key: 'retention_days',
+        from: 7,
+        to: null,
+      },
+    ]);
+  });
+
+  it('diffs schedules retention independently', () => {
+    expect(
+      diffConfig({
+        live: { schedules: { retention_days: null } },
+        file: { schedules: { retention_days: 14 } },
+      }).changes,
+    ).toEqual([
+      {
+        section: 'schedules',
+        op: 'modify',
+        key: 'retention_days',
+        from: null,
+        to: 14,
+      },
+    ]);
+  });
+
+  it('diffs auth email templates by template type', () => {
+    expect(
+      diffConfig({
+        live: {
+          auth: {
+            email_templates: {
+              'reset-password-link': {
+                subject: 'Old',
+                body_html: '<p>Old</p>',
+              },
+            },
+          },
+        },
+        file: {
+          auth: {
+            email_templates: {
+              'reset-password-link': {
+                subject: 'New',
+                body_html: '<p>New</p>',
+              },
+            },
+          },
+        },
+      }).changes,
+    ).toEqual([
+      {
+        section: 'auth.email_templates',
+        op: 'modify',
+        key: 'reset-password-link',
+        from: { subject: 'Old', body_html: '<p>Old</p>' },
+        to: { subject: 'New', body_html: '<p>New</p>' },
       },
     ]);
   });

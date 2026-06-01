@@ -234,6 +234,12 @@ require_email_verification = true
       parseConfigToml('[auth]\nreset_password_method = "link"\n'),
     ).toEqual({ auth: { reset_password_method: 'link' } });
   });
+
+  it('parses disable_signup as a boolean', () => {
+    expect(parseConfigToml('[auth]\ndisable_signup = true\n')).toEqual({
+      auth: { disable_signup: true },
+    });
+  });
 });
 
 describe('parseConfigToml — [auth.password]', () => {
@@ -287,6 +293,86 @@ require_special_char = true
     expect(() =>
       parseConfigToml('[auth.password]\nrequire_number = "yes"\n'),
     ).toThrow(/auth\.password\.require_number.*boolean/);
+  });
+});
+
+describe('parseConfigToml — additional config sections', () => {
+  it('parses storage, retention, and auth email template sections', () => {
+    const toml = `
+[storage]
+max_file_size_mb = 100
+
+[realtime]
+retention_days = 0
+
+[schedules]
+retention_days = 30
+
+[auth.email_templates."reset-password-link"]
+subject = "Reset your password"
+body_html = "<p>Click {{ .ConfirmationURL }}</p>"
+`;
+    expect(parseConfigToml(toml)).toEqual({
+      storage: { max_file_size_mb: 100 },
+      realtime: { retention_days: 0 },
+      schedules: { retention_days: 30 },
+      auth: {
+        email_templates: {
+          'reset-password-link': {
+            subject: 'Reset your password',
+            body_html: '<p>Click {{ .ConfirmationURL }}</p>',
+          },
+        },
+      },
+    });
+  });
+
+  it('rejects an unknown email template type', () => {
+    expect(() =>
+      parseConfigToml(
+        '[auth.email_templates."welcome"]\nsubject = "Hi"\nbody_html = "<p>Hi</p>"\n',
+      ),
+    ).toThrow(/auth\.email_templates\.welcome.*must be one of/);
+  });
+
+  it('rejects invalid storage and retention values', () => {
+    expect(() => parseConfigToml('[storage]\nmax_file_size_mb = 201\n')).toThrow(
+      /max_file_size_mb.*1 and 200/,
+    );
+    expect(() => parseConfigToml('[realtime]\nretention_days = -1\n')).toThrow(
+      /retention_days.*non-negative/,
+    );
+  });
+});
+
+describe('stringifyConfigToml — additional config sections', () => {
+  it('emits new sections in a round-trippable TOML shape', () => {
+    const original = {
+      auth: {
+        disable_signup: true,
+        email_templates: {
+          'email-verification-code': {
+            subject: 'Verify',
+            body_html: '<p>{{ .Token }}</p>',
+          },
+        },
+      },
+      storage: { max_file_size_mb: 100 },
+      realtime: { retention_days: 0 },
+      schedules: { retention_days: 30 },
+    };
+    const out = stringifyConfigToml(original);
+    expect(out).toContain('disable_signup = true');
+    expect(out).toContain('[auth.email_templates."email-verification-code"]');
+    expect(out).toContain('[storage]');
+    expect(out).toContain('[realtime]');
+    expect(out).toContain('[schedules]');
+    expect(parseConfigToml(out)).toEqual(original);
+  });
+
+  it('renders null retention as retention_days = 0', () => {
+    const out = stringifyConfigToml({ realtime: { retention_days: null } });
+    expect(out).toContain('retention_days = 0');
   });
 });
 

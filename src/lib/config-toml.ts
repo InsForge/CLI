@@ -1,9 +1,14 @@
 import * as smolToml from 'smol-toml';
 import {
+  EMAIL_TEMPLATE_TYPES,
   validateConfig,
   type AuthConfig,
+  type EmailTemplateConfig,
+  type EmailTemplateType,
   type InsforgeConfig,
   type PasswordConfig,
+  type RetentionConfig,
+  type StorageConfig,
   type SmtpConfig,
 } from './config-schema.js';
 import { parseEnvRef } from './config-secrets.js';
@@ -20,8 +25,9 @@ export function parseConfigToml(input: string): InsforgeConfig {
 
 /**
  * Render a normalized config back to TOML. Section ordering is deterministic
- * (project_id → auth → auth.password → auth.smtp → deployments) so diffs
- * are stable across runs of `insforge config export`.
+ * (project_id → auth → auth.password → auth.smtp → auth.email_templates
+ * → storage → realtime → schedules → deployments) so diffs are stable
+ * across runs of `insforge config export`.
  *
  * The renderer is intentionally hand-rolled rather than using smol-toml's
  * stringify: smol-toml doesn't preserve field order, and we want a stable
@@ -53,6 +59,28 @@ export function stringifyConfigToml(config: InsforgeConfig): string {
       renderSmtpFields(config.auth.smtp, lines);
       lines.push('');
     }
+
+    if (config.auth.email_templates !== undefined) {
+      renderEmailTemplates(config.auth.email_templates, lines);
+    }
+  }
+
+  if (config.storage) {
+    lines.push('[storage]');
+    renderStorageFields(config.storage, lines);
+    lines.push('');
+  }
+
+  if (config.realtime) {
+    lines.push('[realtime]');
+    renderRetentionFields(config.realtime, lines);
+    lines.push('');
+  }
+
+  if (config.schedules) {
+    lines.push('[schedules]');
+    renderRetentionFields(config.schedules, lines);
+    lines.push('');
   }
 
   if (config.deployments) {
@@ -83,6 +111,9 @@ function renderAuthFlatFields(auth: AuthConfig, lines: string[]): void {
   }
   if (auth.reset_password_method !== undefined) {
     lines.push(`reset_password_method = ${JSON.stringify(auth.reset_password_method)}`);
+  }
+  if (auth.disable_signup !== undefined) {
+    lines.push(`disable_signup = ${auth.disable_signup}`);
   }
 }
 
@@ -124,5 +155,32 @@ function renderSmtpFields(smtp: SmtpConfig, lines: string[]): void {
   }
   if (smtp.min_interval_seconds !== undefined) {
     lines.push(`min_interval_seconds = ${smtp.min_interval_seconds}`);
+  }
+}
+
+function renderEmailTemplates(
+  templates: Partial<Record<EmailTemplateType, EmailTemplateConfig>>,
+  lines: string[],
+): void {
+  for (const type of EMAIL_TEMPLATE_TYPES) {
+    const template = templates[type];
+    if (!template) continue;
+    lines.push(`[auth.email_templates.${JSON.stringify(type)}]`);
+    lines.push(`subject = ${JSON.stringify(template.subject)}`);
+    lines.push(`body_html = ${JSON.stringify(template.body_html)}`);
+    lines.push('');
+  }
+}
+
+function renderStorageFields(storage: StorageConfig, lines: string[]): void {
+  if (storage.max_file_size_mb !== undefined) {
+    lines.push(`max_file_size_mb = ${storage.max_file_size_mb}`);
+  }
+}
+
+function renderRetentionFields(config: RetentionConfig, lines: string[]): void {
+  if ('retention_days' in config) {
+    // TOML has no null literal; 0 is our explicit "disabled" spelling.
+    lines.push(`retention_days = ${config.retention_days ?? 0}`);
   }
 }

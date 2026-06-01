@@ -8,11 +8,39 @@ import type * as ErrorsModule from '../../lib/errors.js';
 
 // Per-test we override what /api/metadata returns by reassigning this.
 let nextMetadataResponse: unknown = {};
+let nextStorageConfigResponse: unknown;
+let nextRealtimeConfigResponse: unknown;
+let nextSchedulesConfigResponse: unknown;
+let nextEmailTemplatesResponse: unknown;
 // Stash secret values for env() resolution. Map secret name → value.
 const secretsStore: Map<string, string> = new Map();
 const ossFetchMock = vi.fn(async (path: string, init?: RequestInit) => {
   if (path === '/api/metadata' && (!init || init.method === undefined || init.method === 'GET')) {
     return new Response(JSON.stringify(nextMetadataResponse), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (path === '/api/storage/config' && (!init || init.method === undefined || init.method === 'GET')) {
+    return new Response(JSON.stringify(nextStorageConfigResponse ?? {}), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (path === '/api/realtime/config' && (!init || init.method === undefined || init.method === 'GET')) {
+    return new Response(JSON.stringify(nextRealtimeConfigResponse ?? {}), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (path === '/api/schedules/config' && (!init || init.method === undefined || init.method === 'GET')) {
+    return new Response(JSON.stringify(nextSchedulesConfigResponse ?? {}), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (path === '/api/auth/email-templates' && (!init || init.method === undefined || init.method === 'GET')) {
+    return new Response(JSON.stringify(nextEmailTemplatesResponse ?? {}), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
@@ -93,6 +121,10 @@ let tmp: string;
 beforeEach(() => {
   vi.clearAllMocks();
   secretsStore.clear();
+  nextStorageConfigResponse = undefined;
+  nextRealtimeConfigResponse = undefined;
+  nextSchedulesConfigResponse = undefined;
+  nextEmailTemplatesResponse = undefined;
   tmp = mkdtempSync(join(tmpdir(), 'insforge-apply-test-'));
 });
 
@@ -180,6 +212,165 @@ describe('config apply (capability probe)', () => {
     const result = docs[0] as { applied: unknown[]; skipped: unknown[] };
     expect(result.applied).toHaveLength(1);
     expect(result.skipped).toHaveLength(0);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
+describe('config apply — additional config sections', () => {
+  it('applies auth.disable_signup through /api/auth/config', async () => {
+    nextMetadataResponse = { auth: { disableSignup: false } };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[auth]\ndisable_signup = true\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    const result = docs[0] as { applied: unknown[]; skipped: unknown[] };
+    expect(result.applied).toHaveLength(1);
+    expect(result.skipped).toHaveLength(0);
+
+    const putCalls = ossFetchMock.mock.calls.filter(
+      (c) => c[1]?.method === 'PUT' && c[0] === '/api/auth/config',
+    );
+    expect(putCalls).toHaveLength(1);
+    expect(JSON.parse(putCalls[0][1]!.body as string)).toEqual({ disableSignup: true });
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('applies storage, realtime, and schedules config through admin endpoints', async () => {
+    nextMetadataResponse = { auth: {} };
+    nextStorageConfigResponse = { maxFileSizeMb: 50 };
+    nextRealtimeConfigResponse = { retentionDays: 7 };
+    nextSchedulesConfigResponse = { retentionDays: null };
+
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(
+      tomlPath,
+      `[storage]
+max_file_size_mb = 100
+
+[realtime]
+retention_days = 0
+
+[schedules]
+retention_days = 14
+`,
+    );
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    const result = docs[0] as { applied: unknown[]; skipped: unknown[] };
+    expect(result.applied).toHaveLength(3);
+    expect(result.skipped).toHaveLength(0);
+
+    const storagePut = ossFetchMock.mock.calls.find(
+      (c) => c[0] === '/api/storage/config' && c[1]?.method === 'PUT',
+    );
+    expect(JSON.parse(storagePut![1]!.body as string)).toEqual({ maxFileSizeMb: 100 });
+
+    const realtimePatch = ossFetchMock.mock.calls.find(
+      (c) => c[0] === '/api/realtime/config' && c[1]?.method === 'PATCH',
+    );
+    expect(JSON.parse(realtimePatch![1]!.body as string)).toEqual({ retentionDays: null });
+
+    const schedulesPatch = ossFetchMock.mock.calls.find(
+      (c) => c[0] === '/api/schedules/config' && c[1]?.method === 'PATCH',
+    );
+    expect(JSON.parse(schedulesPatch![1]!.body as string)).toEqual({ retentionDays: 14 });
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('applies auth email templates through /api/auth/email-templates/:type', async () => {
+    nextMetadataResponse = { auth: {} };
+    nextEmailTemplatesResponse = {
+      data: [
+        {
+          templateType: 'reset-password-link',
+          subject: 'Old',
+          bodyHtml: '<p>Old</p>',
+        },
+      ],
+    };
+
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(
+      tomlPath,
+      `[auth.email_templates."reset-password-link"]
+subject = "New"
+body_html = "<p>New</p>"
+`,
+    );
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    const result = docs[0] as { applied: unknown[]; skipped: unknown[] };
+    expect(result.applied).toHaveLength(1);
+    expect(result.skipped).toHaveLength(0);
+
+    const putCalls = ossFetchMock.mock.calls.filter(
+      (c) => c[0] === '/api/auth/email-templates/reset-password-link' && c[1]?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(1);
+    expect(JSON.parse(putCalls[0][1]!.body as string)).toEqual({
+      subject: 'New',
+      bodyHtml: '<p>New</p>',
+    });
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('skips storage config when the optional endpoint shape is unavailable', async () => {
+    nextMetadataResponse = { auth: {} };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[storage]\nmax_file_size_mb = 100\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      '--yes',
+      'config',
+      'apply',
+      '--file',
+      tomlPath,
+    ]);
+
+    const result = docs[0] as {
+      applied: unknown[];
+      skipped: Array<{ key: string; reason: string }>;
+    };
+    expect(result.applied).toHaveLength(0);
+    expect(result.skipped[0].key).toBe('storage.max_file_size_mb');
+
+    const putCalls = ossFetchMock.mock.calls.filter(
+      (c) => c[0] === '/api/storage/config' && c[1]?.method === 'PUT',
+    );
+    expect(putCalls).toHaveLength(0);
 
     rmSync(tmp, { recursive: true, force: true });
   });

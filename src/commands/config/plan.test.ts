@@ -7,15 +7,19 @@ import { registerConfigPlanCommand } from './plan.js';
 import type * as ErrorsModule from '../../lib/errors.js';
 
 let nextMetadataResponse: unknown = {};
-const ossFetchMock = vi.fn(async () => {
-  return new Response(JSON.stringify(nextMetadataResponse), {
+let nextStorageConfigResponse: unknown;
+const ossFetchMock = vi.fn(async (path: string) => {
+  const body = path === '/api/storage/config'
+    ? nextStorageConfigResponse ?? {}
+    : nextMetadataResponse;
+  return new Response(JSON.stringify(body), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
 });
 
 vi.mock('../../lib/api/oss.js', () => ({
-  ossFetch: () => ossFetchMock(),
+  ossFetch: (path: string) => ossFetchMock(path),
 }));
 
 vi.mock('../../lib/credentials.js', () => ({
@@ -67,6 +71,7 @@ let tmp: string;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  nextStorageConfigResponse = undefined;
   tmp = mkdtempSync(join(tmpdir(), 'insforge-plan-test-'));
 });
 
@@ -97,6 +102,35 @@ describe('config plan (capability probe)', () => {
     const result = docs[0] as { changes: unknown[]; skipped: string[] };
     expect(result.changes).toHaveLength(1);
     expect(result.skipped).toEqual(['auth.allowed_redirect_urls']);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('uses optional config endpoint support for storage changes', async () => {
+    nextMetadataResponse = { auth: {} };
+    nextStorageConfigResponse = { maxFileSizeMb: 50 };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[storage]\nmax_file_size_mb = 100\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, ['--json', 'config', 'plan', '--file', tomlPath]);
+    const result = docs[0] as { changes: unknown[]; skipped: string[] };
+    expect(result.changes).toHaveLength(1);
+    expect(result.skipped).toEqual([]);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('marks optional config changes skipped when the endpoint does not expose the key', async () => {
+    nextMetadataResponse = { auth: {} };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[storage]\nmax_file_size_mb = 100\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, ['--json', 'config', 'plan', '--file', tomlPath]);
+    const result = docs[0] as { changes: unknown[]; skipped: string[] };
+    expect(result.changes).toHaveLength(1);
+    expect(result.skipped).toEqual(['storage.max_file_size_mb']);
 
     rmSync(tmp, { recursive: true, force: true });
   });

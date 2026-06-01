@@ -11,18 +11,35 @@ import { validateSensitiveString } from './config-secrets.js';
 export interface InsforgeConfig {
   project_id?: string;
   auth?: AuthConfig;
+  storage?: StorageConfig;
+  realtime?: RetentionConfig;
+  schedules?: RetentionConfig;
   deployments?: DeploymentsConfig;
 }
 
 export type VerificationMethod = 'code' | 'link';
+export type EmailTemplateType =
+  | 'email-verification-code'
+  | 'email-verification-link'
+  | 'reset-password-code'
+  | 'reset-password-link';
+
+export const EMAIL_TEMPLATE_TYPES: EmailTemplateType[] = [
+  'email-verification-code',
+  'email-verification-link',
+  'reset-password-code',
+  'reset-password-link',
+];
 
 export interface AuthConfig {
   allowed_redirect_urls?: string[];
   require_email_verification?: boolean;
   verify_email_method?: VerificationMethod;
   reset_password_method?: VerificationMethod;
+  disable_signup?: boolean;
   password?: PasswordConfig;
   smtp?: SmtpConfig;
+  email_templates?: Partial<Record<EmailTemplateType, EmailTemplateConfig>>;
 }
 
 /**
@@ -58,6 +75,23 @@ export interface SmtpConfig {
   min_interval_seconds?: number;
 }
 
+export interface EmailTemplateConfig {
+  subject: string;
+  body_html: string;
+}
+
+export interface StorageConfig {
+  max_file_size_mb?: number;
+}
+
+export interface RetentionConfig {
+  /**
+   * Positive integer = keep records for N days.
+   * 0 or null = disable retention cleanup (wire value: null).
+   */
+  retention_days?: number | null;
+}
+
 export interface DeploymentsConfig {
   // null clears the slug; absent in TOML means default-keep.
   subdomain?: string | null;
@@ -89,7 +123,59 @@ export function validateConfig(input: unknown): InsforgeConfig {
   }
 
   if ('auth' in obj) out.auth = validateAuth(obj.auth);
+  if ('storage' in obj) out.storage = validateStorage(obj.storage);
+  if ('realtime' in obj) out.realtime = validateRetentionSection('realtime', obj.realtime);
+  if ('schedules' in obj) out.schedules = validateRetentionSection('schedules', obj.schedules);
   if ('deployments' in obj) out.deployments = validateDeployments(obj.deployments);
+
+  return out;
+}
+
+function validateStorage(input: unknown): StorageConfig {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ConfigValidationError('storage', 'must be an object');
+  }
+  const obj = input as Record<string, unknown>;
+  const out: StorageConfig = {};
+
+  if ('max_file_size_mb' in obj) {
+    if (
+      typeof obj.max_file_size_mb !== 'number' ||
+      !Number.isInteger(obj.max_file_size_mb) ||
+      obj.max_file_size_mb < 1 ||
+      obj.max_file_size_mb > 200
+    ) {
+      throw new ConfigValidationError(
+        'storage.max_file_size_mb',
+        'must be an integer between 1 and 200',
+      );
+    }
+    out.max_file_size_mb = obj.max_file_size_mb;
+  }
+
+  return out;
+}
+
+function validateRetentionSection(path: 'realtime' | 'schedules', input: unknown): RetentionConfig {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ConfigValidationError(path, 'must be an object');
+  }
+  const obj = input as Record<string, unknown>;
+  const out: RetentionConfig = {};
+
+  if ('retention_days' in obj) {
+    const v = obj.retention_days;
+    if (
+      v !== null &&
+      (typeof v !== 'number' || !Number.isInteger(v) || v < 0)
+    ) {
+      throw new ConfigValidationError(
+        `${path}.retention_days`,
+        'must be a non-negative integer or null',
+      );
+    }
+    out.retention_days = v;
+  }
 
   return out;
 }
@@ -160,8 +246,18 @@ function validateAuth(input: unknown): AuthConfig {
     );
   }
 
+  if ('disable_signup' in obj) {
+    if (typeof obj.disable_signup !== 'boolean') {
+      throw new ConfigValidationError('auth.disable_signup', 'must be a boolean');
+    }
+    out.disable_signup = obj.disable_signup;
+  }
+
   if ('password' in obj) out.password = validatePassword(obj.password);
   if ('smtp' in obj) out.smtp = validateSmtp(obj.smtp);
+  if ('email_templates' in obj) {
+    out.email_templates = validateEmailTemplates(obj.email_templates);
+  }
 
   return out;
 }
@@ -294,4 +390,50 @@ function validateSmtp(input: unknown): SmtpConfig {
   }
 
   return out;
+}
+
+function validateEmailTemplates(input: unknown): Partial<Record<EmailTemplateType, EmailTemplateConfig>> {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ConfigValidationError('auth.email_templates', 'must be a table');
+  }
+  const obj = input as Record<string, unknown>;
+  const out: Partial<Record<EmailTemplateType, EmailTemplateConfig>> = {};
+
+  for (const [templateType, value] of Object.entries(obj)) {
+    if (!isEmailTemplateType(templateType)) {
+      throw new ConfigValidationError(
+        `auth.email_templates.${templateType}`,
+        `must be one of: ${EMAIL_TEMPLATE_TYPES.join(', ')}`,
+      );
+    }
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new ConfigValidationError(
+        `auth.email_templates.${templateType}`,
+        'must be a table',
+      );
+    }
+    const template = value as Record<string, unknown>;
+    if (typeof template.subject !== 'string' || template.subject.length === 0) {
+      throw new ConfigValidationError(
+        `auth.email_templates.${templateType}.subject`,
+        'must be a non-empty string',
+      );
+    }
+    if (typeof template.body_html !== 'string' || template.body_html.length === 0) {
+      throw new ConfigValidationError(
+        `auth.email_templates.${templateType}.body_html`,
+        'must be a non-empty string',
+      );
+    }
+    out[templateType] = {
+      subject: template.subject,
+      body_html: template.body_html,
+    };
+  }
+
+  return out;
+}
+
+export function isEmailTemplateType(value: string): value is EmailTemplateType {
+  return (EMAIL_TEMPLATE_TYPES as string[]).includes(value);
 }

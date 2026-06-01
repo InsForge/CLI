@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { configFromMetadata, liveFromMetadata } from './config-metadata.js';
+import {
+  configFromConfigState,
+  configFromMetadata,
+  liveFromConfigState,
+  liveFromMetadata,
+} from './config-metadata.js';
 
 describe('liveFromMetadata', () => {
   it('projects a full backend response onto LiveConfig', () => {
@@ -14,6 +19,7 @@ describe('liveFromMetadata', () => {
         requireLowercase: true,
         requireUppercase: true,
         requireSpecialChar: false,
+        disableSignup: true,
         smtpConfig: {
           enabled: true,
           host: 'smtp.gmail.com',
@@ -37,10 +43,11 @@ describe('liveFromMetadata', () => {
           min_length: 12,
           require_number: true,
           require_lowercase: true,
-          require_uppercase: true,
-          require_special_char: false,
-        },
-        smtp: {
+        require_uppercase: true,
+        require_special_char: false,
+      },
+      disable_signup: true,
+      smtp: {
           enabled: true,
           host: 'smtp.gmail.com',
           port: 587,
@@ -142,6 +149,7 @@ describe('configFromMetadata', () => {
         requireLowercase: true,
         requireUppercase: true,
         requireSpecialChar: false,
+        disableSignup: true,
         smtpConfig: {
           enabled: false,
           host: '',
@@ -157,6 +165,7 @@ describe('configFromMetadata', () => {
     });
     expect(config.auth?.require_email_verification).toBe(true);
     expect(config.auth?.verify_email_method).toBe('link');
+    expect(config.auth?.disable_signup).toBe(true);
     expect(config.auth?.password).toEqual({
       min_length: 12,
       require_number: true,
@@ -174,6 +183,7 @@ describe('configFromMetadata', () => {
     expect(config.auth).toBeUndefined();
     expect(skipped.sort()).toEqual([
       'auth.allowed_redirect_urls',
+      'auth.disable_signup',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
@@ -257,5 +267,67 @@ describe('configFromMetadata', () => {
       },
     });
     expect(config.auth?.smtp?.password).toBe('env(SMTP_PASSWORD)');
+  });
+});
+
+describe('liveFromConfigState', () => {
+  it('projects optional endpoint-backed config into LiveConfig', () => {
+    const live = liveFromConfigState({
+      metadata: { auth: { disableSignup: false } },
+      storageConfig: { maxFileSizeMb: 100 },
+      realtimeConfig: { retentionDays: null },
+      schedulesConfig: { retentionDays: 14 },
+      emailTemplates: [
+        {
+          templateType: 'reset-password-link',
+          subject: 'Reset',
+          bodyHtml: '<p>Reset</p>',
+        },
+      ],
+    });
+    expect(live).toMatchObject({
+      auth: {
+        disable_signup: false,
+        email_templates: {
+          'reset-password-link': {
+            subject: 'Reset',
+            body_html: '<p>Reset</p>',
+          },
+        },
+      },
+      storage: { max_file_size_mb: 100 },
+      realtime: { retention_days: null },
+      schedules: { retention_days: 14 },
+    });
+  });
+});
+
+describe('configFromConfigState', () => {
+  it('exports optional endpoint-backed config sections', () => {
+    const { config, skipped } = configFromConfigState({
+      metadata: { auth: { disableSignup: true }, deployments: { customSlug: null } },
+      storageConfig: { maxFileSizeMb: 100 },
+      realtimeConfig: { retentionDays: null },
+      schedulesConfig: { retentionDays: 14 },
+      emailTemplates: [
+        {
+          templateType: 'email-verification-code',
+          subject: 'Verify',
+          bodyHtml: '<p>{{ .Token }}</p>',
+        },
+      ],
+    });
+    expect(config.auth?.disable_signup).toBe(true);
+    expect(config.auth?.email_templates?.['email-verification-code']).toEqual({
+      subject: 'Verify',
+      body_html: '<p>{{ .Token }}</p>',
+    });
+    expect(config.storage).toEqual({ max_file_size_mb: 100 });
+    expect(config.realtime).toEqual({ retention_days: null });
+    expect(config.schedules).toEqual({ retention_days: 14 });
+    expect(skipped).not.toContain('storage.max_file_size_mb');
+    expect(skipped).not.toContain('realtime.retention_days');
+    expect(skipped).not.toContain('schedules.retention_days');
+    expect(skipped).not.toContain('auth.email_templates');
   });
 });
