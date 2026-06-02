@@ -33,9 +33,17 @@ function esc(s: string): string {
 function renderPage(brief: Brief): string {
   const color = SEVERITY_COLOR[brief.severity] ?? '#dc2626';
   const risks = brief.risks.map((r) => `<li>${esc(r)}</li>`).join('');
-  const agentBlock = brief.agentSummary
-    ? `<div>${esc(brief.agentSummary)}</div>`
-    : `<div class="warn">⚠️ The agent provided no explanation for this destructive operation. Treat with extra caution.</div>`;
+  const sec = (label: string, val: string) =>
+    `<section><div class="lbl">${label}</div><div>${esc(val)}</div></section>`;
+  const agentBlock = brief.hasAgentBrief
+    ? [
+        brief.agent.reason ? sec('Intent — what &amp; why', brief.agent.reason) : '',
+        brief.agent.impact ? sec('Implications', brief.agent.impact) : '',
+        brief.agent.recommendation
+          ? `<section><div class="lbl">Agent&#39;s recommendation</div><div class="rec">${esc(brief.agent.recommendation)}</div></section>`
+          : '',
+      ].join('')
+    : `<section><div class="warn">⚠️ The agent provided no explanation for this destructive operation. Treat with extra caution.</div></section>`;
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>InsForge — Human approval required</title>
@@ -90,11 +98,10 @@ function renderPage(brief: Brief): string {
       <section><div class="lbl">What will happen</div><div>${esc(brief.whatHappens)}</div></section>
       <section><div class="lbl">Blast radius</div><div>${esc(brief.blastRadius)}</div></section>
       <section><div class="lbl">Risks</div><ul>${risks}</ul></section>
+      <section><div class="lbl">InsForge guidance</div><div class="rec">${esc(brief.guidance)}</div></section>
 
-      <div class="grp">From the agent · explanation &amp; implications</div>
-      <section>${agentBlock}</section>
-
-      <section><div class="lbl">Recommendation</div><div class="rec">${esc(brief.recommendation)}</div></section>
+      <div class="grp">From the agent · intent &amp; implications</div>
+      ${agentBlock}
 
       <div class="row">
         <button class="deny" onclick="decide('deny')">Deny</button>

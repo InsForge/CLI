@@ -9,8 +9,8 @@
  */
 
 import type { Command } from 'commander';
-import { assess, type OperationContext } from './risk-registry.js';
-import { buildBrief } from './brief.js';
+import { assess, type OperationContext, type RiskAssessment } from './risk-registry.js';
+import { buildBrief, type AgentBrief } from './brief.js';
 import { requestApproval } from './approval-server.js';
 import { audit } from './audit.js';
 
@@ -23,6 +23,53 @@ function commandPath(cmd: Command): string {
     node = node.parent;
   }
   return parts.join(' ');
+}
+
+/**
+ * Whether to require an agent brief before showing the approval page.
+ *  - INSFORGE_GUARD_REQUIRE_BRIEF=1 → always require (even for a human at a TTY)
+ *  - INSFORGE_GUARD_REQUIRE_BRIEF=0 → never require (go straight to the page)
+ *  - unset → require for non-interactive callers (agents, CI), not for humans.
+ * The point is to make the calling agent reason about the change and present its
+ * intent readably, rather than silently bouncing the human a bare command.
+ */
+function shouldRequireBrief(): boolean {
+  const env = process.env.INSFORGE_GUARD_REQUIRE_BRIEF;
+  if (env === '1') return true;
+  if (env === '0') return false;
+  return !process.stdout.isTTY;
+}
+
+/**
+ * A copy-paste-ready instruction telling the calling agent to reason about the
+ * implications and re-run WITH a human-readable brief. This is the "encourage
+ * the local LLM" path: the CLI doesn't write the explanation, it makes the agent
+ * produce one. The hard-rule STOP still applies on the re-run.
+ */
+function renderNudge(command: string, risk: RiskAssessment): string {
+  const sub = command.replace(/^insforge\s*/, '');
+  return [
+    '',
+    '  🛑 InsForge guard — destructive operation detected (NOT run):',
+    `       ${command}`,
+    `       [${risk.severity} · ${risk.kind}] ${risk.title}`,
+    '',
+    "  A human must approve this. Before they're asked, explain your intent so they",
+    "  can decide quickly — and so you've reasoned about the implications first.",
+    '',
+    '  Re-run the SAME command with a human-readable brief:',
+    '',
+    '    insforge \\',
+    '      --reason         "what this does and why" \\',
+    '      --impact         "who/what is affected · data loss · reversibility" \\',
+    '      --recommendation "your recommendation to the approver" \\',
+    `      ${sub}`,
+    '',
+    '  The hard-rule STOP still applies on the next run — the brief explains the',
+    '  operation for the human, it does not bypass approval.',
+    '',
+    '',
+  ].join('\n');
 }
 
 /**
@@ -40,7 +87,9 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
   const risk = assess(ctx);
   if (risk.severity === 'safe') return; // never interrupt safe operations
 
-  const command = `insforge ${path} ${args.join(' ')}`.trim();
+  // Quote args containing whitespace so the displayed/echoed command is paste-ready.
+  const quoted = args.map((a) => (/\s/.test(a) ? `"${a}"` : a));
+  const command = `insforge ${path} ${quoted.join(' ')}`.trim();
   const base = { ts: new Date().toISOString(), path, command, kind: risk.kind, severity: risk.severity };
 
   // Explicit, audited bypass for automation that has opted in.
@@ -50,16 +99,30 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
     return;
   }
 
-  // The calling agent's own explanation of the change + implications, if it
-  // supplied one (`--reason "..."` or INSFORGE_GUARD_SUMMARY). The CLI makes no
-  // LLM call of its own — the agent is the LLM, and it can explain but cannot
-  // downgrade the rule verdict.
-  const agentSummary =
-    (thisCommand.opts().reason as string | undefined) ??
-    process.env.INSFORGE_GUARD_SUMMARY ??
-    null;
+  // The calling agent's own brief — intent, implications, recommendation. The
+  // CLI makes no LLM call of its own: the agent is the LLM with the most context
+  // about WHY it's running this. It can explain, but it cannot downgrade the rule
+  // verdict. Flags take precedence over env fallbacks.
+  const gopts = thisCommand.opts();
+  const agent: AgentBrief = {
+    reason: (gopts.reason as string | undefined) ?? process.env.INSFORGE_GUARD_SUMMARY ?? null,
+    impact: (gopts.impact as string | undefined) ?? process.env.INSFORGE_GUARD_IMPACT ?? null,
+    recommendation:
+      (gopts.recommendation as string | undefined) ?? process.env.INSFORGE_GUARD_RECOMMENDATION ?? null,
+  };
 
-  const brief = buildBrief(ctx, risk, command, agentSummary);
+  // Encourage the local LLM to articulate intent: if no explanation was given
+  // and the caller is non-interactive (an agent/CI), don't pop the page — return
+  // an instruction telling the agent to reason about the implications and re-run
+  // WITH a brief. A human at a TTY proceeds straight to the page instead.
+  const hasReason = Boolean(agent.reason && agent.reason.trim());
+  if (!hasReason && shouldRequireBrief()) {
+    process.stderr.write(renderNudge(command, risk));
+    audit({ ...base, decision: 'needs_brief' });
+    process.exit(2);
+  }
+
+  const brief = buildBrief(ctx, risk, command, agent);
 
   const result = await requestApproval(brief);
   audit({ ...base, decision: result });

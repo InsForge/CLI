@@ -11,13 +11,24 @@ blocks on a localhost approval page until a human clicks Approve or Deny.
 - **Whether to stop = hard rules, in the CLI.** Deterministic, fast, trustworthy.
   An agent can never downgrade a `DROP`. This is the authoritative verdict.
 - **The human explanation = the calling agent.** The agent is already an LLM with
-  the most context about *why* it's running the command. It passes its summary +
-  implications via `--reason "..."`. The CLI makes **no LLM call of its own** — so
-  there are no keys to configure and it works for any agent. The agent can
-  explain, but it **cannot change the verdict**.
+  the most context about *why* it's running the command. It passes a structured
+  brief — intent, implications, recommendation — via `--reason` / `--impact` /
+  `--recommendation`. The CLI makes **no LLM call of its own** — no keys to
+  configure, works for any agent. The agent can explain, but it **cannot change
+  the verdict**.
 
-If the agent supplies no `--reason`, the page falls back to the deterministic
-rule text and flags that no rationale was given.
+## Encouraging the agent to think (the nudge)
+
+The CLI actively pushes the calling LLM to articulate its intent rather than
+silently bouncing a human a bare command. When a destructive op has **no brief**
+and the caller is **non-interactive** (an agent or CI — detected via no TTY), the
+guard does **not** open the page. Instead it prints a copy-paste-ready
+instruction to re-run *with* `--reason` / `--impact` / `--recommendation`, and
+exits **2** (`needs_brief`). The agent reasons about the implications, re-runs
+with the brief, and *then* the human sees a readable approval page.
+
+A human at a TTY (or `INSFORGE_GUARD_REQUIRE_BRIEF=0`) skips the nudge and goes
+straight to the page; if no brief was given, the page flags that clearly.
 
 ## Flow
 
@@ -37,13 +48,15 @@ insforge --reason "<why>" <cmd>  →  parse  →  [preAction: guardHook]  →  a
   SQL inspection for `db query` (DROP / TRUNCATE / unfiltered DELETE-UPDATE /
   ALTER…DROP / RLS changes). Classifies the *real operation params*, not the raw
   argv. A destructive-verb catch-all covers unregistered `*-delete` commands.
-- `brief.ts` — combines authoritative rule facts with the agent's `--reason`
-  explanation. No LLM call.
+- `brief.ts` — combines authoritative rule facts with the agent's structured
+  brief (`--reason` / `--impact` / `--recommendation`). No LLM call.
 - `approval-server.ts` — single-use localhost HTTP server + browser open; serves
-  the card (rule facts · agent explanation · recommendation) and blocks until a
-  click. **Fail-closed**: any error or 120s timeout → denied.
+  the card in two groups (rule facts + InsForge guidance · the agent's intent /
+  implications / recommendation) and blocks until a click. **Fail-closed**: any
+  error or 120s timeout → denied.
 - `audit.ts` — append-only `~/.insforge/guard-audit.jsonl` of every decision.
-- `index.ts` — the `guardHook` orchestrator, wired in `src/index.ts`.
+- `index.ts` — the `guardHook` orchestrator (assess → nudge-if-no-brief → page),
+  wired in `src/index.ts`.
 
 ## Guarantees
 
@@ -53,32 +66,50 @@ insforge --reason "<why>" <cmd>  →  parse  →  [preAction: guardHook]  →  a
   never the agent's word.
 - **Audited** — every dangerous evaluation is logged with decision + timestamp.
 
-## How an agent passes its explanation
+## How an agent passes its brief
 
-Instruct agents (via the InsForge skill / MCP) to attach a rationale to
-destructive commands:
+Instruct agents (via the InsForge skill / MCP) to attach a brief to destructive
+commands. The flags map directly to the page sections:
 
 ```bash
-insforge --reason "Dropping deprecated users table; 14k rows lost; app moves to accounts; backup confirmed" \
+insforge \
+  --reason         "Dropping deprecated users table; app moved to accounts last week" \
+  --impact         "14,200 rows destroyed; sessions.user_id FK breaks; irreversible without nightly backup" \
+  --recommendation "Approve only if the accounts cutover is confirmed and tonight's backup exists" \
   db query "DROP TABLE users"
 ```
 
-Or via env: `INSFORGE_GUARD_SUMMARY="..."`.
+`--reason` is the one that satisfies the nudge; `--impact` and `--recommendation`
+are optional enrichments. Each has an env fallback.
 
 ## Env knobs
 
 | Var | Effect |
 |-----|--------|
-| `INSFORGE_GUARD_SUMMARY` | Agent explanation (alternative to `--reason`). |
+| `INSFORGE_GUARD_SUMMARY` | Agent intent (env fallback for `--reason`). |
+| `INSFORGE_GUARD_IMPACT` | Agent implications (env fallback for `--impact`). |
+| `INSFORGE_GUARD_RECOMMENDATION` | Agent recommendation (env fallback for `--recommendation`). |
+| `INSFORGE_GUARD_REQUIRE_BRIEF` | `1` = always require a brief; `0` = never (go straight to page). Default: require for non-interactive callers. |
 | `INSFORGE_GUARD_BYPASS=1` | Skip approval (audited as `bypassed`) — for opted-in automation. |
 | `INSFORGE_GUARD_OPEN=0` | Print the approval link only; don't auto-open a browser (headless). |
+
+## Exit codes (when blocked)
+
+| Code | Meaning |
+|------|---------|
+| `0` | Approved (or safe — never interrupted). |
+| `1` | Denied / timed out by the human. |
+| `2` | `needs_brief` — non-interactive caller gave no brief; re-run with `--reason …`. |
 
 ## Try it
 
 ```bash
 npm run build
-# stops for approval, prints a localhost link:
-node dist/index.js --reason "why I'm doing this" db query "DROP TABLE users"
-# safe — runs without interruption:
+# non-interactive + no brief -> prints the nudge, exits 2 (command not run):
+node dist/index.js db query "DROP TABLE users"
+# with a brief -> stops for approval, prints a localhost link:
+node dist/index.js --reason "why" --impact "what's affected" --recommendation "rec" \
+  db query "DROP TABLE users"
+# safe -> runs without interruption:
 node dist/index.js db query "SELECT 1"
 ```

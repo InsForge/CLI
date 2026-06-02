@@ -104,7 +104,9 @@ program
   .option('--json', 'Output in JSON format')
   .option('--api-url <url>', 'Override Platform API URL')
   .option('-y, --yes', 'Skip confirmation prompts')
-  .option('--reason <summary>', 'Agent-supplied explanation of the change and its implications (shown to the human approver for destructive operations)');
+  .option('--reason <text>', 'Agent: what the operation does and why (intent) — shown to the human approver for destructive operations')
+  .option('--impact <text>', 'Agent: implications — who/what is affected, data loss, reversibility — shown on the approval page')
+  .option('--recommendation <text>', 'Agent: your recommendation to the human approver');
 
 // Human-in-the-loop guard: a dispatch-pipeline stage that stops dangerous
 // operations for human approval. Lives in the CLI so it protects every caller

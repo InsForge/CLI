@@ -8,7 +8,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export type Decision = 'approved' | 'denied' | 'timeout' | 'bypassed' | 'failed';
+export type Decision = 'approved' | 'denied' | 'timeout' | 'bypassed' | 'failed' | 'needs_brief';
 
 export interface AuditEntry {
   ts: string;
