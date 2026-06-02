@@ -361,9 +361,9 @@ Manage database migration files.
 ```bash
 npx @insforge/cli db migrations list          # list applied remote migrations
 npx @insforge/cli db migrations fetch         # fetch applied remote migrations into migrations/
-npx @insforge/cli db migrations new add_users # create a new local migration file
+npx @insforge/cli db migrations new add-users # create a new local migration file (lowercase, digits, hyphens only)
 npx @insforge/cli db migrations up --all      # apply all pending local migrations
-npx @insforge/cli db migrations up --to 20260101_add_users  # apply up to a version/file
+npx @insforge/cli db migrations up --to 20260101_add-users  # apply up to a version/file
 ```
 
 #### `npx @insforge/cli db connection-string`
@@ -875,7 +875,7 @@ npx @insforge/cli diagnose db --check connections,bloat
 Aggregate error-level logs from all backend sources.
 
 ```bash
-npx @insforge/cli diagnose logs --source postgres --limit 100
+npx @insforge/cli diagnose logs --source postgres.logs --limit 100
 ```
 
 #### `npx @insforge/cli diagnose metrics`
