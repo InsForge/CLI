@@ -71,6 +71,8 @@ function renderPage(brief: Brief): string {
   li { margin: 3px 0; }
   .rec { background: #0b0d12; border-left: 3px solid ${color}; border-radius: 6px;
     padding: 10px 13px; }
+  .impact { background: #11161f; border: 1px solid #2a3550; border-radius: 8px;
+    padding: 11px 13px; color: #cdd6ea; }
   .grp { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
     color: #67708a; margin: 22px 0 6px; padding-top: 14px;
     border-top: 1px solid #232733; }
@@ -98,6 +100,7 @@ function renderPage(brief: Brief): string {
       <section><div class="lbl">What will happen</div><div>${esc(brief.whatHappens)}</div></section>
       <section><div class="lbl">Blast radius</div><div>${esc(brief.blastRadius)}</div></section>
       <section><div class="lbl">Risks</div><ul>${risks}</ul></section>
+      ${brief.userImpact ? `<section><div class="lbl">What this means for your users</div><div class="impact">${esc(brief.userImpact)}</div></section>` : ''}
       <section><div class="lbl">InsForge guidance</div><div class="rec">${esc(brief.guidance)}</div></section>
 
       <div class="grp">From the agent · intent &amp; implications</div>

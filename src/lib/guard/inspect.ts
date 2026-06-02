@@ -21,6 +21,59 @@ export interface LiveFacts {
   whatHappens: string;
   /** Concrete, project-specific replacement for the generic "blast radius". */
   blastRadius: string;
+  /**
+   * Product-side, human-observability read: what this means for the people using
+   * the app. Grounded in measured signals (scale + live read/write activity)
+   * plus a clearly-hedged data-category guess. Null when not derivable.
+   */
+  userImpact: string | null;
+}
+
+/** A hedged, name-based guess at what kind of user data a table holds. */
+function categorize(schema: string, table: string): string | null {
+  const t = table.toLowerCase();
+  if (schema === 'auth' || /(^|_)(users?|accounts?|profiles?|sessions?|identities|credentials)(_|$)/.test(t)) {
+    return 'looks like an authentication / account table — dropping it can sign users out or destroy their accounts';
+  }
+  if (/(stripe|subscription|invoice|payment|customer|billing|charge|price|order)/.test(t)) {
+    return 'looks like billing / commerce data — subscriptions, invoices, or order history for real customers may be lost';
+  }
+  if (/(message|post|comment|chat|thread|note|document|file|photo|media|upload)/.test(t)) {
+    return 'looks like user-generated content — people may lose things they created';
+  }
+  return null;
+}
+
+/** Turn measured signals into a human-observability sentence. */
+function buildUserImpact(
+  schema: string,
+  table: string,
+  rows: number | null,
+  policies: number,
+  reads: number | null,
+  writes: number | null,
+): string {
+  const parts: string[] = [];
+  const cat = categorize(schema, table);
+  if (cat) parts.push(`This ${cat}.`);
+
+  if (rows !== null) {
+    const scoped = policies > 0 ? ' (row-level security suggests this is per-user data)' : '';
+    parts.push(`~${rows.toLocaleString()} record${rows === 1 ? '' : 's'} are affected${scoped}.`);
+  }
+
+  // Live observability: is it actually being used right now?
+  if (reads !== null || writes !== null) {
+    const r = reads ?? 0;
+    const w = writes ?? 0;
+    if (r + w > 0) {
+      parts.push(`It is in active use — ${r.toLocaleString()} read${r === 1 ? '' : 's'} and ${w.toLocaleString()} write${w === 1 ? '' : 's'} recorded since stats were last reset, so live users likely depend on it.`);
+    } else {
+      parts.push('No reads or writes are recorded for it — it may be dormant, but verify before trusting that.');
+    }
+  }
+
+  return parts.join(' ').trim();
 }
 
 /** A table reference parsed out of a destructive statement. */
@@ -112,26 +165,34 @@ export async function inspectSqlTarget(sql: string): Promise<LiveFacts | null> {
         return {
           whatHappens: `Table "${fq}" was not found in this project — the statement will error (or no-op with IF EXISTS). Nothing is dropped.`,
           blastRadius: 'No matching table, so no rows or dependents are affected.',
+          userImpact: 'No effect on users — there is nothing here to remove.',
         };
       }
       return null; // can't enrich a missing target for truncate/delete/update; use generic
     }
     const bytes = num(existRows[0].bytes);
 
-    // 2) Exact row count, 3) incoming FKs, 4) RLS policies, 5) dependent views — in parallel.
-    const [countRows, fkRows, polRows, viewRows] = await Promise.all([
+    // 2) row count, 3) incoming FKs, 4) RLS policies, 5) dependent views,
+    // 6) live read/write activity (observability) — in parallel.
+    const [countRows, fkRows, polRows, viewRows, statRows] = await Promise.all([
       q(`SELECT count(*)::bigint AS n FROM "${schema}"."${table}"`),
       q(`SELECT conrelid::regclass::text AS t FROM pg_constraint
          WHERE confrelid = '"${schema}"."${table}"'::regclass AND contype = 'f'`),
       q(`SELECT count(*)::int AS n FROM pg_policies WHERE schemaname = ${lit} AND tablename = ${tlit}`),
       q(`SELECT DISTINCT view_name FROM information_schema.view_table_usage
          WHERE table_schema = ${lit} AND table_name = ${tlit}`),
+      q(`SELECT coalesce(seq_scan,0)+coalesce(idx_scan,0) AS reads,
+                coalesce(n_tup_ins,0)+coalesce(n_tup_upd,0)+coalesce(n_tup_del,0) AS writes
+         FROM pg_stat_user_tables WHERE schemaname = ${lit} AND relname = ${tlit}`),
     ]);
 
     const rows = countRows.length ? num(countRows[0].n) : null;
     const fks = fkRows.map((r) => String(r.t)).filter((t) => t && t !== fq);
     const policies = polRows.length ? num(polRows[0].n) : 0;
     const views = viewRows.map((r) => String(r.view_name)).filter(Boolean);
+    const reads = statRows.length ? num(statRows[0].reads) : null;
+    const writes = statRows.length ? num(statRows[0].writes) : null;
+    const userImpact = buildUserImpact(schema, table, rows, policies, reads, writes) || null;
 
     const rowsTxt = rows === null ? 'an unknown number of' : rows.toLocaleString();
     const sizeTxt = prettyBytes(bytes);
@@ -147,18 +208,21 @@ export async function inspectSqlTarget(sql: string): Promise<LiveFacts | null> {
       return {
         whatHappens: `Drops "${fq}" — ${rowsTxt} row${rows === 1 ? '' : 's'}, ${sizeTxt}.`,
         blastRadius: depsTxt,
+        userImpact,
       };
     }
     if (op === 'truncate') {
       return {
         whatHappens: `Deletes all ${rowsTxt} row${rows === 1 ? '' : 's'} from "${fq}" (${sizeTxt}); the table itself stays.`,
         blastRadius: fks.length ? `Referenced by ${fks.length} foreign key${fks.length > 1 ? 's' : ''} (${fks.slice(0, 5).join(', ')}) — TRUNCATE may require CASCADE or fail.` : 'No foreign keys reference this table.',
+        userImpact,
       };
     }
     // delete / update (unfiltered classifications) — row count is the headline.
     return {
       whatHappens: `Affects a table holding ${rowsTxt} row${rows === 1 ? '' : 's'} ("${fq}", ${sizeTxt}).`,
       blastRadius: depsTxt,
+      userImpact,
     };
   })();
 

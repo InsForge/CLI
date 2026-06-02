@@ -44,6 +44,8 @@ export interface Brief {
   hasAgentBrief: boolean;
   /** True when whatHappens/blastRadius were measured live against the project. */
   tailored: boolean;
+  /** Product-side, human-observability read of what this means for users (live). */
+  userImpact: string | null;
 }
 
 const clean = (s: string | null | undefined): string | null => (s && s.trim() ? s.trim() : null);
@@ -75,5 +77,6 @@ export function buildBrief(
     agent,
     hasAgentBrief: Boolean(agent.reason || agent.impact || agent.recommendation),
     tailored: Boolean(live),
+    userImpact: live?.userImpact ?? null,
   };
 }
