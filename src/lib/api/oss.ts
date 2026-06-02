@@ -158,7 +158,7 @@ export async function ossFetch(
       message = 'AI Model Gateway setup is not available on this backend.\nUpgrade your InsForge project to a version with Model Gateway support, or keep using the legacy @insforge/sdk AI modules for projects that still rely on the older AI API surface.';
     }
 
-    throw new CLIError(message);
+    throw new CLIError(message, 1, err.error, res.status);
   }
 
   return res;

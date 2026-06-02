@@ -4,18 +4,27 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerConfigPlanCommand } from './plan.js';
+import { CLIError } from '../../lib/errors.js';
 import type * as ErrorsModule from '../../lib/errors.js';
 
 let nextMetadataResponse: unknown = {};
-const ossFetchMock = vi.fn(async () => {
-  return new Response(JSON.stringify(nextMetadataResponse), {
+let nextStorageConfigResponse: unknown;
+let nextRealtimeConfigResponse: unknown;
+let nextSchedulesConfigResponse: unknown;
+const ossFetchMock = vi.fn(async (path: string) => {
+  let body: unknown = nextMetadataResponse;
+  if (path === '/api/storage/config') body = nextStorageConfigResponse ?? {};
+  if (path === '/api/realtime/config') body = nextRealtimeConfigResponse ?? {};
+  if (path === '/api/schedules/config') body = nextSchedulesConfigResponse ?? {};
+  if (body instanceof Error) throw body;
+  return new Response(JSON.stringify(body), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
 });
 
 vi.mock('../../lib/api/oss.js', () => ({
-  ossFetch: () => ossFetchMock(),
+  ossFetch: (path: string) => ossFetchMock(path),
 }));
 
 vi.mock('../../lib/credentials.js', () => ({
@@ -67,6 +76,9 @@ let tmp: string;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  nextStorageConfigResponse = undefined;
+  nextRealtimeConfigResponse = undefined;
+  nextSchedulesConfigResponse = undefined;
   tmp = mkdtempSync(join(tmpdir(), 'insforge-plan-test-'));
 });
 
@@ -97,6 +109,87 @@ describe('config plan (capability probe)', () => {
     const result = docs[0] as { changes: unknown[]; skipped: string[] };
     expect(result.changes).toHaveLength(1);
     expect(result.skipped).toEqual(['auth.allowed_redirect_urls']);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('does not probe optional config endpoints for auth-only changes', async () => {
+    nextMetadataResponse = { auth: { allowedRedirectUrls: ['https://a.com'] } };
+    nextStorageConfigResponse = new CLIError('NOT_FOUND', 1, 'NOT_FOUND', 404);
+    nextRealtimeConfigResponse = new CLIError('OSS request failed: 404', 1, undefined, 404);
+    nextSchedulesConfigResponse = new CLIError('NOT_FOUND', 1, 'NOT_FOUND', 404);
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[auth]\nallowed_redirect_urls = ["https://b.com"]\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, ['--json', 'config', 'plan', '--file', tomlPath]);
+    const result = docs[0] as { changes: unknown[]; skipped: string[] };
+    expect(result.changes).toHaveLength(1);
+    expect(result.skipped).toEqual([]);
+    expect(ossFetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/metadata']);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('uses optional config endpoint support for storage changes', async () => {
+    nextMetadataResponse = { auth: {} };
+    nextStorageConfigResponse = { maxFileSizeMb: 50 };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[storage]\nmax_file_size_mb = 100\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, ['--json', 'config', 'plan', '--file', tomlPath]);
+    const result = docs[0] as { changes: unknown[]; skipped: string[] };
+    expect(result.changes).toHaveLength(1);
+    expect(result.skipped).toEqual([]);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('uses optional config endpoint support for realtime and schedules changes', async () => {
+    nextMetadataResponse = { auth: {} };
+    nextRealtimeConfigResponse = { retentionDays: 7 };
+    nextSchedulesConfigResponse = { retentionDays: null };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(
+      tomlPath,
+      '[realtime]\nretention_days = 14\n\n[schedules]\nretention_days = 30\n',
+    );
+
+    const program = makeProgram();
+    const docs = await runJson(program, ['--json', 'config', 'plan', '--file', tomlPath]);
+    const result = docs[0] as { changes: unknown[]; skipped: string[] };
+    expect(result.changes).toHaveLength(2);
+    expect(result.skipped).toEqual([]);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('marks optional config changes skipped when the endpoint does not expose the key', async () => {
+    nextMetadataResponse = { auth: {} };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[storage]\nmax_file_size_mb = 100\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, ['--json', 'config', 'plan', '--file', tomlPath]);
+    const result = docs[0] as { changes: unknown[]; skipped: string[] };
+    expect(result.changes).toHaveLength(1);
+    expect(result.skipped).toEqual(['storage.max_file_size_mb']);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('marks optional config changes skipped when the endpoint is a route-level 404', async () => {
+    nextMetadataResponse = { auth: {} };
+    nextStorageConfigResponse = new CLIError('OSS request failed: 404', 1, undefined, 404);
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(tomlPath, '[storage]\nmax_file_size_mb = 100\n');
+
+    const program = makeProgram();
+    const docs = await runJson(program, ['--json', 'config', 'plan', '--file', tomlPath]);
+    const result = docs[0] as { changes: unknown[]; skipped: string[] };
+    expect(result.changes).toHaveLength(1);
+    expect(result.skipped).toEqual(['storage.max_file_size_mb']);
 
     rmSync(tmp, { recursive: true, force: true });
   });

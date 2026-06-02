@@ -4,13 +4,19 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import pc from 'picocolors';
 import { parseConfigToml } from '../../lib/config-toml.js';
 import { diffConfig } from '../../lib/config-diff.js';
 import { formatPlan } from '../../lib/config-format.js';
 import { metadataSupports, changePath } from '../../lib/config-capabilities.js';
-import { liveFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
+import {
+  liveFromMetadata,
+  type EndpointConfigResponses,
+  type RawMetadataResponse,
+  type RawRetentionConfig,
+  type RawStorageConfig,
+} from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
 import { getProjectConfig } from '../../lib/config.js';
@@ -33,7 +39,23 @@ export function registerConfigPlanCommand(cfg: Command): void {
 
         const res = await ossFetch('/api/metadata');
         const raw = (await res.json()) as RawMetadataResponse;
-        const live = liveFromMetadata(raw);
+        const endpointConfig: EndpointConfigResponses = {};
+        if (file.storage !== undefined) {
+          endpointConfig.storageConfig = await fetchOptionalConfig<RawStorageConfig>(
+            '/api/storage/config',
+          );
+        }
+        if (file.realtime !== undefined) {
+          endpointConfig.realtimeConfig = await fetchOptionalConfig<RawRetentionConfig>(
+            '/api/realtime/config',
+          );
+        }
+        if (file.schedules !== undefined) {
+          endpointConfig.schedulesConfig = await fetchOptionalConfig<RawRetentionConfig>(
+            '/api/schedules/config',
+          );
+        }
+        const live = liveFromMetadata(raw, endpointConfig);
 
         const result = diffConfig({ live, file });
 
@@ -41,7 +63,7 @@ export function registerConfigPlanCommand(cfg: Command): void {
         // skip unsupported changes; plan surfaces this up front so the user
         // isn't surprised.
         const skipped = result.changes
-          .filter((c) => !metadataSupports(raw, c))
+          .filter((c) => !metadataSupports(raw, c, endpointConfig))
           .map((c) => changePath(c));
 
         if (json) {
@@ -80,4 +102,22 @@ export function registerConfigPlanCommand(cfg: Command): void {
         await shutdownAnalytics();
       }
     });
+}
+
+async function fetchOptionalConfig<T>(path: string): Promise<T | undefined> {
+  try {
+    const res = await ossFetch(path);
+    return (await res.json()) as T;
+  } catch (err) {
+    if (isMissingOptionalEndpoint(err)) return undefined;
+    throw err;
+  }
+}
+
+function isMissingOptionalEndpoint(err: unknown): boolean {
+  return (
+    err instanceof CLIError &&
+    err.statusCode === 404 &&
+    (err.code === undefined || err.code === 'NOT_FOUND')
+  );
 }

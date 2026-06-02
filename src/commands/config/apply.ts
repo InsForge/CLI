@@ -16,7 +16,13 @@ import {
   authPasswordWireKey,
 } from '../../lib/config-capabilities.js';
 import { resolveEnvRef } from '../../lib/config-secrets.js';
-import { liveFromMetadata, type RawMetadataResponse } from '../../lib/config-metadata.js';
+import {
+  liveFromMetadata,
+  type EndpointConfigResponses,
+  type RawMetadataResponse,
+  type RawRetentionConfig,
+  type RawStorageConfig,
+} from '../../lib/config-metadata.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import { trackConfig, shutdownAnalytics } from '../../lib/analytics.js';
 import { getProjectConfig } from '../../lib/config.js';
@@ -41,7 +47,23 @@ export function registerConfigApplyCommand(cfg: Command): void {
 
         const res = await ossFetch('/api/metadata');
         const raw = (await res.json()) as RawMetadataResponse;
-        const live = liveFromMetadata(raw);
+        const endpointConfig: EndpointConfigResponses = {};
+        if (file.storage !== undefined) {
+          endpointConfig.storageConfig = await fetchOptionalConfig<RawStorageConfig>(
+            '/api/storage/config',
+          );
+        }
+        if (file.realtime !== undefined) {
+          endpointConfig.realtimeConfig = await fetchOptionalConfig<RawRetentionConfig>(
+            '/api/realtime/config',
+          );
+        }
+        if (file.schedules !== undefined) {
+          endpointConfig.schedulesConfig = await fetchOptionalConfig<RawRetentionConfig>(
+            '/api/schedules/config',
+          );
+        }
+        const live = liveFromMetadata(raw, endpointConfig);
 
         const result = diffConfig({ live, file });
         const approved = opts.autoApprove || yes;
@@ -108,7 +130,7 @@ export function registerConfigApplyCommand(cfg: Command): void {
         const skipped: Array<{ key: string; reason: string }> = [];
         for (const change of result.changes) {
           const path = changePath(change);
-          if (!metadataSupports(raw, change)) {
+          if (!metadataSupports(raw, change, endpointConfig)) {
             skipped.push({
               key: path,
               reason: `your backend doesn't expose ${path} — upgrade the project to apply this section`,
@@ -165,6 +187,24 @@ export function registerConfigApplyCommand(cfg: Command): void {
     });
 }
 
+async function fetchOptionalConfig<T>(path: string): Promise<T | undefined> {
+  try {
+    const res = await ossFetch(path);
+    return (await res.json()) as T;
+  } catch (err) {
+    if (isMissingOptionalEndpoint(err)) return undefined;
+    throw err;
+  }
+}
+
+function isMissingOptionalEndpoint(err: unknown): boolean {
+  return (
+    err instanceof CLIError &&
+    err.statusCode === 404 &&
+    (err.code === undefined || err.code === 'NOT_FOUND')
+  );
+}
+
 async function applyChange(change: DiffChange): Promise<void> {
   if (change.section === 'auth' && change.key === 'allowed_redirect_urls') {
     await ossFetch('/api/auth/config', {
@@ -191,6 +231,13 @@ async function applyChange(change: DiffChange): Promise<void> {
     await ossFetch('/api/auth/config', {
       method: 'PUT',
       body: JSON.stringify({ resetPasswordMethod: change.to }),
+    });
+    return;
+  }
+  if (change.section === 'auth' && change.key === 'disable_signup') {
+    await ossFetch('/api/auth/config', {
+      method: 'PUT',
+      body: JSON.stringify({ disableSignup: change.to }),
     });
     return;
   }
@@ -235,6 +282,27 @@ async function applyChange(change: DiffChange): Promise<void> {
     await ossFetch('/api/auth/smtp-config', {
       method: 'PUT',
       body: JSON.stringify(body),
+    });
+    return;
+  }
+  if (change.section === 'storage' && change.key === 'max_file_size_mb') {
+    await ossFetch('/api/storage/config', {
+      method: 'PUT',
+      body: JSON.stringify({ maxFileSizeMb: change.to }),
+    });
+    return;
+  }
+  if (change.section === 'realtime' && change.key === 'retention_days') {
+    await ossFetch('/api/realtime/config', {
+      method: 'PATCH',
+      body: JSON.stringify({ retentionDays: change.to }),
+    });
+    return;
+  }
+  if (change.section === 'schedules' && change.key === 'retention_days') {
+    await ossFetch('/api/schedules/config', {
+      method: 'PATCH',
+      body: JSON.stringify({ retentionDays: change.to }),
     });
     return;
   }

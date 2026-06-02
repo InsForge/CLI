@@ -24,6 +24,7 @@
 // backend would defeat this probe.
 
 import type { DiffChange } from './config-diff.js';
+import type { EndpointConfigResponses } from './config-metadata.js';
 
 // The probe takes the metadata response loosely-typed: typed shapes from
 // callers (RawMetadataResponse) and Record<string, unknown> both satisfy
@@ -40,7 +41,11 @@ type RawMetadata = {
  * targets. Used to skip unsupported changes before we'd PUT to an endpoint
  * that may silently drop the body.
  */
-export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean {
+export function metadataSupports(
+  raw: RawMetadata,
+  change: DiffChange,
+  endpointConfig: EndpointConfigResponses = {},
+): boolean {
   if (change.section === 'auth' && change.key === 'allowed_redirect_urls') {
     return hasAuthKey(raw, 'allowedRedirectUrls');
   }
@@ -53,6 +58,9 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
   if (change.section === 'auth' && change.key === 'reset_password_method') {
     return hasAuthKey(raw, 'resetPasswordMethod');
   }
+  if (change.section === 'auth' && change.key === 'disable_signup') {
+    return hasAuthKey(raw, 'disableSignup');
+  }
   if (change.section === 'auth.password') {
     // Per-key probes. The backend exposes each password policy field as a
     // flat key under `auth` (not a nested passwordPolicy object), so a
@@ -64,6 +72,15 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
     // SMTP is whole-object: a backend either exposes `smtpConfig` in
     // /api/metadata (and accepts PUT /api/auth/smtp-config) or doesn't.
     return hasAuthKey(raw, 'smtpConfig');
+  }
+  if (change.section === 'storage' && change.key === 'max_file_size_mb') {
+    return hasConfigKey(endpointConfig.storageConfig, 'maxFileSizeMb');
+  }
+  if (change.section === 'realtime' && change.key === 'retention_days') {
+    return hasConfigKey(endpointConfig.realtimeConfig, 'retentionDays');
+  }
+  if (change.section === 'schedules' && change.key === 'retention_days') {
+    return hasConfigKey(endpointConfig.schedulesConfig, 'retentionDays');
   }
   if (change.section === 'deployments' && change.key === 'subdomain') {
     // Presence-only probe: cloud backends always carry `customSlug` in the
@@ -85,6 +102,10 @@ export function metadataSupports(raw: RawMetadata, change: DiffChange): boolean 
 function hasAuthKey(raw: RawMetadata, key: string): boolean {
   const auth = raw?.auth;
   return auth !== undefined && auth !== null && typeof auth === 'object' && key in auth;
+}
+
+function hasConfigKey(slice: unknown, key: string): boolean {
+  return slice !== undefined && slice !== null && typeof slice === 'object' && key in slice;
 }
 
 // Maps TOML keys under [auth.password] to the flat camelCase fields the

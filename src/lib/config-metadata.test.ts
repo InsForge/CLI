@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { configFromMetadata, liveFromMetadata } from './config-metadata.js';
+import {
+  configFromMetadata,
+  liveFromMetadata,
+} from './config-metadata.js';
 
 describe('liveFromMetadata', () => {
   it('projects a full backend response onto LiveConfig', () => {
@@ -14,6 +17,7 @@ describe('liveFromMetadata', () => {
         requireLowercase: true,
         requireUppercase: true,
         requireSpecialChar: false,
+        disableSignup: true,
         smtpConfig: {
           enabled: true,
           host: 'smtp.gmail.com',
@@ -40,6 +44,7 @@ describe('liveFromMetadata', () => {
           require_uppercase: true,
           require_special_char: false,
         },
+        disable_signup: true,
         smtp: {
           enabled: true,
           host: 'smtp.gmail.com',
@@ -131,32 +136,41 @@ describe('liveFromMetadata', () => {
 
 describe('configFromMetadata', () => {
   it('projects a full backend response onto InsforgeConfig with no skipped entries', () => {
-    const { config, skipped } = configFromMetadata({
-      auth: {
-        allowedRedirectUrls: ['https://a.com'],
-        requireEmailVerification: true,
-        verifyEmailMethod: 'link',
-        resetPasswordMethod: 'code',
-        passwordMinLength: 12,
-        requireNumber: true,
-        requireLowercase: true,
-        requireUppercase: true,
-        requireSpecialChar: false,
-        smtpConfig: {
-          enabled: false,
-          host: '',
-          port: 587,
-          username: '',
-          hasPassword: false,
-          senderEmail: '',
-          senderName: '',
-          minIntervalSeconds: 60,
+    const { config, skipped } = configFromMetadata(
+      {
+        auth: {
+          allowedRedirectUrls: ['https://a.com'],
+          requireEmailVerification: true,
+          verifyEmailMethod: 'link',
+          resetPasswordMethod: 'code',
+          passwordMinLength: 12,
+          requireNumber: true,
+          requireLowercase: true,
+          requireUppercase: true,
+          requireSpecialChar: false,
+          disableSignup: true,
+          smtpConfig: {
+            enabled: false,
+            host: '',
+            port: 587,
+            username: '',
+            hasPassword: false,
+            senderEmail: '',
+            senderName: '',
+            minIntervalSeconds: 60,
+          },
         },
+        deployments: { customSlug: 'my-app' },
       },
-      deployments: { customSlug: 'my-app' },
-    });
+      {
+        storageConfig: { maxFileSizeMb: 100 },
+        realtimeConfig: { retentionDays: null },
+        schedulesConfig: { retentionDays: 14 },
+      },
+    );
     expect(config.auth?.require_email_verification).toBe(true);
     expect(config.auth?.verify_email_method).toBe('link');
+    expect(config.auth?.disable_signup).toBe(true);
     expect(config.auth?.password).toEqual({
       min_length: 12,
       require_number: true,
@@ -174,12 +188,16 @@ describe('configFromMetadata', () => {
     expect(config.auth).toBeUndefined();
     expect(skipped.sort()).toEqual([
       'auth.allowed_redirect_urls',
+      'auth.disable_signup',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
       'auth.smtp',
       'auth.verify_email_method',
       'deployments.subdomain',
+      'realtime.retention_days',
+      'schedules.retention_days',
+      'storage.max_file_size_mb',
     ]);
   });
 
@@ -257,5 +275,43 @@ describe('configFromMetadata', () => {
       },
     });
     expect(config.auth?.smtp?.password).toBe('env(SMTP_PASSWORD)');
+  });
+});
+
+describe('liveFromMetadata — endpoint-backed config', () => {
+  it('projects optional endpoint-backed config into LiveConfig', () => {
+    const live = liveFromMetadata({ auth: { disableSignup: false } }, {
+      storageConfig: { maxFileSizeMb: 100 },
+      realtimeConfig: { retentionDays: null },
+      schedulesConfig: { retentionDays: 14 },
+    });
+    expect(live).toMatchObject({
+      auth: {
+        disable_signup: false,
+      },
+      storage: { max_file_size_mb: 100 },
+      realtime: { retention_days: null },
+      schedules: { retention_days: 14 },
+    });
+  });
+});
+
+describe('configFromMetadata — endpoint-backed config', () => {
+  it('exports optional endpoint-backed config sections', () => {
+    const { config, skipped } = configFromMetadata({
+      auth: { disableSignup: true },
+      deployments: { customSlug: null },
+    }, {
+      storageConfig: { maxFileSizeMb: 100 },
+      realtimeConfig: { retentionDays: null },
+      schedulesConfig: { retentionDays: 14 },
+    });
+    expect(config.auth?.disable_signup).toBe(true);
+    expect(config.storage).toEqual({ max_file_size_mb: 100 });
+    expect(config.realtime).toEqual({ retention_days: null });
+    expect(config.schedules).toEqual({ retention_days: 14 });
+    expect(skipped).not.toContain('storage.max_file_size_mb');
+    expect(skipped).not.toContain('realtime.retention_days');
+    expect(skipped).not.toContain('schedules.retention_days');
   });
 });

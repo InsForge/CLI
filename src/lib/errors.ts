@@ -5,6 +5,7 @@ export class CLIError extends Error {
     message: string,
     public exitCode: number = 1,
     public code?: string,
+    public statusCode?: number,
   ) {
     super(message);
     this.name = 'CLIError';

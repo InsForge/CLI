@@ -121,6 +121,18 @@ describe('metadataSupports — auth verification flags', () => {
     expect(metadataSupports({ auth: {} }, verify)).toBe(false);
     expect(metadataSupports({ auth: {} }, reset)).toBe(false);
   });
+
+  it('probes disableSignup by presence', () => {
+    const ch: DiffChange = {
+      section: 'auth',
+      op: 'modify',
+      key: 'disable_signup',
+      from: false,
+      to: true,
+    };
+    expect(metadataSupports({ auth: { disableSignup: false } }, ch)).toBe(true);
+    expect(metadataSupports({ auth: {} }, ch)).toBe(false);
+  });
 });
 
 describe('metadataSupports — [auth.password] per-field', () => {
@@ -168,5 +180,49 @@ describe('changePath', () => {
         to: 12,
       }),
     ).toBe('auth.password.min_length');
+  });
+});
+
+describe('metadataSupports — endpoint-backed sections', () => {
+  it('uses endpoint responses for storage, realtime, and schedules support', () => {
+    expect(
+      metadataSupports(
+        { auth: {} },
+        {
+          section: 'storage',
+          op: 'modify',
+          key: 'max_file_size_mb',
+          from: 50,
+          to: 100,
+        },
+        { storageConfig: { maxFileSizeMb: 50 } },
+      ),
+    ).toBe(true);
+    expect(
+      metadataSupports(
+        { auth: {} },
+        {
+          section: 'realtime',
+          op: 'modify',
+          key: 'retention_days',
+          from: null,
+          to: 7,
+        },
+        { realtimeConfig: { retentionDays: null } },
+      ),
+    ).toBe(true);
+    expect(
+      metadataSupports(
+        { auth: {} },
+        {
+          section: 'schedules',
+          op: 'modify',
+          key: 'retention_days',
+          from: 7,
+          to: 14,
+        },
+        { schedulesConfig: { retentionDays: 7 } },
+      ),
+    ).toBe(true);
   });
 });

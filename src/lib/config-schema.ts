@@ -11,6 +11,9 @@ import { validateSensitiveString } from './config-secrets.js';
 export interface InsforgeConfig {
   project_id?: string;
   auth?: AuthConfig;
+  storage?: StorageConfig;
+  realtime?: RetentionConfig;
+  schedules?: RetentionConfig;
   deployments?: DeploymentsConfig;
 }
 
@@ -21,6 +24,7 @@ export interface AuthConfig {
   require_email_verification?: boolean;
   verify_email_method?: VerificationMethod;
   reset_password_method?: VerificationMethod;
+  disable_signup?: boolean;
   password?: PasswordConfig;
   smtp?: SmtpConfig;
 }
@@ -58,6 +62,18 @@ export interface SmtpConfig {
   min_interval_seconds?: number;
 }
 
+export interface StorageConfig {
+  max_file_size_mb?: number;
+}
+
+export interface RetentionConfig {
+  /**
+   * Positive integer = keep records for N days.
+   * 0 or null = disable retention cleanup (wire value: null).
+   */
+  retention_days?: number | null;
+}
+
 export interface DeploymentsConfig {
   // null clears the slug; absent in TOML means default-keep.
   subdomain?: string | null;
@@ -89,7 +105,59 @@ export function validateConfig(input: unknown): InsforgeConfig {
   }
 
   if ('auth' in obj) out.auth = validateAuth(obj.auth);
+  if ('storage' in obj) out.storage = validateStorage(obj.storage);
+  if ('realtime' in obj) out.realtime = validateRetentionSection('realtime', obj.realtime);
+  if ('schedules' in obj) out.schedules = validateRetentionSection('schedules', obj.schedules);
   if ('deployments' in obj) out.deployments = validateDeployments(obj.deployments);
+
+  return out;
+}
+
+function validateStorage(input: unknown): StorageConfig {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ConfigValidationError('storage', 'must be an object');
+  }
+  const obj = input as Record<string, unknown>;
+  const out: StorageConfig = {};
+
+  if ('max_file_size_mb' in obj) {
+    if (
+      typeof obj.max_file_size_mb !== 'number' ||
+      !Number.isInteger(obj.max_file_size_mb) ||
+      obj.max_file_size_mb < 1 ||
+      obj.max_file_size_mb > 200
+    ) {
+      throw new ConfigValidationError(
+        'storage.max_file_size_mb',
+        'must be an integer between 1 and 200',
+      );
+    }
+    out.max_file_size_mb = obj.max_file_size_mb;
+  }
+
+  return out;
+}
+
+function validateRetentionSection(path: 'realtime' | 'schedules', input: unknown): RetentionConfig {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ConfigValidationError(path, 'must be an object');
+  }
+  const obj = input as Record<string, unknown>;
+  const out: RetentionConfig = {};
+
+  if ('retention_days' in obj) {
+    const v = obj.retention_days;
+    if (
+      v !== null &&
+      (typeof v !== 'number' || !Number.isInteger(v) || v < 0)
+    ) {
+      throw new ConfigValidationError(
+        `${path}.retention_days`,
+        'must be a non-negative integer or null',
+      );
+    }
+    out.retention_days = v;
+  }
 
   return out;
 }
@@ -158,6 +226,13 @@ function validateAuth(input: unknown): AuthConfig {
       'auth.reset_password_method',
       obj.reset_password_method,
     );
+  }
+
+  if ('disable_signup' in obj) {
+    if (typeof obj.disable_signup !== 'boolean') {
+      throw new ConfigValidationError('auth.disable_signup', 'must be a boolean');
+    }
+    out.disable_signup = obj.disable_signup;
   }
 
   if ('password' in obj) out.password = validatePassword(obj.password);

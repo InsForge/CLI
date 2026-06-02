@@ -1,6 +1,8 @@
 import type {
   InsforgeConfig,
   PasswordConfig,
+  RetentionConfig,
+  StorageConfig,
   SmtpConfig,
   VerificationMethod,
 } from './config-schema.js';
@@ -46,6 +48,13 @@ export type DiffChange =
       to: VerificationMethod;
     }
   | {
+      section: 'auth';
+      op: 'modify';
+      key: 'disable_signup';
+      from: boolean;
+      to: boolean;
+    }
+  | {
       section: 'auth.password';
       op: 'modify';
       key: 'min_length';
@@ -72,6 +81,20 @@ export type DiffChange =
        * When set, the password is force-resent even if nothing else changed.
        */
       passwordEnvRef?: string;
+    }
+  | {
+      section: 'storage';
+      op: 'modify';
+      key: 'max_file_size_mb';
+      from: number;
+      to: number;
+    }
+  | {
+      section: 'realtime' | 'schedules';
+      op: 'modify';
+      key: 'retention_days';
+      from: number | null;
+      to: number | null;
     }
   | {
       section: 'deployments';
@@ -147,8 +170,18 @@ export interface LiveConfig {
     require_email_verification?: boolean;
     verify_email_method?: VerificationMethod;
     reset_password_method?: VerificationMethod;
+    disable_signup?: boolean;
     password?: LivePasswordPolicy;
     smtp?: LiveSmtpState;
+  };
+  storage?: {
+    max_file_size_mb?: number;
+  };
+  realtime?: {
+    retention_days?: number | null;
+  };
+  schedules?: {
+    retention_days?: number | null;
   };
   deployments?: {
     subdomain?: string | null;
@@ -238,6 +271,20 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
     }
   }
 
+  if (fileAuth && 'disable_signup' in fileAuth) {
+    const fromV = liveAuth.disable_signup ?? false;
+    const toV = fileAuth.disable_signup ?? false;
+    if (fromV !== toV) {
+      changes.push({
+        section: 'auth',
+        op: 'modify',
+        key: 'disable_signup',
+        from: fromV,
+        to: toV,
+      });
+    }
+  }
+
   if (fileAuth?.password) {
     diffPassword(liveAuth.password, fileAuth.password, changes);
   }
@@ -245,6 +292,18 @@ export function diffConfig({ live, file }: DiffInput): DiffResult {
   if (fileAuth?.smtp !== undefined) {
     const smtpChange = diffSmtp(liveAuth.smtp, fileAuth.smtp);
     if (smtpChange) changes.push(smtpChange);
+  }
+
+  if (file.storage !== undefined) {
+    diffStorage(live.storage, file.storage, changes);
+  }
+
+  if (file.realtime !== undefined) {
+    diffRetention('realtime', live.realtime, file.realtime, changes);
+  }
+
+  if (file.schedules !== undefined) {
+    diffRetention('schedules', live.schedules, file.schedules, changes);
   }
 
   const fileDeployments = file.deployments;
@@ -318,6 +377,50 @@ function diffPassword(
       });
     }
   }
+}
+
+function diffStorage(
+  live: LiveConfig['storage'] | undefined,
+  file: StorageConfig,
+  changes: DiffChange[],
+): void {
+  if (file.max_file_size_mb === undefined) return;
+  const fromV = live?.max_file_size_mb ?? EMPTY_STORAGE_CONFIG.max_file_size_mb;
+  if (fromV !== file.max_file_size_mb) {
+    changes.push({
+      section: 'storage',
+      op: 'modify',
+      key: 'max_file_size_mb',
+      from: fromV,
+      to: file.max_file_size_mb,
+    });
+  }
+}
+
+function diffRetention(
+  section: 'realtime' | 'schedules',
+  live: LiveConfig['realtime'] | LiveConfig['schedules'] | undefined,
+  file: RetentionConfig,
+  changes: DiffChange[],
+): void {
+  if (!('retention_days' in file)) return;
+  const fromV = normalizeRetentionDays(live?.retention_days);
+  const toV = normalizeRetentionDays(file.retention_days);
+  if (fromV !== toV) {
+    changes.push({
+      section,
+      op: 'modify',
+      key: 'retention_days',
+      from: fromV,
+      to: toV,
+    });
+  }
+}
+
+function normalizeRetentionDays(value: number | null | undefined): number | null {
+  // TOML has no null literal. Use retention_days = 0 as the explicit
+  // "disable cleanup" spelling and translate it to the backend's null.
+  return value === undefined || value === null || value === 0 ? null : value;
 }
 
 /**
@@ -416,6 +519,10 @@ const EMPTY_SMTP_VIEW: SmtpDiffView = {
   sender_email: '',
   sender_name: '',
   min_interval_seconds: 60,
+};
+
+const EMPTY_STORAGE_CONFIG = {
+  max_file_size_mb: 50,
 };
 
 // Backend defaults for auth.password fields when the live row is missing

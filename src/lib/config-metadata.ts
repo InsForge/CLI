@@ -27,6 +27,7 @@ export interface RawAuthMetadata {
   requireLowercase?: boolean;
   requireUppercase?: boolean;
   requireSpecialChar?: boolean;
+  disableSignup?: boolean;
   smtpConfig?: {
     enabled?: boolean;
     host?: string;
@@ -39,6 +40,14 @@ export interface RawAuthMetadata {
   };
 }
 
+export interface RawStorageConfig {
+  maxFileSizeMb?: unknown;
+}
+
+export interface RawRetentionConfig {
+  retentionDays?: unknown;
+}
+
 export interface RawMetadataResponse {
   auth?: RawAuthMetadata;
   // Cloud-only slice. Self-host or pre-#1259 backends omit the key
@@ -49,13 +58,22 @@ export interface RawMetadataResponse {
   };
 }
 
+export interface EndpointConfigResponses {
+  storageConfig?: RawStorageConfig;
+  realtimeConfig?: RawRetentionConfig;
+  schedulesConfig?: RawRetentionConfig;
+}
+
 /**
  * Project the raw metadata response onto the shape diffConfig accepts.
  * Missing fields stay undefined — the diff layer interprets that as
  * "field not yet supported on this backend" and uses its own fallback
  * defaults when the file references a missing-on-live field.
  */
-export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
+export function liveFromMetadata(
+  raw: RawMetadataResponse,
+  endpointConfig: EndpointConfigResponses = {},
+): LiveConfig {
   const live: LiveConfig = { auth: {} };
   // Guard against a malformed response (auth: "string" / number / null) —
   // the `in` operator throws a TypeError on non-objects, so refuse to read
@@ -86,6 +104,9 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
     (a.resetPasswordMethod === 'code' || a.resetPasswordMethod === 'link')
   ) {
     live.auth!.reset_password_method = a.resetPasswordMethod;
+  }
+  if (a && 'disableSignup' in a) {
+    live.auth!.disable_signup = a.disableSignup ?? false;
   }
   // Build the password slice only if the backend exposed at least one field
   // (legacy backends omit the lot). Missing individual fields fall back to
@@ -133,6 +154,22 @@ export function liveFromMetadata(raw: RawMetadataResponse): LiveConfig {
       subdomain: typeof d.customSlug === 'string' && d.customSlug ? d.customSlug : null,
     };
   }
+
+  const maxFileSizeMb = asNumber(endpointConfig.storageConfig?.maxFileSizeMb);
+  if (maxFileSizeMb !== undefined) {
+    live.storage = { max_file_size_mb: maxFileSizeMb };
+  }
+
+  const realtimeRetention = asRetentionDays(endpointConfig.realtimeConfig?.retentionDays);
+  if (realtimeRetention !== undefined) {
+    live.realtime = { retention_days: realtimeRetention };
+  }
+
+  const schedulesRetention = asRetentionDays(endpointConfig.schedulesConfig?.retentionDays);
+  if (schedulesRetention !== undefined) {
+    live.schedules = { retention_days: schedulesRetention };
+  }
+
   return live;
 }
 
@@ -142,6 +179,15 @@ function isPlainObject<T extends object>(v: T | undefined | null | unknown): v i
 
 function asStringArray(v: unknown): string[] | null {
   return Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : null;
+}
+
+function asNumber(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isInteger(v) ? v : undefined;
+}
+
+function asRetentionDays(v: unknown): number | null | undefined {
+  if (v === null) return null;
+  return asNumber(v);
 }
 
 /**
@@ -154,7 +200,10 @@ function asStringArray(v: unknown): string[] | null {
  * fields are considered present — the two MUST agree, otherwise re-applying
  * an export wouldn't round-trip cleanly. Update both together.
  */
-export function configFromMetadata(raw: RawMetadataResponse): {
+export function configFromMetadata(
+  raw: RawMetadataResponse,
+  endpointConfig: EndpointConfigResponses = {},
+): {
   config: InsforgeConfig;
   skipped: string[];
 } {
@@ -205,6 +254,13 @@ export function configFromMetadata(raw: RawMetadataResponse): {
     config.auth.reset_password_method = a.resetPasswordMethod;
   } else {
     skipped.push('auth.reset_password_method');
+  }
+
+  if (a && 'disableSignup' in a) {
+    config.auth = config.auth ?? {};
+    config.auth.disable_signup = a.disableSignup ?? false;
+  } else {
+    skipped.push('auth.disable_signup');
   }
 
   // Emit [auth.password] only when the backend exposes at least one policy
@@ -270,6 +326,27 @@ export function configFromMetadata(raw: RawMetadataResponse): {
     }
   } else {
     skipped.push('deployments.subdomain');
+  }
+
+  const maxFileSizeMb = asNumber(endpointConfig.storageConfig?.maxFileSizeMb);
+  if (maxFileSizeMb !== undefined) {
+    config.storage = { max_file_size_mb: maxFileSizeMb };
+  } else {
+    skipped.push('storage.max_file_size_mb');
+  }
+
+  const realtimeRetention = asRetentionDays(endpointConfig.realtimeConfig?.retentionDays);
+  if (realtimeRetention !== undefined) {
+    config.realtime = { retention_days: realtimeRetention };
+  } else {
+    skipped.push('realtime.retention_days');
+  }
+
+  const schedulesRetention = asRetentionDays(endpointConfig.schedulesConfig?.retentionDays);
+  if (schedulesRetention !== undefined) {
+    config.schedules = { retention_days: schedulesRetention };
+  } else {
+    skipped.push('schedules.retention_days');
   }
 
   return { config, skipped };

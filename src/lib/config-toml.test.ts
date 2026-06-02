@@ -234,6 +234,12 @@ require_email_verification = true
       parseConfigToml('[auth]\nreset_password_method = "link"\n'),
     ).toEqual({ auth: { reset_password_method: 'link' } });
   });
+
+  it('parses disable_signup as a boolean', () => {
+    expect(parseConfigToml('[auth]\ndisable_signup = true\n')).toEqual({
+      auth: { disable_signup: true },
+    });
+  });
 });
 
 describe('parseConfigToml — [auth.password]', () => {
@@ -287,6 +293,59 @@ require_special_char = true
     expect(() =>
       parseConfigToml('[auth.password]\nrequire_number = "yes"\n'),
     ).toThrow(/auth\.password\.require_number.*boolean/);
+  });
+});
+
+describe('parseConfigToml — additional config sections', () => {
+  it('parses storage and retention sections', () => {
+    const toml = `
+[storage]
+max_file_size_mb = 100
+
+[realtime]
+retention_days = 0
+
+[schedules]
+retention_days = 30
+`;
+    expect(parseConfigToml(toml)).toEqual({
+      storage: { max_file_size_mb: 100 },
+      realtime: { retention_days: 0 },
+      schedules: { retention_days: 30 },
+    });
+  });
+
+  it('rejects invalid storage and retention values', () => {
+    expect(() => parseConfigToml('[storage]\nmax_file_size_mb = 201\n')).toThrow(
+      /max_file_size_mb.*1 and 200/,
+    );
+    expect(() => parseConfigToml('[realtime]\nretention_days = -1\n')).toThrow(
+      /retention_days.*non-negative/,
+    );
+  });
+});
+
+describe('stringifyConfigToml — additional config sections', () => {
+  it('emits new sections in a round-trippable TOML shape', () => {
+    const original = {
+      auth: {
+        disable_signup: true,
+      },
+      storage: { max_file_size_mb: 100 },
+      realtime: { retention_days: 0 },
+      schedules: { retention_days: 30 },
+    };
+    const out = stringifyConfigToml(original);
+    expect(out).toContain('disable_signup = true');
+    expect(out).toContain('[storage]');
+    expect(out).toContain('[realtime]');
+    expect(out).toContain('[schedules]');
+    expect(parseConfigToml(out)).toEqual(original);
+  });
+
+  it('renders null retention as retention_days = 0', () => {
+    const out = stringifyConfigToml({ realtime: { retention_days: null } });
+    expect(out).toContain('retention_days = 0');
   });
 });
 

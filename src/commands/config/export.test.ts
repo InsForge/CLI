@@ -4,18 +4,28 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerConfigExportCommand } from './export.js';
+import { CLIError } from '../../lib/errors.js';
 import type * as ErrorsModule from '../../lib/errors.js';
 
 let nextMetadataResponse: unknown = {};
-const ossFetchMock = vi.fn(async () => {
-  return new Response(JSON.stringify(nextMetadataResponse), {
+let nextStorageConfigResponse: unknown;
+let nextRealtimeConfigResponse: unknown;
+let nextSchedulesConfigResponse: unknown;
+
+const ossFetchMock = vi.fn(async (path: string) => {
+  let body: unknown = nextMetadataResponse;
+  if (path === '/api/storage/config') body = nextStorageConfigResponse ?? {};
+  if (path === '/api/realtime/config') body = nextRealtimeConfigResponse ?? {};
+  if (path === '/api/schedules/config') body = nextSchedulesConfigResponse ?? {};
+  if (body instanceof Error) throw body;
+  return new Response(JSON.stringify(body), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
 });
 
 vi.mock('../../lib/api/oss.js', () => ({
-  ossFetch: () => ossFetchMock(),
+  ossFetch: (path: string) => ossFetchMock(path),
 }));
 
 vi.mock('../../lib/credentials.js', () => ({
@@ -67,6 +77,9 @@ let tmp: string;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  nextStorageConfigResponse = undefined;
+  nextRealtimeConfigResponse = undefined;
+  nextSchedulesConfigResponse = undefined;
   tmp = mkdtempSync(join(tmpdir(), 'insforge-export-test-'));
 });
 
@@ -110,16 +123,109 @@ describe('config export (capability probe)', () => {
     // Only allowedRedirectUrls and smtpConfig are in the fixture; everything
     // else (verification flags, password policy, deployments) gets skipped.
     expect(result.skipped.sort()).toEqual([
+      'auth.disable_signup',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
       'auth.verify_email_method',
       'deployments.subdomain',
-    ]);
+      'realtime.retention_days',
+      'schedules.retention_days',
+      'storage.max_file_size_mb',
+    ].sort());
 
     const written = readFileSync(target, 'utf8');
     expect(written).toContain('allowed_redirect_urls');
     expect(written).toContain('[auth.smtp]');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('exports optional endpoint-backed config sections when available', async () => {
+    nextMetadataResponse = {
+      auth: {
+        allowedRedirectUrls: [],
+        disableSignup: true,
+      },
+    };
+    nextStorageConfigResponse = { maxFileSizeMb: 100 };
+    nextRealtimeConfigResponse = { retentionDays: null };
+    nextSchedulesConfigResponse = { retentionDays: 14 };
+
+    const target = join(tmp, 'insforge.toml');
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      'config',
+      'export',
+      '--out',
+      target,
+      '--force',
+    ]);
+
+    const result = docs[0] as {
+      config: {
+        auth?: {
+          disable_signup?: boolean;
+        };
+        storage?: { max_file_size_mb?: number };
+        realtime?: { retention_days?: number | null };
+        schedules?: { retention_days?: number | null };
+      };
+      skipped: string[];
+    };
+    expect(result.config.auth?.disable_signup).toBe(true);
+    expect(result.config.storage).toEqual({ max_file_size_mb: 100 });
+    expect(result.config.realtime).toEqual({ retention_days: null });
+    expect(result.config.schedules).toEqual({ retention_days: 14 });
+    expect(result.skipped).not.toContain('storage.max_file_size_mb');
+    expect(result.skipped).not.toContain('realtime.retention_days');
+    expect(result.skipped).not.toContain('schedules.retention_days');
+
+    const written = readFileSync(target, 'utf8');
+    expect(written).toContain('disable_signup = true');
+    expect(written).toContain('[storage]');
+    expect(written).toContain('retention_days = 0');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('skips optional endpoint-backed sections on route-level 404s', async () => {
+    nextMetadataResponse = {
+      auth: {
+        allowedRedirectUrls: [],
+        disableSignup: false,
+      },
+    };
+    nextStorageConfigResponse = new CLIError('NOT_FOUND', 1, 'NOT_FOUND', 404);
+    nextRealtimeConfigResponse = new CLIError('OSS request failed: 404', 1, undefined, 404);
+    nextSchedulesConfigResponse = { retentionDays: 14 };
+
+    const target = join(tmp, 'insforge.toml');
+    const program = makeProgram();
+    const docs = await runJson(program, [
+      '--json',
+      'config',
+      'export',
+      '--out',
+      target,
+      '--force',
+    ]);
+
+    const result = docs[0] as {
+      config: {
+        storage?: unknown;
+        realtime?: unknown;
+        schedules?: { retention_days?: number | null };
+      };
+      skipped: string[];
+    };
+    expect(result.config.storage).toBeUndefined();
+    expect(result.config.realtime).toBeUndefined();
+    expect(result.config.schedules).toEqual({ retention_days: 14 });
+    expect(result.skipped).toContain('storage.max_file_size_mb');
+    expect(result.skipped).toContain('realtime.retention_days');
+    expect(result.skipped).not.toContain('schedules.retention_days');
 
     rmSync(tmp, { recursive: true, force: true });
   });
@@ -219,13 +325,17 @@ describe('config export (capability probe)', () => {
     expect(result.config.auth).toBeUndefined();
     expect(result.skipped.sort()).toEqual([
       'auth.allowed_redirect_urls',
+      'auth.disable_signup',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
       'auth.smtp',
       'auth.verify_email_method',
       'deployments.subdomain',
-    ]);
+      'realtime.retention_days',
+      'schedules.retention_days',
+      'storage.max_file_size_mb',
+    ].sort());
     // File is still written so future apply cycles work — just empty.
     expect(existsSync(target)).toBe(true);
 
@@ -256,12 +366,16 @@ describe('config export (capability probe)', () => {
     // No smtpConfig or auth.* fields in fixture → those sections get skipped,
     // but the deployments section still emits cleanly.
     expect(result.skipped.sort()).toEqual([
+      'auth.disable_signup',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
       'auth.smtp',
       'auth.verify_email_method',
-    ]);
+      'realtime.retention_days',
+      'schedules.retention_days',
+      'storage.max_file_size_mb',
+    ].sort());
 
     const written = readFileSync(target, 'utf8');
     expect(written).toContain('[deployments]');
@@ -295,12 +409,16 @@ describe('config export (capability probe)', () => {
     };
     expect(result.config.deployments).toBeUndefined();
     expect(result.skipped.sort()).toEqual([
+      'auth.disable_signup',
       'auth.password',
       'auth.require_email_verification',
       'auth.reset_password_method',
       'auth.smtp',
       'auth.verify_email_method',
-    ]);
+      'realtime.retention_days',
+      'schedules.retention_days',
+      'storage.max_file_size_mb',
+    ].sort());
 
     const written = readFileSync(target, 'utf8');
     expect(written).not.toContain('[deployments]');
