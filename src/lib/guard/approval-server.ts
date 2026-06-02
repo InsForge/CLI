@@ -94,7 +94,7 @@ function renderPage(brief: Brief): string {
       <div class="sub">An automated agent is requesting to run a destructive InsForge operation.</div>
       <div class="cmd">$ ${esc(brief.command)}</div>
 
-      <div class="grp">Verified by InsForge · hard rules</div>
+      <div class="grp">${brief.tailored ? 'Verified by InsForge · measured live from your project' : 'Verified by InsForge · hard rules'}</div>
       <section><div class="lbl">What will happen</div><div>${esc(brief.whatHappens)}</div></section>
       <section><div class="lbl">Blast radius</div><div>${esc(brief.blastRadius)}</div></section>
       <section><div class="lbl">Risks</div><ul>${risks}</ul></section>

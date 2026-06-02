@@ -15,6 +15,7 @@
  */
 
 import type { OperationContext, RiskAssessment } from './risk-registry.js';
+import type { LiveFacts } from './inspect.js';
 
 /** What the calling agent told us about the change (any field may be absent). */
 export interface AgentBrief {
@@ -41,6 +42,8 @@ export interface Brief {
   agent: AgentBrief;
   /** True if the agent supplied any part of its brief. */
   hasAgentBrief: boolean;
+  /** True when whatHappens/blastRadius were measured live against the project. */
+  tailored: boolean;
 }
 
 const clean = (s: string | null | undefined): string | null => (s && s.trim() ? s.trim() : null);
@@ -50,6 +53,7 @@ export function buildBrief(
   risk: RiskAssessment,
   command: string,
   agentInput: AgentBrief,
+  live?: LiveFacts | null,
 ): Brief {
   const agent: AgentBrief = {
     reason: clean(agentInput.reason),
@@ -59,8 +63,9 @@ export function buildBrief(
   return {
     title: risk.title,
     severity: risk.severity,
-    whatHappens: risk.whatHappens,
-    blastRadius: risk.blastRadius,
+    // Prefer facts measured live against the project; fall back to generic rule text.
+    whatHappens: live?.whatHappens ?? risk.whatHappens,
+    blastRadius: live?.blastRadius ?? risk.blastRadius,
     risks: [risk.risk],
     guidance:
       risk.severity === 'critical'
@@ -69,5 +74,6 @@ export function buildBrief(
     command,
     agent,
     hasAgentBrief: Boolean(agent.reason || agent.impact || agent.recommendation),
+    tailored: Boolean(live),
   };
 }

@@ -11,6 +11,7 @@
 import type { Command } from 'commander';
 import { assess, type OperationContext, type RiskAssessment } from './risk-registry.js';
 import { buildBrief, type AgentBrief } from './brief.js';
+import { inspectSqlTarget } from './inspect.js';
 import { requestApproval } from './approval-server.js';
 import { audit } from './audit.js';
 
@@ -122,7 +123,14 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
     process.exit(2);
   }
 
-  const brief = buildBrief(ctx, risk, command, agent);
+  // Tailor the authoritative facts to the real project by inspecting it live
+  // (read-only, fail-open: null → generic rule text; never changes the verdict).
+  let live = null;
+  if (path === 'db query' && typeof args[0] === 'string') {
+    live = await inspectSqlTarget(args[0]);
+  }
+
+  const brief = buildBrief(ctx, risk, command, agent, live);
 
   const result = await requestApproval(brief);
   audit({ ...base, decision: result });

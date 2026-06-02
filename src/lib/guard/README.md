@@ -48,8 +48,15 @@ insforge --reason "<why>" <cmd>  →  parse  →  [preAction: guardHook]  →  a
   SQL inspection for `db query` (DROP / TRUNCATE / unfiltered DELETE-UPDATE /
   ALTER…DROP / RLS changes). Classifies the *real operation params*, not the raw
   argv. A destructive-verb catch-all covers unregistered `*-delete` commands.
-- `brief.ts` — combines authoritative rule facts with the agent's structured
-  brief (`--reason` / `--impact` / `--recommendation`). No LLM call.
+- `inspect.ts` — read-only **live introspection** of the linked project so the
+  facts are about the *actual* target: real row count, size, and the real
+  dependents (incoming foreign keys / dependent views / RLS policies) that will
+  break. Measured by InsForge via the same `runRawSql` path `db query` uses (the
+  agent can't fake it). **Fail-open** with a 5s timeout: any error → generic rule
+  text, and it never changes the verdict.
+- `brief.ts` — combines authoritative rule facts (tailored live when available)
+  with the agent's structured brief (`--reason` / `--impact` / `--recommendation`).
+  No LLM call.
 - `approval-server.ts` — single-use localhost HTTP server + browser open; serves
   the card in two groups (rule facts + InsForge guidance · the agent's intent /
   implications / recommendation) and blocks until a click. **Fail-closed**: any
