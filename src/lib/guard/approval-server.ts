@@ -48,55 +48,71 @@ function renderPage(brief: Brief): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>InsForge — Human approval required</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    margin: 0; background: #0b0d12; color: #e7e9ee; display: flex; min-height: 100vh;
-    align-items: center; justify-content: center; padding: 24px; }
-  .card { width: 100%; max-width: 620px; background: #14171f; border: 1px solid #232733;
-    border-radius: 14px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
-  .bar { height: 5px; background: ${color}; }
-  .pad { padding: 24px 26px; }
-  .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .08em;
-    text-transform: uppercase; color: #fff; background: ${color}; padding: 4px 9px;
-    border-radius: 999px; }
-  h1 { font-size: 21px; margin: 14px 0 4px; }
-  .sub { color: #8b93a7; font-size: 13px; margin-bottom: 18px; }
-  .cmd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
-    background: #0b0d12; border: 1px solid #232733; border-radius: 8px; padding: 11px 13px;
-    color: #d7dbe6; white-space: pre-wrap; word-break: break-word; margin-bottom: 18px; }
-  section { margin: 14px 0; }
-  .lbl { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-    color: #8b93a7; margin-bottom: 4px; }
-  ul { margin: 6px 0 0; padding-left: 20px; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@700;800&display=swap');
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; line-height: 1.55; margin: 0; min-height: 100vh; padding: 28px;
+    color: #e8e8e8; background: #000;
+    background-image: radial-gradient(900px 520px at 50% -12%, rgba(110,231,183,.07), transparent 70%);
+    display: flex; align-items: center; justify-content: center; }
+  .card { width: 100%; max-width: 600px; background: #141414; border: 1px solid #262626;
+    border-radius: 16px; overflow: hidden; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
+  .bar { height: 3px; background: ${color}; }
+  .pad { padding: 22px 24px 24px; }
+  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; }
+  .brand .wm { font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 16px;
+    letter-spacing: -.01em; color: #fff; }
+  .tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .09em;
+    text-transform: uppercase; color: ${color}; background: ${color}1a;
+    border: 1px solid ${color}55; padding: 4px 9px; border-radius: 999px; }
+  h1 { font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 700;
+    letter-spacing: -.02em; margin: 13px 0 4px; color: #fff; }
+  .sub { color: #999; font-size: 13px; margin-bottom: 18px; }
+  .cmd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    background: #0a0a0a; border: 1px solid #262626; border-radius: 9px; padding: 11px 13px;
+    color: #e8e8e8; white-space: pre-wrap; word-break: break-word; }
+  section { margin: 13px 0; }
+  .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+    color: #777; margin-bottom: 4px; }
+  ul { margin: 6px 0 0; padding-left: 18px; }
   li { margin: 3px 0; }
-  .rec { background: #0b0d12; border-left: 3px solid ${color}; border-radius: 6px;
+  .rec { background: #0a0a0a; border-left: 3px solid ${color}; border-radius: 7px;
     padding: 10px 13px; }
-  .impact { background: #11161f; border: 1px solid #2a3550; border-radius: 8px;
-    padding: 11px 13px; color: #cdd6ea; }
-  .grp { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-    color: #67708a; margin: 22px 0 6px; padding-top: 14px;
-    border-top: 1px solid #232733; }
+  .impact { background: rgba(110,231,183,.05); border: 1px solid #2c4f41; border-radius: 9px;
+    padding: 11px 13px; color: #d6e8e0; }
+  .grp { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    color: #777; margin: 22px 0 8px; padding-top: 16px; border-top: 1px solid #1f1f1f; }
+  .grp.if { color: #6ee7b7; }
   .warn { color: #f0b34a; }
-  .row { display: flex; gap: 12px; margin-top: 22px; }
-  button { flex: 1; font-size: 15px; font-weight: 600; padding: 13px; border-radius: 9px;
-    border: 1px solid transparent; cursor: pointer; }
-  .deny { background: #1c2030; color: #e7e9ee; border-color: #2c3243; }
-  .deny:hover { background: #232838; }
+  .row { display: flex; gap: 11px; margin-top: 24px; }
+  button { flex: 1; font-family: Manrope, Inter, sans-serif; font-size: 14.5px; font-weight: 700;
+    padding: 13px; border-radius: 10px; border: 1px solid transparent; cursor: pointer;
+    transition: filter .12s, background .12s; }
+  .deny { background: #1a1a1a; color: #e8e8e8; border-color: #333; }
+  .deny:hover { background: #222; }
   .approve { background: ${color}; color: #fff; }
-  .approve:hover { filter: brightness(1.08); }
-  .done { text-align: center; padding: 40px 26px; }
-  .foot { font-size: 11px; color: #5b6276; margin-top: 16px; text-align: center; }
+  .approve:hover { filter: brightness(1.1); }
+  .done { text-align: center; padding: 44px 26px; }
+  .foot { font-size: 10.5px; color: #6a6a6a; margin-top: 16px; text-align: center; line-height: 1.5; }
 </style></head>
 <body>
   <div class="card" id="card">
     <div class="bar"></div>
     <div class="pad">
+      <div class="brand">
+        <svg width="22" height="24" viewBox="0 0 22 24" fill="none" aria-hidden="true">
+          <path d="M11 1.2 20 6.3V17.7L11 22.8 2 17.7V6.3Z" stroke="#6ee7b7" stroke-width="1.5" fill="rgba(110,231,183,.08)"/>
+          <path d="M7 15.2 11 7.4 15 15.2" stroke="#6ee7b7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="wm">InsForge</span>
+      </div>
       <span class="tag">${esc(brief.severity)} · human approval required</span>
       <h1>${esc(brief.title)}</h1>
       <div class="sub">An automated agent is requesting to run a destructive InsForge operation.</div>
       <div class="cmd">$ ${esc(brief.command)}</div>
 
-      <div class="grp">${brief.tailored ? 'Verified by InsForge · measured live from your project' : 'Verified by InsForge · hard rules'}</div>
+      <div class="grp if">${brief.tailored ? 'Verified by InsForge · measured live from your project' : 'Verified by InsForge · hard rules'}</div>
       <section><div class="lbl">What will happen</div><div>${esc(brief.whatHappens)}</div></section>
       <section><div class="lbl">Blast radius</div><div>${esc(brief.blastRadius)}</div></section>
       <section><div class="lbl">Risks</div><ul>${risks}</ul></section>
