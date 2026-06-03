@@ -31,109 +31,129 @@ function esc(s: string): string {
 }
 
 function renderPage(brief: Brief): string {
-  const color = SEVERITY_COLOR[brief.severity] ?? '#dc2626';
-  const risks = brief.risks.map((r) => `<li>${esc(r)}</li>`).join('');
-  const sec = (label: string, val: string) =>
-    `<section><div class="lbl">${label}</div><div>${esc(val)}</div></section>`;
-  const agentBlock = brief.hasAgentBrief
+  const color = SEVERITY_COLOR[brief.severity] ?? '#ef4444';
+  const sevLabel = brief.severity.charAt(0).toUpperCase() + brief.severity.slice(1);
+  const fact = (k: string, v: string) =>
+    `<div class="fact"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`;
+  const agentRow = (k: string, v: string) =>
+    `<div class="fact"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`;
+  const agentBody = brief.hasAgentBrief
     ? [
-        brief.agent.reason ? sec('Intent — what &amp; why', brief.agent.reason) : '',
-        brief.agent.impact ? sec('Implications', brief.agent.impact) : '',
-        brief.agent.recommendation
-          ? `<section><div class="lbl">Agent&#39;s recommendation</div><div class="rec">${esc(brief.agent.recommendation)}</div></section>`
-          : '',
+        brief.agent.reason ? agentRow('Intent', brief.agent.reason) : '',
+        brief.agent.impact ? agentRow('Implications', brief.agent.impact) : '',
+        brief.agent.recommendation ? agentRow('Recommends', brief.agent.recommendation) : '',
       ].join('')
-    : `<section><div class="warn">⚠️ The agent provided no explanation for this destructive operation. Treat with extra caution.</div></section>`;
+    : `<div class="warn">⚠ No explanation was provided for this destructive operation — treat with extra caution.</div>`;
+
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>InsForge — Human approval required</title>
+<title>InsForge — approval required</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@700;800&display=swap');
-  :root { color-scheme: dark; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap');
+  :root { color-scheme: dark; --mint: #6ee7b7; }
   * { box-sizing: border-box; }
   body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 15px; line-height: 1.55; margin: 0; min-height: 100vh; padding: 28px;
+    font-size: 15px; line-height: 1.55; margin: 0; min-height: 100vh; padding: 32px 24px;
     color: #e8e8e8; background: #000;
-    background-image: radial-gradient(900px 520px at 50% -12%, rgba(110,231,183,.07), transparent 70%);
-    display: flex; align-items: center; justify-content: center; }
-  .card { width: 100%; max-width: 600px; background: #141414; border: 1px solid #262626;
-    border-radius: 16px; overflow: hidden; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
-  .bar { height: 3px; background: ${color}; }
+    background-image:
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px),
+      radial-gradient(760px 440px at 50% -8%, rgba(110,231,183,.10), transparent 72%);
+    background-size: 44px 44px, 44px 44px, 100% 100%;
+    display: flex; align-items: flex-start; justify-content: center; }
+  .card { width: 100%; max-width: 560px; background: #121212; border: 1px solid #242424;
+    border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.65); }
+  .bar { height: 3px; background: linear-gradient(90deg, ${color}, ${color}66); }
   .pad { padding: 22px 24px 24px; }
-  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; }
-  .brand .wm { font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 16px;
-    letter-spacing: -.01em; color: #fff; }
-  .tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .09em;
-    text-transform: uppercase; color: ${color}; background: ${color}1a;
-    border: 1px solid ${color}55; padding: 4px 9px; border-radius: 999px; }
-  h1 { font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 700;
-    letter-spacing: -.02em; margin: 13px 0 4px; color: #fff; }
-  .sub { color: #999; font-size: 13px; margin-bottom: 18px; }
+  .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand .wm { font-family: Manrope; font-weight: 800; font-size: 16px; letter-spacing: -.01em; color: #fff; }
+  .tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: ${color}; background: ${color}14; border: 1px solid ${color}40; padding: 4px 10px; border-radius: 999px; }
+  h1 { font-family: Manrope; font-size: 23px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px; color: #fff; }
+  .sub { color: #9a9a9a; font-size: 13.5px; margin: 0 0 16px; }
   .cmd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
-    background: #0a0a0a; border: 1px solid #262626; border-radius: 9px; padding: 11px 13px;
-    color: #e8e8e8; white-space: pre-wrap; word-break: break-word; }
-  section { margin: 13px 0; }
-  .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-    color: #777; margin-bottom: 4px; }
-  ul { margin: 6px 0 0; padding-left: 18px; }
-  li { margin: 3px 0; }
-  .rec { background: #0a0a0a; border-left: 3px solid ${color}; border-radius: 7px;
-    padding: 10px 13px; }
-  .impact { background: rgba(110,231,183,.05); border: 1px solid #2c4f41; border-radius: 9px;
-    padding: 11px 13px; color: #d6e8e0; }
-  .grp { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
-    color: #777; margin: 22px 0 8px; padding-top: 16px; border-top: 1px solid #1f1f1f; }
-  .grp.if { color: #6ee7b7; }
-  .warn { color: #f0b34a; }
-  .row { display: flex; gap: 11px; margin-top: 24px; }
-  button { flex: 1; font-family: Manrope, Inter, sans-serif; font-size: 14.5px; font-weight: 700;
-    padding: 13px; border-radius: 10px; border: 1px solid transparent; cursor: pointer;
-    transition: filter .12s, background .12s; }
-  .deny { background: #1a1a1a; color: #e8e8e8; border-color: #333; }
-  .deny:hover { background: #222; }
-  .approve { background: ${color}; color: #fff; }
-  .approve:hover { filter: brightness(1.1); }
-  .done { text-align: center; padding: 44px 26px; }
-  .foot { font-size: 10.5px; color: #6a6a6a; margin-top: 16px; text-align: center; line-height: 1.5; }
+    background: #0a0a0a; border: 1px solid #242424; border-radius: 10px; padding: 12px 14px;
+    color: #f0f0f0; white-space: pre-wrap; word-break: break-word; }
+  .caption { display: flex; align-items: center; gap: 7px; color: var(--mint);
+    font-size: 11.5px; font-weight: 500; margin: 18px 0 2px; }
+  .caption .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint);
+    box-shadow: 0 0 8px var(--mint); }
+  .facts { margin-top: 8px; }
+  .fact { display: grid; grid-template-columns: 116px 1fr; gap: 18px; padding: 12px 0; border-top: 1px solid #1c1c1c; }
+  .fact:first-child { border-top: none; }
+  .k { color: #888; font-size: 13px; }
+  .v { color: #e8e8e8; }
+  .callout { margin: 16px 0 4px; padding: 13px 15px; border-radius: 12px;
+    background: rgba(110,231,183,.055); border: 1px solid rgba(110,231,183,.2); }
+  .callout .h { font-family: Manrope; font-weight: 700; font-size: 12px; letter-spacing: .02em;
+    color: var(--mint); margin-bottom: 5px; }
+  .callout .t { color: #d2ece2; font-size: 14px; }
+  .agent { margin: 16px 0 4px; padding: 6px 15px 12px; border-radius: 12px;
+    background: #0d0d0d; border: 1px solid #222; }
+  .agent .h { display: flex; align-items: center; gap: 7px; font-family: Manrope; font-weight: 700;
+    font-size: 12px; color: #cacaca; padding: 12px 0 2px; }
+  .agent .h .dot { width: 6px; height: 6px; border-radius: 50%; background: #8a8a8a; }
+  .agent .fact { grid-template-columns: 104px 1fr; padding: 10px 0; }
+  .warn { color: #f0b34a; font-size: 13.5px; padding: 10px 0; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 22px; }
+  button { font-family: Manrope; font-size: 14.5px; font-weight: 700; padding: 13px;
+    border-radius: 11px; border: 1px solid transparent; cursor: pointer; transition: all .12s; }
+  .deny { background: #fff; color: #0a0a0a; }
+  .deny:hover { background: #e6e6e6; }
+  .approve { background: transparent; color: #ff7a7a; border-color: #4d2222; }
+  .approve:hover { background: rgba(239,68,68,.12); border-color: #6b2c2c; }
+  .foot { font-size: 11px; color: #6a6a6a; margin: 16px 0 0; line-height: 1.6; }
+  .done { text-align: center; padding: 48px 26px; }
+  .done .ok { color: var(--mint); }
 </style></head>
 <body>
   <div class="card" id="card">
     <div class="bar"></div>
     <div class="pad">
-      <div class="brand">
-        <svg width="22" height="24" viewBox="0 0 22 24" fill="none" aria-hidden="true">
-          <path d="M11 1.2 20 6.3V17.7L11 22.8 2 17.7V6.3Z" stroke="#6ee7b7" stroke-width="1.5" fill="rgba(110,231,183,.08)"/>
-          <path d="M7 15.2 11 7.4 15 15.2" stroke="#6ee7b7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span class="wm">InsForge</span>
+      <div class="top">
+        <div class="brand">
+          <svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true">
+            <g fill="#6ee7b7"><rect x="0" y="8" width="4" height="12" rx="1.6"/>
+            <rect x="7" y="2.5" width="4" height="17.5" rx="1.6"/>
+            <rect x="14" y="11" width="4" height="9" rx="1.6"/></g>
+          </svg>
+          <span class="wm">InsForge</span>
+        </div>
+        <span class="tag">${esc(sevLabel)}</span>
       </div>
-      <span class="tag">${esc(brief.severity)} · human approval required</span>
+
       <h1>${esc(brief.title)}</h1>
-      <div class="sub">An automated agent is requesting to run a destructive InsForge operation.</div>
+      <div class="sub">A coding agent wants to run a destructive operation. Approve only if you intend it.</div>
       <div class="cmd">$ ${esc(brief.command)}</div>
 
-      <div class="grp if">${brief.tailored ? 'Verified by InsForge · measured live from your project' : 'Verified by InsForge · hard rules'}</div>
-      <section><div class="lbl">What will happen</div><div>${esc(brief.whatHappens)}</div></section>
-      <section><div class="lbl">Blast radius</div><div>${esc(brief.blastRadius)}</div></section>
-      <section><div class="lbl">Risks</div><ul>${risks}</ul></section>
-      ${brief.userImpact ? `<section><div class="lbl">What this means for your users</div><div class="impact">${esc(brief.userImpact)}</div></section>` : ''}
-      <section><div class="lbl">InsForge guidance</div><div class="rec">${esc(brief.guidance)}</div></section>
+      ${brief.tailored ? '<div class="caption"><span class="dot"></span>Measured from your project just now</div>' : ''}
+      <div class="facts">
+        ${fact('What happens', brief.whatHappens)}
+        ${fact('Blast radius', brief.blastRadius)}
+        ${fact('Risk', brief.risks.join(' '))}
+      </div>
 
-      <div class="grp">From the agent · intent &amp; implications</div>
-      ${agentBlock}
+      ${brief.userImpact ? `<div class="callout"><div class="h">Impact on your users</div><div class="t">${esc(brief.userImpact)}</div></div>` : ''}
+
+      <div class="agent">
+        <div class="h"><span class="dot"></span>Agent&#39;s reasoning</div>
+        ${agentBody}
+      </div>
 
       <div class="row">
-        <button class="deny" onclick="decide('deny')">Deny</button>
         <button class="approve" onclick="decide('approve')">Approve &amp; run</button>
+        <button class="deny" onclick="decide('deny')">Deny</button>
       </div>
-      <div class="foot">Verdict set by InsForge hard rules · the agent can explain but cannot downgrade it · this window blocks the CLI until you choose</div>
+      <div class="foot">${esc(brief.guidance)} The agent can explain its intent but cannot change this verdict. This window blocks the CLI until you choose.</div>
     </div>
   </div>
 <script>
   function decide(d) {
     fetch('/decision?d=' + d, { method: 'POST' }).then(function () {
       document.getElementById('card').innerHTML =
-        '<div class="bar"></div><div class="done"><h1>' +
+        '<div class="bar"></div><div class="done"><h1 class="' +
+        (d === 'approve' ? 'ok' : '') + '">' +
         (d === 'approve' ? 'Approved — running now.' : 'Denied — nothing ran.') +
         '</h1><div class="sub">You can close this window.</div></div>';
     });
