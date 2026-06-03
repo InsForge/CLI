@@ -99,6 +99,7 @@ are optional enrichments. Each has an env fallback.
 | `INSFORGE_GUARD_REQUIRE_BRIEF` | `1` = always require a brief; `0` = never (go straight to page). Default: require for non-interactive callers. |
 | `INSFORGE_GUARD_BYPASS=1` | Skip approval (audited as `bypassed`) — for opted-in automation. |
 | `INSFORGE_GUARD_OPEN=0` | Print the approval link only; don't auto-open a browser (headless). |
+| `INSFORGE_GUARD_TIMEOUT_MS` | Approval window in ms before fail-closed deny (default 120000). |
 
 ## Exit codes (when blocked)
 

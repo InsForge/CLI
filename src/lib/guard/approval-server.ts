@@ -16,7 +16,12 @@ import type { Brief } from './brief.js';
 
 export type ApprovalResult = 'approved' | 'denied' | 'timeout';
 
-const TIMEOUT_MS = 120_000;
+// Approval window. Override with INSFORGE_GUARD_TIMEOUT_MS (e.g. a longer window
+// for a human who isn't watching the terminal). Defaults to 120s, fail-closed.
+const TIMEOUT_MS = (() => {
+  const v = parseInt(process.env.INSFORGE_GUARD_TIMEOUT_MS ?? '', 10);
+  return Number.isFinite(v) && v > 0 ? v : 120_000;
+})();
 
 const SEVERITY_COLOR: Record<string, string> = {
   safe: '#16a34a',
