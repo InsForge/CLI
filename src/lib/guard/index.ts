@@ -48,7 +48,7 @@ function shouldRequireBrief(): boolean {
  * produce one. The hard-rule STOP still applies on the re-run.
  */
 function renderNudge(command: string, risk: RiskAssessment): string {
-  const sub = command.replace(/^insforge\s*/, '');
+  const sub = command.replace(/^npx @insforge\/cli\s*/, '');
   return [
     '',
     '  🛑 InsForge guard — destructive operation detected (NOT run):',
@@ -60,7 +60,7 @@ function renderNudge(command: string, risk: RiskAssessment): string {
     '',
     '  Re-run the SAME command with a human-readable brief:',
     '',
-    '    insforge \\',
+    '    npx @insforge/cli \\',
     '      --reason         "what this does and why" \\',
     '      --impact         "who/what is affected · data loss · reversibility" \\',
     '      --recommendation "your recommendation to the approver" \\',
@@ -89,8 +89,9 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
   if (risk.severity === 'safe') return; // never interrupt safe operations
 
   // Quote args containing whitespace so the displayed/echoed command is paste-ready.
+  // Use the canonical public invocation (matches how agents/docs call the CLI).
   const quoted = args.map((a) => (/\s/.test(a) ? `"${a}"` : a));
-  const command = `insforge ${path} ${quoted.join(' ')}`.trim();
+  const command = `npx @insforge/cli ${path} ${quoted.join(' ')}`.trim();
   const base = { ts: new Date().toISOString(), path, command, kind: risk.kind, severity: risk.severity };
 
   // Explicit, audited bypass for automation that has opted in.

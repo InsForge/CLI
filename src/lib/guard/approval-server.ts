@@ -99,10 +99,10 @@ function renderPage(brief: Brief): string {
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 22px; }
   button { font-family: Manrope; font-size: 14.5px; font-weight: 700; padding: 13px;
     border-radius: 11px; border: 1px solid transparent; cursor: pointer; transition: all .12s; }
-  .deny { background: #fff; color: #0a0a0a; }
-  .deny:hover { background: #e6e6e6; }
-  .approve { background: transparent; color: #ff7a7a; border-color: #4d2222; }
-  .approve:hover { background: rgba(239,68,68,.12); border-color: #6b2c2c; }
+  .deny { background: #1c1c1c; color: #ededed; border-color: #383838; }
+  .deny:hover { background: #262626; border-color: #4a4a4a; }
+  .approve { background: ${color}; color: #fff; border-color: ${color}; }
+  .approve:hover { filter: brightness(1.08); }
   .foot { font-size: 11px; color: #6a6a6a; margin: 16px 0 0; line-height: 1.6; }
   .done { text-align: center; padding: 48px 26px; }
   .done .ok { color: var(--mint); }
@@ -142,8 +142,8 @@ function renderPage(brief: Brief): string {
       </div>
 
       <div class="row">
-        <button class="approve" onclick="decide('approve')">Approve &amp; run</button>
         <button class="deny" onclick="decide('deny')">Deny</button>
+        <button class="approve" onclick="decide('approve')">Approve &amp; run</button>
       </div>
       <div class="foot">${esc(brief.guidance)} The agent can explain its intent but cannot change this verdict. This window blocks the CLI until you choose.</div>
     </div>
