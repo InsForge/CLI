@@ -69,6 +69,18 @@ describe('assess — SQL classification (db query)', () => {
     expect(assess(sql('drop table users')).severity).toBe('critical');
     expect(assess(sql('  TrUnCaTe   payments ')).severity).toBe('critical');
   });
+
+  // Regression: multi-statement payloads must not slip past the guard (greptile P1).
+  it('classifies the most dangerous statement in a multi-statement string', () => {
+    expect(assess(sql('SELECT 1; DROP TABLE users')).severity).toBe('critical');
+    expect(assess(sql('SELECT 1; DELETE FROM users')).kind).toBe('sql.delete_all');
+    expect(assess(sql('INSERT INTO t VALUES (1); TRUNCATE t')).kind).toBe('sql.truncate');
+  });
+
+  it('does not let a WHERE in a sibling statement mask an unfiltered DELETE/UPDATE', () => {
+    expect(assess(sql('DELETE FROM users; SELECT 1 WHERE 1=1')).kind).toBe('sql.delete_all');
+    expect(assess(sql('UPDATE users SET x=1; SELECT 1 WHERE 1=1')).kind).toBe('sql.update_all');
+  });
 });
 
 describe('assess — command-path classification', () => {

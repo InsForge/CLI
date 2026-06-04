@@ -40,7 +40,9 @@ function shouldRequireBrief(): boolean {
   const env = process.env.INSFORGE_GUARD_REQUIRE_BRIEF;
   if (env === '1') return true;
   if (env === '0') return false;
-  return !process.stdout.isTTY;
+  // "Is a human at the keyboard?" — keyed on stdin, not stdout. stdout is often
+  // piped (`... | jq`) while a human is still present; that must not trip the nudge.
+  return !process.stdin.isTTY;
 }
 
 /**
@@ -106,10 +108,11 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
   const effective = applyAgentFlag(risk, agentFlagged);
   if (effective.severity === 'safe') return; // not dangerous, and not agent-flagged
 
-  // Quote args containing whitespace so the displayed/echoed command is paste-ready.
-  // Use the canonical public invocation (matches how agents/docs call the CLI).
-  const quoted = args.map((a) => (/\s/.test(a) ? `"${a}"` : a));
-  const command = `npx @insforge/cli ${path} ${quoted.join(' ')}`.trim();
+  // Reconstruct from the REAL argv (not just path + positional args) so options
+  // like `--unrestricted` aren't dropped — otherwise the echoed/nudge/audit command
+  // could misrepresent or re-run a different operation. Quote tokens with spaces.
+  const quote = (a: string) => (/\s/.test(a) ? `"${a}"` : a);
+  const command = `npx @insforge/cli ${process.argv.slice(2).map(quote).join(' ')}`.trim();
   const base = { ts: new Date().toISOString(), path, command, kind: effective.kind, severity: effective.severity };
 
   // Explicit, audited bypass for automation that has opted in.

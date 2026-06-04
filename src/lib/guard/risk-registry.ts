@@ -45,12 +45,13 @@ const SAFE: RiskAssessment = {
 /** Verbs that are destructive by default — defense-in-depth catch-all. */
 const DESTRUCTIVE_VERBS = ['delete', 'destroy', 'remove', 'drop', 'purge', 'wipe'];
 
-/**
- * Inspect a raw SQL string and classify the most dangerous statement in it.
- * This looks at the actual operation, not the command path.
- */
-function classifySql(sql: string): RiskAssessment {
-  const s = sql.trim();
+const SEV_RANK: Record<Severity, number> = { safe: 0, high: 1, critical: 2 };
+
+/** Classify a SINGLE SQL statement. `hasWhere` is scoped to this statement only,
+ *  so a WHERE in a sibling statement can't mask an unfiltered DELETE/UPDATE. */
+function classifyStatement(stmt: string): RiskAssessment {
+  const s = stmt.trim();
+  if (!s) return SAFE;
   const upper = s.toUpperCase();
   const hasWhere = /\bWHERE\b/i.test(s);
 
@@ -126,6 +127,26 @@ function classifySql(sql: string): RiskAssessment {
   }
   // SELECT / INSERT / CREATE / etc. — not destructive.
   return SAFE;
+}
+
+/**
+ * Inspect a raw SQL string and classify the MOST dangerous statement in it.
+ *
+ * Splitting on `;` and classifying each statement independently is what stops a
+ * multi-statement bypass: `SELECT 1; DROP TABLE users` must not read as safe just
+ * because it starts with SELECT, and `DELETE FROM t; SELECT 1 WHERE x` must not
+ * have its unfiltered DELETE masked by the later WHERE. We take the highest
+ * severity across all statements. (Naive `;` split can over-trigger on semicolons
+ * inside string literals — that errs toward MORE gating, which is safe.)
+ */
+function classifySql(sql: string): RiskAssessment {
+  const statements = sql.split(';').map((p) => p.trim()).filter(Boolean);
+  let worst = SAFE;
+  for (const st of statements) {
+    const r = classifyStatement(st);
+    if (SEV_RANK[r.severity] > SEV_RANK[worst.severity]) worst = r;
+  }
+  return worst;
 }
 
 /** Explicit, declarative descriptors keyed by command path. */

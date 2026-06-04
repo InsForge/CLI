@@ -90,6 +90,12 @@ const QUALIFIED = `(?:${IDENT}\\.)?${IDENT}`;
  *  can't confidently identify a single table (then we fall back to generic). */
 function parseTarget(sql: string): Target | null {
   const s = sql.trim();
+
+  // Multi-table DROP/TRUNCATE (e.g. "DROP TABLE a, b") — we can only introspect a
+  // single target accurately, so showing facts for just one would mislead. Bail to
+  // the generic rule text instead.
+  if (/^(?:DROP\s+TABLE(?:\s+IF\s+EXISTS)?|TRUNCATE(?:\s+TABLE)?)\b[^;]*,/i.test(s)) return null;
+
   const grab = (m: RegExpMatchArray | null): Omit<Target, 'op'> | null => {
     if (!m) return null;
     // groups: 1=schema(optional) 2=table  (from QUALIFIED)

@@ -10,6 +10,7 @@
  */
 
 import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import open from 'open';
 import type { Brief } from './brief.js';
@@ -35,7 +36,7 @@ function esc(s: string): string {
   );
 }
 
-function renderPage(brief: Brief): string {
+function renderPage(brief: Brief, token: string): string {
   const color = SEVERITY_COLOR[brief.severity] ?? '#ef4444';
   const sevLabel = brief.severity.charAt(0).toUpperCase() + brief.severity.slice(1);
   const fact = (k: string, v: string) =>
@@ -157,8 +158,9 @@ function renderPage(brief: Brief): string {
     </div>
   </div>
 <script>
+  var TOKEN = ${JSON.stringify(token)};
   function decide(d) {
-    fetch('/decision?d=' + d, { method: 'POST' }).then(function () {
+    fetch('/decision?d=' + encodeURIComponent(d) + '&t=' + encodeURIComponent(TOKEN), { method: 'POST' }).then(function () {
       document.getElementById('card').innerHTML =
         '<div class="bar"></div><div class="done"><h1 class="' +
         (d === 'approve' ? 'ok' : '') + '">' +
@@ -176,23 +178,37 @@ function renderPage(brief: Brief): string {
  */
 export function requestApproval(brief: Brief): Promise<ApprovalResult> {
   return new Promise((resolve) => {
+    // Per-request CSRF token: embedded in the page, required on the POST. Without
+    // it, any JS in the user's browser could POST /decision?d=approve and silently
+    // approve (a "simple" cross-origin request needs no preflight). The decision
+    // only counts if it carries this unguessable, single-use token.
+    const token = randomBytes(24).toString('hex');
     let settled = false;
+    // eslint-disable-next-line prefer-const -- assigned after the server starts listening
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (r: ApprovalResult, server?: ReturnType<typeof createServer>) => {
       if (settled) return;
       settled = true;
+      if (timer) clearTimeout(timer); // don't keep the process alive after deciding
       try { server?.close(); } catch { /* ignore */ }
       resolve(r);
     };
 
     const server = createServer((req, res) => {
-      const url = req.url ?? '/';
-      if (req.method === 'POST' && url.startsWith('/decision')) {
-        const approved = url.includes('d=approve');
+      let parsed: URL;
+      try { parsed = new URL(req.url ?? '/', 'http://127.0.0.1'); } catch { res.writeHead(400).end(); return; }
+      if (req.method === 'POST' && parsed.pathname === '/decision') {
+        // Reject anything without the exact token — fail-closed, never approve.
+        if (parsed.searchParams.get('t') !== token) {
+          res.writeHead(403, { 'content-type': 'text/plain' }).end('forbidden');
+          return;
+        }
+        const decision = parsed.searchParams.get('d');
         res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
-        finish(approved ? 'approved' : 'denied', server);
+        finish(decision === 'approve' ? 'approved' : 'denied', server);
         return;
       }
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(renderPage(brief));
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(renderPage(brief, token));
     });
 
     server.on('error', () => finish('denied', server)); // fail-closed
@@ -209,6 +225,6 @@ export function requestApproval(brief: Brief): Promise<ApprovalResult> {
       }
     });
 
-    setTimeout(() => finish('timeout', server), TIMEOUT_MS);
+    timer = setTimeout(() => finish('timeout', server), TIMEOUT_MS);
   });
 }
