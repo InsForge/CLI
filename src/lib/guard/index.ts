@@ -9,7 +9,7 @@
  */
 
 import type { Command } from 'commander';
-import { assess, type OperationContext, type RiskAssessment } from './risk-registry.js';
+import { assess, applyAgentFlag, type OperationContext, type RiskAssessment } from './risk-registry.js';
 import { buildBrief, type AgentBrief } from './brief.js';
 import { inspectSqlTarget } from './inspect.js';
 import { requestApproval } from './approval-server.js';
@@ -86,13 +86,23 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
   const ctx: OperationContext = { path, args, opts };
 
   const risk = assess(ctx);
-  if (risk.severity === 'safe') return; // never interrupt safe operations
+
+  // The calling agent may flag an edge case the static rules miss. This is
+  // ESCALATE-ONLY: `--flag-destructive [reason]` can raise a 'safe' verdict to
+  // require human approval, but it can NEVER lower the rule verdict. A buggy or
+  // injected agent cannot use it to skip the gate — only to add one.
+  const flagRaw = thisCommand.opts().flagDestructive as string | boolean | undefined;
+  const agentFlagged = flagRaw !== undefined && flagRaw !== false;
+  const agentFlag = typeof flagRaw === 'string' && flagRaw.trim() ? flagRaw.trim() : null;
+
+  const effective = applyAgentFlag(risk, agentFlagged);
+  if (effective.severity === 'safe') return; // not dangerous, and not agent-flagged
 
   // Quote args containing whitespace so the displayed/echoed command is paste-ready.
   // Use the canonical public invocation (matches how agents/docs call the CLI).
   const quoted = args.map((a) => (/\s/.test(a) ? `"${a}"` : a));
   const command = `npx @insforge/cli ${path} ${quoted.join(' ')}`.trim();
-  const base = { ts: new Date().toISOString(), path, command, kind: risk.kind, severity: risk.severity };
+  const base = { ts: new Date().toISOString(), path, command, kind: effective.kind, severity: effective.severity };
 
   // Explicit, audited bypass for automation that has opted in.
   if (process.env.INSFORGE_GUARD_BYPASS === '1') {
@@ -117,9 +127,10 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
   // and the caller is non-interactive (an agent/CI), don't pop the page — return
   // an instruction telling the agent to reason about the implications and re-run
   // WITH a brief. A human at a TTY proceeds straight to the page instead.
-  const hasReason = Boolean(agent.reason && agent.reason.trim());
+  // An agent flag reason already articulates intent, so it also satisfies the nudge.
+  const hasReason = Boolean((agent.reason && agent.reason.trim()) || agentFlag);
   if (!hasReason && shouldRequireBrief()) {
-    process.stderr.write(renderNudge(command, risk));
+    process.stderr.write(renderNudge(command, effective));
     audit({ ...base, decision: 'needs_brief' });
     process.exit(2);
   }
@@ -131,7 +142,7 @@ export async function guardHook(thisCommand: Command, actionCommand: Command): P
     live = await inspectSqlTarget(args[0]);
   }
 
-  const brief = buildBrief(ctx, risk, command, agent, live);
+  const brief = buildBrief(ctx, effective, command, agent, live, agentFlag);
 
   const result = await requestApproval(brief);
   audit({ ...base, decision: result });

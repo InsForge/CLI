@@ -193,3 +193,23 @@ export function assess(ctx: OperationContext): RiskAssessment {
 
   return SAFE;
 }
+
+/**
+ * Layer the calling agent's own judgment on top of the static rules.
+ *
+ * ESCALATE-ONLY by construction: a flag can raise a `safe` verdict to `high` (so
+ * the agent can stop itself on an edge case the rules don't recognize), but it
+ * can NEVER lower a verdict the rules already produced. A buggy or prompt-injected
+ * agent therefore cannot use this to skip the gate — only to add one.
+ */
+export function applyAgentFlag(risk: RiskAssessment, flagged: boolean): RiskAssessment {
+  if (!flagged || risk.severity !== 'safe') return risk;
+  return {
+    severity: 'high',
+    kind: 'agent.flagged',
+    title: 'Agent-flagged operation',
+    whatHappens: 'The calling agent flagged this operation as potentially destructive.',
+    blastRadius: 'Not classified by InsForge’s hard rules — review the command and the agent’s reason.',
+    risk: 'Flagged by the agent for human review.',
+  };
+}

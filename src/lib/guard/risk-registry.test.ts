@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assess, type OperationContext } from './risk-registry.js';
+import { applyAgentFlag, assess, type OperationContext, type RiskAssessment } from './risk-registry.js';
 
 /** Build an OperationContext for a `db query <sql>` invocation. */
 const sql = (q: string): OperationContext => ({ path: 'db query', args: [q], opts: {} });
@@ -89,6 +89,38 @@ describe('assess — command-path classification', () => {
     expect(assess(cmd('projects list')).severity).toBe('safe');
     expect(assess(cmd('db tables')).severity).toBe('safe');
     expect(assess(cmd('whoami')).severity).toBe('safe');
+  });
+});
+
+describe('applyAgentFlag — agent escalation (escalate-only)', () => {
+  const safe = assess(sql('SELECT 1'));
+  const dropRisk = assess(sql('DROP TABLE users'));
+  const fnDelete = assess(cmd('functions delete', ['fn'])); // high
+
+  it('escalates a SAFE op to high when the agent flags it', () => {
+    const r = applyAgentFlag(safe, true);
+    expect(r.severity).toBe('high');
+    expect(r.kind).toBe('agent.flagged');
+  });
+
+  it('leaves a SAFE op untouched when not flagged', () => {
+    expect(applyAgentFlag(safe, false)).toEqual(safe);
+    expect(applyAgentFlag(safe, false).severity).toBe('safe');
+  });
+
+  it('NEVER lowers an already-dangerous verdict, flagged or not', () => {
+    // The whole security property: a flag cannot downgrade.
+    expect(applyAgentFlag(dropRisk, true)).toEqual(dropRisk);
+    expect(applyAgentFlag(dropRisk, true).severity).toBe('critical');
+    expect(applyAgentFlag(fnDelete, true)).toEqual(fnDelete);
+    expect(applyAgentFlag(fnDelete, true).severity).toBe('high');
+  });
+
+  it('there is no flag value that produces a safe verdict from a dangerous one', () => {
+    for (const flagged of [true, false]) {
+      const r = applyAgentFlag(dropRisk, flagged) as RiskAssessment;
+      expect(r.severity).not.toBe('safe');
+    }
   });
 });
 

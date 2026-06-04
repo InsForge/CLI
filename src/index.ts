@@ -106,7 +106,8 @@ program
   .option('-y, --yes', 'Skip confirmation prompts')
   .option('--reason <text>', 'Agent: what the operation does and why (intent) — shown to the human approver for destructive operations')
   .option('--impact <text>', 'Agent: implications — who/what is affected, data loss, reversibility — shown on the approval page')
-  .option('--recommendation <text>', 'Agent: your recommendation to the human approver');
+  .option('--recommendation <text>', 'Agent: your recommendation to the human approver')
+  .option('--flag-destructive [reason]', 'Agent: flag this op as destructive for human approval even if InsForge\'s rules consider it safe (escalate-only — cannot downgrade the verdict)');
 
 // Human-in-the-loop guard: a dispatch-pipeline stage that stops dangerous
 // operations for human approval. Lives in the CLI so it protects every caller

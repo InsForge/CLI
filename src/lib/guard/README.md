@@ -89,6 +89,21 @@ insforge \
 `--reason` is the one that satisfies the nudge; `--impact` and `--recommendation`
 are optional enrichments. Each has an env fallback.
 
+## Agent escalation (escalate-only)
+
+The static rules can't know every edge case. The calling agent — which has app
+context the rules don't — can flag an operation the rules consider safe:
+
+```bash
+npx @insforge/cli --flag-destructive "this UPDATE rewrites every tenant's billing config" \
+  db query "UPDATE tenant_config SET plan = 'free'"
+```
+
+This is **escalate-only**: a flag raises a `safe` verdict to `high` (so the agent
+can stop itself), but it can **never lower** a verdict the rules produced. The
+effective severity is `max(hard-rule, agent-flag)` — the agent adds gates, never
+removes them. A buggy or prompt-injected agent therefore can't use it to bypass.
+
 ## Env knobs
 
 | Var | Effect |

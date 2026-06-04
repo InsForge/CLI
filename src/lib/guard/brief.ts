@@ -46,6 +46,8 @@ export interface Brief {
   tailored: boolean;
   /** Product-side, human-observability read of what this means for users (live). */
   userImpact: string | null;
+  /** Why the agent flagged this op as destructive (escalate-only), if it did. */
+  agentFlag: string | null;
 }
 
 const clean = (s: string | null | undefined): string | null => (s && s.trim() ? s.trim() : null);
@@ -56,6 +58,7 @@ export function buildBrief(
   command: string,
   agentInput: AgentBrief,
   live?: LiveFacts | null,
+  agentFlag?: string | null,
 ): Brief {
   const agent: AgentBrief = {
     reason: clean(agentInput.reason),
@@ -78,5 +81,6 @@ export function buildBrief(
     hasAgentBrief: Boolean(agent.reason || agent.impact || agent.recommendation),
     tailored: Boolean(live),
     userImpact: live?.userImpact ?? null,
+    agentFlag: clean(agentFlag),
   };
 }

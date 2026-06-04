@@ -100,6 +100,18 @@ describe('buildBrief — live facts override the generic text', () => {
   });
 });
 
+describe('buildBrief — agent flag', () => {
+  it('carries the agent flag reason through (trimmed)', () => {
+    const b = buildBrief(ctx, criticalRisk, cmd, noAgent, null, '  wipes prod config  ');
+    expect(b.agentFlag).toBe('wipes prod config');
+  });
+
+  it('is null when not flagged or blank', () => {
+    expect(buildBrief(ctx, criticalRisk, cmd, noAgent).agentFlag).toBeNull();
+    expect(buildBrief(ctx, criticalRisk, cmd, noAgent, null, '   ').agentFlag).toBeNull();
+  });
+});
+
 describe('buildBrief — guidance scales with severity', () => {
   it('warns about irreversible loss for critical ops', () => {
     const b = buildBrief(ctx, criticalRisk, cmd, noAgent);

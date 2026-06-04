@@ -101,6 +101,8 @@ function renderPage(brief: Brief): string {
   .agent .h .dot { width: 6px; height: 6px; border-radius: 50%; background: #8a8a8a; }
   .agent .fact { grid-template-columns: 104px 1fr; padding: 10px 0; }
   .warn { color: #f0b34a; font-size: 13.5px; padding: 10px 0; }
+  .flag { color: #f0b34a; font-size: 13.5px; padding: 10px 12px; margin: 8px 0 2px;
+    background: rgba(240,179,74,.08); border: 1px solid rgba(240,179,74,.28); border-radius: 9px; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 22px; }
   button { font-family: Manrope; font-size: 14.5px; font-weight: 700; padding: 13px;
     border-radius: 11px; border: 1px solid transparent; cursor: pointer; transition: all .12s; }
@@ -143,6 +145,7 @@ function renderPage(brief: Brief): string {
 
       <div class="agent">
         <div class="h"><span class="dot"></span>Agent&#39;s reasoning</div>
+        ${brief.agentFlag ? `<div class="flag">⚑ The agent flagged this operation as destructive: ${esc(brief.agentFlag)}</div>` : ''}
         ${agentBody}
       </div>
 
