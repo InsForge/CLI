@@ -11,6 +11,7 @@
 import type { Command } from 'commander';
 import { assess, applyAgentFlag, type OperationContext, type RiskAssessment } from './risk-registry.js';
 import { buildBrief, type AgentBrief } from './brief.js';
+import { guardEnabled } from './enabled.js';
 import { inspectSqlTarget } from './inspect.js';
 import { requestApproval } from './approval-server.js';
 import { audit } from './audit.js';
@@ -80,6 +81,9 @@ function renderNudge(command: string, risk: RiskAssessment): string {
  * block on the approval page before the command's action runs.
  */
 export async function guardHook(thisCommand: Command, actionCommand: Command): Promise<void> {
+  // Rollout switch: disabled by default so shipping is a no-op until opted in.
+  if (!guardEnabled()) return;
+
   const path = commandPath(actionCommand);
   const args = (actionCommand.processedArgs ?? []).map((a) => (Array.isArray(a) ? a.join(' ') : String(a ?? '')));
   const opts = actionCommand.opts() as Record<string, unknown>;

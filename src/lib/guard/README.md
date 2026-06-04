@@ -108,6 +108,7 @@ removes them. A buggy or prompt-injected agent therefore can't use it to bypass.
 
 | Var | Effect |
 |-----|--------|
+| `INSFORGE_GUARD` | **Master switch / source of truth.** `1`/`true`/`on` enables the guard, `0`/`false`/`off` disables. **Defaults to OFF** during rollout — shipping the CLI is a no-op until opted in. Flip `GUARD_DEFAULT_ENABLED` in `enabled.ts` for GA. |
 | `INSFORGE_GUARD_SUMMARY` | Agent intent (env fallback for `--reason`). |
 | `INSFORGE_GUARD_IMPACT` | Agent implications (env fallback for `--impact`). |
 | `INSFORGE_GUARD_RECOMMENDATION` | Agent recommendation (env fallback for `--recommendation`). |
