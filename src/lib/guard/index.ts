@@ -11,6 +11,7 @@
 import type { Command } from 'commander';
 import { assess, applyAgentFlag, type OperationContext, type RiskAssessment } from './risk-registry.js';
 import { buildBrief, type AgentBrief } from './brief.js';
+import { getProjectConfig } from '../config.js';
 import { guardEnabled } from './enabled.js';
 import { inspectSqlTarget } from './inspect.js';
 import { requestApproval } from './approval-server.js';
@@ -82,7 +83,10 @@ function renderNudge(command: string, risk: RiskAssessment): string {
  */
 export async function guardHook(thisCommand: Command, actionCommand: Command): Promise<void> {
   // Rollout switch: disabled by default so shipping is a no-op until opted in.
-  if (!guardEnabled()) return;
+  // Precedence: INSFORGE_GUARD env > persisted `link --guard` setting > default.
+  let storedGuard: boolean | null = null;
+  try { storedGuard = getProjectConfig()?.guard ?? null; } catch { /* fail to default */ }
+  if (!guardEnabled(process.env, storedGuard)) return;
 
   const path = commandPath(actionCommand);
   const args = (actionCommand.processedArgs ?? []).map((a) => (Array.isArray(a) ? a.join(' ') : String(a ?? '')));

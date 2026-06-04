@@ -104,11 +104,26 @@ can stop itself), but it can **never lower** a verdict the rules produced. The
 effective severity is `max(hard-rule, agent-flag)` — the agent adds gates, never
 removes them. A buggy or prompt-injected agent therefore can't use it to bypass.
 
+## Enabling the guard
+
+Off by default (shipping is a no-op). Turn it on **per project** when linking —
+the choice persists in `.insforge/project.json`:
+
+```bash
+npx @insforge/cli link --project-id <id> --org-id <id> --guard     # enable
+npx @insforge/cli link ... --guard off                             # disable
+```
+
+Resolution order (source of truth, highest first):
+**`INSFORGE_GUARD` env → persisted `--guard` setting → default (off)**.
+The env var is the override / kill switch; flip `GUARD_DEFAULT_ENABLED` in
+`enabled.ts` (or wire a remote flag) when the feature goes GA.
+
 ## Env knobs
 
 | Var | Effect |
 |-----|--------|
-| `INSFORGE_GUARD` | **Master switch / source of truth.** `1`/`true`/`on` enables the guard, `0`/`false`/`off` disables. **Defaults to OFF** during rollout — shipping the CLI is a no-op until opted in. Flip `GUARD_DEFAULT_ENABLED` in `enabled.ts` for GA. |
+| `INSFORGE_GUARD` | **Override / kill switch.** `1`/`true`/`on` enables, `0`/`false`/`off` disables — wins over the persisted project setting. |
 | `INSFORGE_GUARD_SUMMARY` | Agent intent (env fallback for `--reason`). |
 | `INSFORGE_GUARD_IMPACT` | Agent implications (env fallback for `--impact`). |
 | `INSFORGE_GUARD_RECOMMENDATION` | Agent recommendation (env fallback for `--recommendation`). |

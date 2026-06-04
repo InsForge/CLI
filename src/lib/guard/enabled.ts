@@ -15,12 +15,19 @@ const ON = new Set(['1', 'true', 'on', 'yes', 'enabled']);
 const OFF = new Set(['0', 'false', 'off', 'no', 'disabled']);
 
 /**
- * Whether the guard should run. `INSFORGE_GUARD` wins when set; otherwise the
- * shipped default applies. Pure + env-injectable for testing.
+ * Whether the guard should run. Precedence (source of truth, highest first):
+ *   1. INSFORGE_GUARD env — override / kill switch
+ *   2. persisted project setting (`link --guard`, stored in .insforge/project.json)
+ *   3. shipped default (off during rollout)
+ * Pure + injectable for testing.
  */
-export function guardEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function guardEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+  stored?: boolean | null,
+): boolean {
   const v = (env.INSFORGE_GUARD ?? '').toString().trim().toLowerCase();
   if (ON.has(v)) return true;
   if (OFF.has(v)) return false;
+  if (typeof stored === 'boolean') return stored;
   return GUARD_DEFAULT_ENABLED;
 }

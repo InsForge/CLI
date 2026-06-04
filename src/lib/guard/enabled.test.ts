@@ -22,4 +22,15 @@ describe('guardEnabled — rollout switch', () => {
   it('falls back to the default for unrecognized values', () => {
     expect(guardEnabled({ INSFORGE_GUARD: 'maybe' })).toBe(GUARD_DEFAULT_ENABLED);
   });
+
+  it('uses the persisted project setting when the env is unset', () => {
+    expect(guardEnabled({}, true)).toBe(true);
+    expect(guardEnabled({}, false)).toBe(false);
+    expect(guardEnabled({}, null)).toBe(GUARD_DEFAULT_ENABLED);
+  });
+
+  it('lets the env override the persisted setting (kill switch / override)', () => {
+    expect(guardEnabled({ INSFORGE_GUARD: '0' }, true)).toBe(false);
+    expect(guardEnabled({ INSFORGE_GUARD: '1' }, false)).toBe(true);
+  });
 });

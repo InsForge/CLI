@@ -102,6 +102,9 @@ export interface ProjectConfig {
    *  the original parent project's identifying fields so name → branch_id
    *  resolution and `branch switch --parent` know where to land back. */
   branched_from?: { project_id: string; project_name: string };
+  /** When set, persists the human-in-the-loop guard enablement for this project
+   *  (set via `link --guard`). The INSFORGE_GUARD env var still overrides it. */
+  guard?: boolean;
 }
 
 // --- Branching ---
