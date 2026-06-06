@@ -30,7 +30,8 @@
     "node": ">=18.0.0"
   },
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.d.ts"
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",

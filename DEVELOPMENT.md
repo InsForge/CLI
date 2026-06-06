@@ -83,7 +83,23 @@ Checklist when changing a command:
 Mention the skill repo update in the CLI PR description so reviewers can
 cross-reference both PRs.
 
-## 4. Release workflow
+## 4. Build output and npm package contents
+
+`npm run build` produces a bundled ESM entry at `dist/index.js` and TypeScript
+declarations at `dist/index.d.ts`.
+
+Source maps are intentionally excluded from npm releases because they increase
+package size and are not required for normal CLI usage.
+
+The npm package intentionally ships only the runtime bundle and declaration
+file. Inspect what would be published with:
+
+```bash
+npm run build
+npm pack --dry-run
+```
+
+## 5. Release workflow
 
 Releases are fully automated via GitHub Actions
 ([`.github/workflows/publish.yml`](.github/workflows/publish.yml)).
