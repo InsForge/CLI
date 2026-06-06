@@ -9,7 +9,7 @@ export default defineConfig({
   target: 'node18',
   outDir: 'dist',
   clean: true,
-  sourcemap: true,
+  sourcemap: process.env.CI !== 'true',
   dts: true,
   splitting: false,
   banner: {

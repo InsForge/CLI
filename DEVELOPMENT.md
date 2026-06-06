@@ -85,16 +85,15 @@ cross-reference both PRs.
 
 ## 4. Build output and npm package contents
 
-`npm run build` produces a bundled ESM entry at `dist/index.js`, TypeScript
-declarations at `dist/index.d.ts`, and a local-only source map at
-`dist/index.js.map`.
+`npm run build` produces a bundled ESM entry at `dist/index.js` and TypeScript
+declarations at `dist/index.d.ts`. Local builds (outside CI) also emit
+`dist/index.js.map` for debugging; CI/release builds skip source map generation.
 
 Source maps are intentionally excluded from npm releases because they increase
 package size and are not required for normal CLI usage. The `files` field in
 `package.json` whitelists only `dist/index.js` and `dist/index.d.ts`, so
-`dist/index.js.map` is never published even though local builds may generate
-it. If you add new build outputs under `dist/`, update `package.json` `files`
-accordingly.
+`dist/index.js.map` is never published. If you add new build outputs under
+`dist/`, update `package.json` `files` accordingly.
 
 Inspect what would be published with:
 
