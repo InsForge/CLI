@@ -35,23 +35,23 @@
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",
-    "@insforge/shared-schemas": "^1.1.52",
+    "@insforge/shared-schemas": "^1.1.55",
     "archiver": "^7.0.1",
     "cli-table3": "^0.6.5",
     "commander": "^13.1.0",
     "open": "^10.1.0",
     "picocolors": "^1.1.1",
-    "posthog-node": "^5.28.9",
+    "posthog-node": "^5.36.3",
     "smol-toml": "^1.6.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/archiver": "^7.0.0",
-    "@types/node": "^22.13.4",
-    "eslint": "^10.0.0",
+    "@types/node": "^22.19.20",
+    "eslint": "^10.4.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.56.0",
-    "vitest": "^4.1.0"
+    "typescript-eslint": "^8.60.1",
+    "vitest": "^4.1.8"
   }
 }
