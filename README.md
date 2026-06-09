@@ -536,104 +536,136 @@ npx @insforge/cli deployments env delete <id>                # delete a variable
 
 ### Payments — `npx @insforge/cli payments`
 
-Manage the Stripe payments foundation for the linked InsForge project. These commands are intended for developers and agents configuring Stripe keys, syncing catalog state, inspecting mirrored customers, and managing products/prices. Runtime checkout and customer portal calls should usually be made from the app via the SDK.
+Manage the payments foundation for the linked InsForge project. Provider-specific commands live under `payments stripe` and `payments razorpay`. These commands are intended for developers and agents configuring provider keys, syncing mirrored provider state, inspecting customers, and managing provider catalog records. Runtime checkout/order/subscription calls should usually be made from the app via the SDK.
 
-#### `npx @insforge/cli payments status`
+#### `npx @insforge/cli payments <provider> status`
 
-Show Stripe key, account, sync, and webhook status for test/live environments.
-
-```bash
-npx @insforge/cli payments status
-npx @insforge/cli payments status --json
-```
-
-#### `npx @insforge/cli payments config`
-
-List, set, or remove Stripe secret keys.
+Show key, account, sync, and webhook status for test/live environments.
 
 ```bash
-npx @insforge/cli payments config
-npx @insforge/cli payments config set test sk_test_xxx
-npx @insforge/cli payments config set live        # prompts securely
-npx @insforge/cli payments config remove test -y
+npx @insforge/cli payments stripe status
+npx @insforge/cli payments razorpay status
+npx @insforge/cli payments stripe status --json
 ```
 
-#### `npx @insforge/cli payments sync`
+#### `npx @insforge/cli payments <provider> config`
 
-Sync Stripe products, prices, customers, and subscriptions from configured environments.
+List, set, or remove provider keys.
 
 ```bash
-npx @insforge/cli payments sync
-npx @insforge/cli payments sync --environment test
-npx @insforge/cli payments sync --environment live --json
+npx @insforge/cli payments stripe config list
+npx @insforge/cli payments stripe config set --environment test sk_test_xxx
+npx @insforge/cli payments stripe config set --environment live        # prompts securely
+npx @insforge/cli payments stripe config remove --environment test -y
+npx @insforge/cli payments razorpay config list
+npx @insforge/cli payments razorpay config set --environment test --key-id rzp_test_xxx --key-secret xxx
+npx @insforge/cli payments razorpay config remove --environment test -y
 ```
 
-#### `npx @insforge/cli payments webhooks configure <environment>`
+#### `npx @insforge/cli payments <provider> sync`
+
+Sync provider catalog, customers, subscriptions, and transaction projections from configured environments.
+
+```bash
+npx @insforge/cli payments stripe sync
+npx @insforge/cli payments stripe sync --environment test
+npx @insforge/cli payments razorpay sync --environment test
+npx @insforge/cli payments stripe sync --environment live --json
+```
+
+#### `npx @insforge/cli payments stripe webhooks configure --environment <environment>`
 
 Create or recreate the InsForge-managed Stripe webhook endpoint for an environment.
 
 ```bash
-npx @insforge/cli payments webhooks configure test
+npx @insforge/cli payments stripe webhooks configure --environment test
 ```
 
-#### `npx @insforge/cli payments catalog --environment <environment>`
+#### Razorpay webhook setup
 
-Inspect mirrored Stripe products and prices for one environment.
+Razorpay webhooks are configured manually in the Razorpay dashboard. Use the InsForge dashboard payments settings dialog to copy the webhook URL and webhook secret, then select the recommended events on Razorpay's website.
+
+#### `npx @insforge/cli payments <provider> catalog --environment <environment>`
+
+Inspect mirrored provider catalog records for one environment.
 
 ```bash
-npx @insforge/cli payments catalog --environment test
-npx @insforge/cli payments catalog --environment test --json
+npx @insforge/cli payments stripe catalog --environment test
+npx @insforge/cli payments razorpay catalog --environment test
+npx @insforge/cli payments stripe catalog --environment test --json
 ```
 
-#### `npx @insforge/cli payments customers --environment <environment>`
+#### `npx @insforge/cli payments <provider> customers --environment <environment>`
 
-List mirrored Stripe customers for admin/debugging workflows.
+List mirrored provider customers for admin/debugging workflows.
 
 ```bash
-npx @insforge/cli payments customers --environment test
-npx @insforge/cli payments customers --environment test --limit 20 --json
+npx @insforge/cli payments stripe customers --environment test
+npx @insforge/cli payments razorpay customers --environment test
+npx @insforge/cli payments stripe customers --environment test --limit 20 --json
 ```
 
-#### `npx @insforge/cli payments products`
+#### `npx @insforge/cli payments stripe products`
 
 List, inspect, create, update, or delete Stripe products.
 
 ```bash
-npx @insforge/cli payments products list --environment test
-npx @insforge/cli payments products get prod_123 --environment test
-npx @insforge/cli payments products create --environment test --name "Pro Plan"
-npx @insforge/cli payments products update prod_123 --environment test --description "Updated"
-npx @insforge/cli payments products delete prod_123 --environment test -y
+npx @insforge/cli payments stripe products list --environment test
+npx @insforge/cli payments stripe products get prod_123 --environment test
+npx @insforge/cli payments stripe products create --environment test --name "Pro Plan"
+npx @insforge/cli payments stripe products update prod_123 --environment test --description "Updated"
+npx @insforge/cli payments stripe products delete prod_123 --environment test -y
 ```
 
-#### `npx @insforge/cli payments prices`
+#### `npx @insforge/cli payments stripe prices`
 
 List, inspect, create, update, or archive Stripe prices.
 
 ```bash
-npx @insforge/cli payments prices list --environment test
-npx @insforge/cli payments prices create --environment test --product prod_123 --currency usd --unit-amount 2000
-npx @insforge/cli payments prices create --environment test --product prod_123 --currency usd --unit-amount 2000 --interval month
-npx @insforge/cli payments prices update price_123 --environment test --active false
-npx @insforge/cli payments prices archive price_123 --environment test
+npx @insforge/cli payments stripe prices list --environment test
+npx @insforge/cli payments stripe prices create --environment test --product prod_123 --currency usd --unit-amount 2000
+npx @insforge/cli payments stripe prices create --environment test --product prod_123 --currency usd --unit-amount 2000 --interval month
+npx @insforge/cli payments stripe prices update price_123 --environment test --active false
+npx @insforge/cli payments stripe prices archive price_123 --environment test
 ```
 
-#### `npx @insforge/cli payments subscriptions`
+#### `npx @insforge/cli payments razorpay items`
 
-List mirrored Stripe subscriptions for admin/debugging workflows.
+List, create, or update Razorpay items.
 
 ```bash
-npx @insforge/cli payments subscriptions --environment test
-npx @insforge/cli payments subscriptions --environment test --subject-type team --subject-id team_123
+npx @insforge/cli payments razorpay items list --environment test
+npx @insforge/cli payments razorpay items create --environment test --name "Pro Plan" --amount 200000 --currency inr
+npx @insforge/cli payments razorpay items update item_123 --environment test --active false
 ```
 
-#### `npx @insforge/cli payments history`
+#### `npx @insforge/cli payments razorpay plans`
 
-List mirrored payment history for admin/debugging workflows.
+List or create Razorpay subscription plans.
 
 ```bash
-npx @insforge/cli payments history --environment test
-npx @insforge/cli payments history --environment test --limit 20 --json
+npx @insforge/cli payments razorpay plans list --environment test
+npx @insforge/cli payments razorpay plans create --environment test --period monthly --interval 1 --item-name "Pro Plan" --item-amount 200000 --item-currency inr
+```
+
+#### `npx @insforge/cli payments <provider> subscriptions --environment <environment>`
+
+List mirrored provider subscriptions for admin/debugging workflows.
+
+```bash
+npx @insforge/cli payments stripe subscriptions --environment test
+npx @insforge/cli payments razorpay subscriptions --environment test
+npx @insforge/cli payments stripe subscriptions --environment test --subject-type team --subject-id team_123
+```
+
+#### `npx @insforge/cli payments <provider> transactions --environment <environment>`
+
+List mirrored payment transactions for admin/debugging workflows. `--subject-type` and `--subject-id` refer to the app billing subject passed to InsForge, such as `team:team_123` or `user:user_123`; they are not provider customer, payment, order, or subscription ids.
+
+```bash
+npx @insforge/cli payments stripe transactions --environment test
+npx @insforge/cli payments razorpay transactions --environment test
+npx @insforge/cli payments stripe transactions --environment test --limit 20 --json
 ```
 
 ---

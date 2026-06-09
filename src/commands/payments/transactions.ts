@@ -1,5 +1,6 @@
 import type { Command } from "commander";
-import { listPaymentHistory } from "../../lib/api/payments.js";
+import { listPaymentTransactions } from "../../lib/api/payments.js";
+import type { PaymentProvider } from "@insforge/shared-schemas";
 import { requireAuth } from "../../lib/credentials.js";
 import { getRootOpts, handleError } from "../../lib/errors.js";
 import { outputJson, outputTable } from "../../lib/output.js";
@@ -11,16 +12,22 @@ import {
   trackPaymentUsage,
 } from "./utils.js";
 
-export function registerPaymentsHistoryCommand(paymentsCmd: Command): void {
+export function registerPaymentsTransactionsCommand(
+  paymentsCmd: Command,
+  provider: PaymentProvider,
+): void {
   paymentsCmd
-    .command("history")
-    .description("List mirrored Stripe payment history")
+    .command("transactions")
+    .description("List mirrored payment transactions")
     .requiredOption(
       "--environment <environment>",
-      "Stripe environment: test or live",
+      "Payment environment: test or live",
     )
-    .option("--subject-type <type>", "Filter by billing subject type")
-    .option("--subject-id <id>", "Filter by billing subject id")
+    .option("--subject-type <type>", "Filter by app billing subject type")
+    .option(
+      "--subject-id <id>",
+      "Filter by app billing subject id, not provider id",
+    )
     .option("--limit <limit>", "Maximum rows to return (1-100)", "50")
     .action(async (opts, cmd) => {
       const { json } = getRootOpts(cmd);
@@ -30,7 +37,7 @@ export function registerPaymentsHistoryCommand(paymentsCmd: Command): void {
           parseIntegerOption(opts.limit, "--limit", { min: 1, max: 100 }) ?? 50;
         await requireAuth();
 
-        const data = await listPaymentHistory(environment, {
+        const data = await listPaymentTransactions(provider, environment, {
           limit,
           ...(opts.subjectType !== undefined
             ? { subjectType: opts.subjectType }
@@ -42,8 +49,8 @@ export function registerPaymentsHistoryCommand(paymentsCmd: Command): void {
 
         if (json) {
           outputJson(data);
-        } else if (data.paymentHistory.length === 0) {
-          console.log("No Stripe payment history found.");
+        } else if (data.transactions.length === 0) {
+          console.log(`No ${provider} transactions found.`);
         } else {
           outputTable(
             [
@@ -51,38 +58,48 @@ export function registerPaymentsHistoryCommand(paymentsCmd: Command): void {
               "Status",
               "Subject",
               "Amount",
+              "Refunded",
               "Customer",
-              "Stripe Object",
+              "Provider Object",
               "When",
             ],
-            data.paymentHistory.map((entry) => [
+            data.transactions.map((entry) => [
               entry.type,
               entry.status,
               entry.subjectType && entry.subjectId
                 ? `${entry.subjectType}:${entry.subjectId}`
                 : "-",
               formatAmount(entry.amount, entry.currency),
-              entry.stripeCustomerId ?? "-",
-              entry.stripeCheckoutSessionId ??
-                entry.stripeInvoiceId ??
-                entry.stripePaymentIntentId ??
-                entry.stripeRefundId ??
-                "-",
+              formatAmount(entry.amountRefunded, entry.currency),
+              entry.providerCustomerId ?? entry.customerEmailSnapshot ?? "-",
+              entry.providerReferenceType && entry.providerReferenceId
+                ? `${entry.providerReferenceType}:${entry.providerReferenceId}`
+                : (entry.providerReferenceId ?? "-"),
               formatDate(
                 entry.paidAt ??
                   entry.failedAt ??
                   entry.refundedAt ??
-                  entry.stripeCreatedAt,
+                  entry.providerCreatedAt ??
+                  entry.createdAt,
               ),
             ]),
           );
         }
 
-        await trackPaymentUsage("history", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("history", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("transactions", true, {
+          provider,
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "transactions",
+          false,
+          {
+            provider,
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });

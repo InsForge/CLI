@@ -1,6 +1,9 @@
 import type { Command } from "commander";
 import { listPaymentCustomers } from "../../lib/api/payments.js";
-import type { ListPaymentCustomersResponse } from "@insforge/shared-schemas";
+import type {
+  ListPaymentCustomersResponse,
+  PaymentProvider,
+} from "@insforge/shared-schemas";
 import { requireAuth } from "../../lib/credentials.js";
 import { getRootOpts, handleError } from "../../lib/errors.js";
 import { outputJson, outputTable } from "../../lib/output.js";
@@ -27,13 +30,16 @@ function formatPaymentMethod(customer: PaymentCustomer): string {
   return "-";
 }
 
-export function registerPaymentsCustomersCommand(paymentsCmd: Command): void {
+export function registerPaymentsCustomersCommand(
+  paymentsCmd: Command,
+  provider: PaymentProvider,
+): void {
   paymentsCmd
     .command("customers")
-    .description("List mirrored Stripe customers")
+    .description("List mirrored payment provider customers")
     .requiredOption(
       "--environment <environment>",
-      "Stripe environment: test or live",
+      "Payment environment: test or live",
     )
     .option("--limit <limit>", "Maximum rows to return (1-100)", "50")
     .action(async (opts, cmd) => {
@@ -44,12 +50,14 @@ export function registerPaymentsCustomersCommand(paymentsCmd: Command): void {
           parseIntegerOption(opts.limit, "--limit", { min: 1, max: 100 }) ?? 50;
         await requireAuth();
 
-        const data = await listPaymentCustomers(environment, { limit });
+        const data = await listPaymentCustomers(provider, environment, {
+          limit,
+        });
 
         if (json) {
           outputJson(data);
         } else if (data.customers.length === 0) {
-          console.log("No Stripe customers found.");
+          console.log(`No ${provider} customers found.`);
         } else {
           outputTable(
             [
@@ -63,7 +71,7 @@ export function registerPaymentsCustomersCommand(paymentsCmd: Command): void {
               "Country",
             ],
             data.customers.map((customer) => [
-              customer.stripeCustomerId,
+              customer.providerCustomerId,
               customer.email ?? "-",
               customer.name ?? "-",
               String(customer.paymentsCount),
@@ -75,11 +83,17 @@ export function registerPaymentsCustomersCommand(paymentsCmd: Command): void {
           );
         }
 
-        await trackPaymentUsage("customers", true, { environment });
+        await trackPaymentUsage("customers", true, { provider, environment });
       } catch (err) {
-        await trackPaymentUsage("customers", false, {
-          environment: opts.environment,
-        });
+        await trackPaymentUsage(
+          "customers",
+          false,
+          {
+            provider,
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });

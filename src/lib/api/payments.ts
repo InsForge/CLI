@@ -1,31 +1,47 @@
 import { ossFetch } from "./oss.js";
 import type {
-  ArchivePaymentPriceResponse,
-  ConfigurePaymentWebhookResponse,
-  CreatePaymentPriceBody,
-  CreatePaymentProductBody,
-  DeletePaymentProductResponse,
-  GetPaymentPriceResponse,
-  GetPaymentProductResponse,
-  GetPaymentsConfigResponse,
-  GetPaymentsStatusResponse,
-  ListPaymentCatalogResponse,
+  ArchiveStripePriceResponse,
+  ConfigureStripeWebhookResponse,
+  CreateRazorpayItemBody,
+  CreateRazorpayPlanBody,
+  CreateStripePriceBody,
+  CreateStripeProductBody,
+  DeleteStripeProductResponse,
+  GetRazorpayConfigResponse,
+  GetRazorpayStatusResponse,
+  GetStripeConfigResponse,
+  GetStripePriceResponse,
+  GetStripeProductResponse,
+  GetStripeStatusResponse,
   ListPaymentCustomersRequest,
   ListPaymentCustomersResponse,
-  ListPaymentHistoryQuery,
-  ListPaymentHistoryResponse,
-  ListPaymentPricesResponse,
-  ListPaymentProductsResponse,
-  ListSubscriptionsQuery,
-  ListSubscriptionsResponse,
-  MutatePaymentPriceResponse,
-  MutatePaymentProductResponse,
-  StripeEnvironment,
-  SyncPaymentsRequest,
-  SyncPaymentsResponse,
-  UpdatePaymentPriceBody,
-  UpdatePaymentProductBody,
+  ListPaymentTransactionsQuery,
+  ListPaymentTransactionsResponse,
+  ListRazorpayCatalogResponse,
+  ListRazorpaySubscriptionsQuery,
+  ListRazorpaySubscriptionsResponse,
+  ListStripeCatalogResponse,
+  ListStripePricesResponse,
+  ListStripeProductsResponse,
+  ListStripeSubscriptionsQuery,
+  ListStripeSubscriptionsResponse,
+  MutateRazorpayItemResponse,
+  MutateRazorpayPlanResponse,
+  MutateStripePriceResponse,
+  MutateStripeProductResponse,
+  PaymentEnvironment,
+  PaymentProvider,
+  SyncRazorpayPaymentsRequest,
+  SyncRazorpayPaymentsResponse,
+  SyncStripePaymentsRequest,
+  SyncStripePaymentsResponse,
+  UpdateRazorpayItemBody,
+  UpdateStripePriceBody,
+  UpdateStripeProductBody,
+  UpsertRazorpayConfigBody,
+  UpsertStripeConfigBody,
 } from "@insforge/shared-schemas";
+
 type ListPaymentCustomersQuery = Partial<
   Omit<ListPaymentCustomersRequest, "environment">
 >;
@@ -46,87 +62,169 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-function withEnvironmentPath(
-  environment: StripeEnvironment,
+function withProviderPath(provider: PaymentProvider, suffix: string): string {
+  return `/api/payments/${encodeURIComponent(provider)}${suffix}`;
+}
+
+function withProviderEnvironmentPath(
+  provider: PaymentProvider,
+  environment: PaymentEnvironment,
   suffix: string,
 ): string {
-  return `/api/payments/${encodeURIComponent(environment)}${suffix}`;
+  return withProviderPath(
+    provider,
+    `/${encodeURIComponent(environment)}${suffix}`,
+  );
 }
 
-export async function getPaymentsStatus(): Promise<GetPaymentsStatusResponse> {
-  return readJson(await ossFetch("/api/payments/status"));
+export async function getStripePaymentsStatus(): Promise<GetStripeStatusResponse> {
+  return readJson(await ossFetch(withProviderPath("stripe", "/status")));
 }
 
-export async function getPaymentsConfig(): Promise<GetPaymentsConfigResponse> {
-  return readJson(await ossFetch("/api/payments/config"));
+export async function getRazorpayPaymentsStatus(): Promise<GetRazorpayStatusResponse> {
+  return readJson(await ossFetch(withProviderPath("razorpay", "/status")));
+}
+
+export async function getStripePaymentsConfig(): Promise<GetStripeConfigResponse> {
+  return readJson(await ossFetch(withProviderPath("stripe", "/config")));
+}
+
+export async function getRazorpayPaymentsConfig(): Promise<GetRazorpayConfigResponse> {
+  return readJson(await ossFetch(withProviderPath("razorpay", "/config")));
 }
 
 export async function setStripeSecretKey(
-  environment: StripeEnvironment,
+  environment: PaymentEnvironment,
   secretKey: string,
-): Promise<GetPaymentsConfigResponse> {
+): Promise<GetStripeConfigResponse> {
+  const request: UpsertStripeConfigBody = { secretKey };
   return readJson(
-    await ossFetch(withEnvironmentPath(environment, "/config"), {
-      method: "PUT",
-      body: JSON.stringify({ secretKey }),
-    }),
+    await ossFetch(
+      withProviderEnvironmentPath("stripe", environment, "/config"),
+      {
+        method: "PUT",
+        body: JSON.stringify(request),
+      },
+    ),
+  );
+}
+
+export async function setRazorpayKeys(
+  environment: PaymentEnvironment,
+  request: UpsertRazorpayConfigBody,
+): Promise<GetRazorpayConfigResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("razorpay", environment, "/config"),
+      {
+        method: "PUT",
+        body: JSON.stringify(request),
+      },
+    ),
   );
 }
 
 export async function removeStripeSecretKey(
-  environment: StripeEnvironment,
-): Promise<GetPaymentsConfigResponse> {
+  environment: PaymentEnvironment,
+): Promise<GetStripeConfigResponse> {
   return readJson(
-    await ossFetch(withEnvironmentPath(environment, "/config"), {
-      method: "DELETE",
-    }),
+    await ossFetch(
+      withProviderEnvironmentPath("stripe", environment, "/config"),
+      {
+        method: "DELETE",
+      },
+    ),
   );
 }
 
-export async function syncPayments(
-  environment: SyncPaymentsRequest["environment"] = "all",
-): Promise<SyncPaymentsResponse> {
+export async function removeRazorpayKeys(
+  environment: PaymentEnvironment,
+): Promise<GetRazorpayConfigResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("razorpay", environment, "/config"),
+      { method: "DELETE" },
+    ),
+  );
+}
+
+export async function syncStripePayments(
+  environment: SyncStripePaymentsRequest["environment"] = "all",
+): Promise<SyncStripePaymentsResponse> {
   return readJson(
     await ossFetch(
       environment === "all"
-        ? "/api/payments/sync"
-        : withEnvironmentPath(environment, "/sync"),
+        ? withProviderPath("stripe", "/sync")
+        : withProviderEnvironmentPath("stripe", environment, "/sync"),
       { method: "POST" },
     ),
   );
 }
 
-export async function configurePaymentWebhook(
-  environment: StripeEnvironment,
-): Promise<ConfigurePaymentWebhookResponse> {
-  return readJson(
-    await ossFetch(withEnvironmentPath(environment, "/webhook"), {
-      method: "POST",
-    }),
-  );
-}
-
-export async function listPaymentCatalog(
-  environment: StripeEnvironment,
-): Promise<ListPaymentCatalogResponse> {
-  return readJson(await ossFetch(withEnvironmentPath(environment, "/catalog")));
-}
-
-export async function listPaymentProducts(
-  environment: StripeEnvironment,
-): Promise<ListPaymentProductsResponse> {
-  return readJson(
-    await ossFetch(withEnvironmentPath(environment, "/catalog/products")),
-  );
-}
-
-export async function getPaymentProduct(
-  environment: StripeEnvironment,
-  productId: string,
-): Promise<GetPaymentProductResponse> {
+export async function syncRazorpayPayments(
+  environment: SyncRazorpayPaymentsRequest["environment"] = "all",
+): Promise<SyncRazorpayPaymentsResponse> {
   return readJson(
     await ossFetch(
-      withEnvironmentPath(
+      environment === "all"
+        ? withProviderPath("razorpay", "/sync")
+        : withProviderEnvironmentPath("razorpay", environment, "/sync"),
+      { method: "POST" },
+    ),
+  );
+}
+
+export async function configureStripeWebhook(
+  environment: PaymentEnvironment,
+): Promise<ConfigureStripeWebhookResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("stripe", environment, "/webhook"),
+      {
+        method: "POST",
+      },
+    ),
+  );
+}
+
+export async function listStripeCatalog(
+  environment: PaymentEnvironment,
+): Promise<ListStripeCatalogResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("stripe", environment, "/catalog"),
+    ),
+  );
+}
+
+export async function listRazorpayCatalog(
+  environment: PaymentEnvironment,
+): Promise<ListRazorpayCatalogResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("razorpay", environment, "/catalog"),
+    ),
+  );
+}
+
+export async function listStripeProducts(
+  environment: PaymentEnvironment,
+): Promise<ListStripeProductsResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("stripe", environment, "/catalog/products"),
+    ),
+  );
+}
+
+export async function getStripeProduct(
+  environment: PaymentEnvironment,
+  productId: string,
+): Promise<GetStripeProductResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath(
+        "stripe",
         environment,
         `/catalog/products/${encodeURIComponent(productId)}`,
       ),
@@ -134,26 +232,30 @@ export async function getPaymentProduct(
   );
 }
 
-export async function createPaymentProduct(
-  environment: StripeEnvironment,
-  request: CreatePaymentProductBody,
-): Promise<MutatePaymentProductResponse> {
+export async function createStripeProduct(
+  environment: PaymentEnvironment,
+  request: CreateStripeProductBody,
+): Promise<MutateStripeProductResponse> {
   return readJson(
-    await ossFetch(withEnvironmentPath(environment, "/catalog/products"), {
-      method: "POST",
-      body: JSON.stringify(request),
-    }),
+    await ossFetch(
+      withProviderEnvironmentPath("stripe", environment, "/catalog/products"),
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    ),
   );
 }
 
-export async function updatePaymentProduct(
-  environment: StripeEnvironment,
+export async function updateStripeProduct(
+  environment: PaymentEnvironment,
   productId: string,
-  request: UpdatePaymentProductBody,
-): Promise<MutatePaymentProductResponse> {
+  request: UpdateStripeProductBody,
+): Promise<MutateStripeProductResponse> {
   return readJson(
     await ossFetch(
-      withEnvironmentPath(
+      withProviderEnvironmentPath(
+        "stripe",
         environment,
         `/catalog/products/${encodeURIComponent(productId)}`,
       ),
@@ -165,13 +267,14 @@ export async function updatePaymentProduct(
   );
 }
 
-export async function deletePaymentProduct(
-  environment: StripeEnvironment,
+export async function deleteStripeProduct(
+  environment: PaymentEnvironment,
   productId: string,
-): Promise<DeletePaymentProductResponse> {
+): Promise<DeleteStripeProductResponse> {
   return readJson(
     await ossFetch(
-      withEnvironmentPath(
+      withProviderEnvironmentPath(
+        "stripe",
         environment,
         `/catalog/products/${encodeURIComponent(productId)}`,
       ),
@@ -180,26 +283,28 @@ export async function deletePaymentProduct(
   );
 }
 
-export async function listPaymentPrices(
-  environment: StripeEnvironment,
-  stripeProductId?: string,
-): Promise<ListPaymentPricesResponse> {
+export async function listStripePrices(
+  environment: PaymentEnvironment,
+  productId?: string,
+): Promise<ListStripePricesResponse> {
   return readJson(
     await ossFetch(
-      withQuery(withEnvironmentPath(environment, "/catalog/prices"), {
-        stripeProductId,
-      }),
+      withQuery(
+        withProviderEnvironmentPath("stripe", environment, "/catalog/prices"),
+        { productId },
+      ),
     ),
   );
 }
 
-export async function getPaymentPrice(
-  environment: StripeEnvironment,
+export async function getStripePrice(
+  environment: PaymentEnvironment,
   priceId: string,
-): Promise<GetPaymentPriceResponse> {
+): Promise<GetStripePriceResponse> {
   return readJson(
     await ossFetch(
-      withEnvironmentPath(
+      withProviderEnvironmentPath(
+        "stripe",
         environment,
         `/catalog/prices/${encodeURIComponent(priceId)}`,
       ),
@@ -207,26 +312,30 @@ export async function getPaymentPrice(
   );
 }
 
-export async function createPaymentPrice(
-  environment: StripeEnvironment,
-  request: CreatePaymentPriceBody,
-): Promise<MutatePaymentPriceResponse> {
+export async function createStripePrice(
+  environment: PaymentEnvironment,
+  request: CreateStripePriceBody,
+): Promise<MutateStripePriceResponse> {
   return readJson(
-    await ossFetch(withEnvironmentPath(environment, "/catalog/prices"), {
-      method: "POST",
-      body: JSON.stringify(request),
-    }),
+    await ossFetch(
+      withProviderEnvironmentPath("stripe", environment, "/catalog/prices"),
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    ),
   );
 }
 
-export async function updatePaymentPrice(
-  environment: StripeEnvironment,
+export async function updateStripePrice(
+  environment: PaymentEnvironment,
   priceId: string,
-  request: UpdatePaymentPriceBody,
-): Promise<MutatePaymentPriceResponse> {
+  request: UpdateStripePriceBody,
+): Promise<MutateStripePriceResponse> {
   return readJson(
     await ossFetch(
-      withEnvironmentPath(
+      withProviderEnvironmentPath(
+        "stripe",
         environment,
         `/catalog/prices/${encodeURIComponent(priceId)}`,
       ),
@@ -238,13 +347,14 @@ export async function updatePaymentPrice(
   );
 }
 
-export async function archivePaymentPrice(
-  environment: StripeEnvironment,
+export async function archiveStripePrice(
+  environment: PaymentEnvironment,
   priceId: string,
-): Promise<ArchivePaymentPriceResponse> {
+): Promise<ArchiveStripePriceResponse> {
   return readJson(
     await ossFetch(
-      withEnvironmentPath(
+      withProviderEnvironmentPath(
+        "stripe",
         environment,
         `/catalog/prices/${encodeURIComponent(priceId)}`,
       ),
@@ -253,35 +363,110 @@ export async function archivePaymentPrice(
   );
 }
 
-export async function listSubscriptions(
-  environment: StripeEnvironment,
-  request: ListSubscriptionsQuery,
-): Promise<ListSubscriptionsResponse> {
+export async function createRazorpayItem(
+  environment: PaymentEnvironment,
+  request: CreateRazorpayItemBody,
+): Promise<MutateRazorpayItemResponse> {
   return readJson(
     await ossFetch(
-      withQuery(withEnvironmentPath(environment, "/subscriptions"), request),
+      withProviderEnvironmentPath("razorpay", environment, "/catalog/items"),
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    ),
+  );
+}
+
+export async function updateRazorpayItem(
+  environment: PaymentEnvironment,
+  itemId: string,
+  request: UpdateRazorpayItemBody,
+): Promise<MutateRazorpayItemResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath(
+        "razorpay",
+        environment,
+        `/catalog/items/${encodeURIComponent(itemId)}`,
+      ),
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
+    ),
+  );
+}
+
+export async function createRazorpayPlan(
+  environment: PaymentEnvironment,
+  request: CreateRazorpayPlanBody,
+): Promise<MutateRazorpayPlanResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("razorpay", environment, "/catalog/plans"),
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    ),
+  );
+}
+
+export async function listStripeSubscriptions(
+  environment: PaymentEnvironment,
+  request: ListStripeSubscriptionsQuery,
+): Promise<ListStripeSubscriptionsResponse> {
+  return readJson(
+    await ossFetch(
+      withQuery(
+        withProviderEnvironmentPath("stripe", environment, "/subscriptions"),
+        request,
+      ),
+    ),
+  );
+}
+
+export async function listRazorpaySubscriptions(
+  environment: PaymentEnvironment,
+  request: ListRazorpaySubscriptionsQuery,
+): Promise<ListRazorpaySubscriptionsResponse> {
+  return readJson(
+    await ossFetch(
+      withQuery(
+        withProviderEnvironmentPath("razorpay", environment, "/subscriptions"),
+        request,
+      ),
     ),
   );
 }
 
 export async function listPaymentCustomers(
-  environment: StripeEnvironment,
+  provider: PaymentProvider,
+  environment: PaymentEnvironment,
   request: ListPaymentCustomersQuery = {},
 ): Promise<ListPaymentCustomersResponse> {
   return readJson(
     await ossFetch(
-      withQuery(withEnvironmentPath(environment, "/customers"), request),
+      withQuery(
+        withProviderEnvironmentPath(provider, environment, "/customers"),
+        request,
+      ),
     ),
   );
 }
 
-export async function listPaymentHistory(
-  environment: StripeEnvironment,
-  request: ListPaymentHistoryQuery,
-): Promise<ListPaymentHistoryResponse> {
+export async function listPaymentTransactions(
+  provider: PaymentProvider,
+  environment: PaymentEnvironment,
+  request: ListPaymentTransactionsQuery,
+): Promise<ListPaymentTransactionsResponse> {
   return readJson(
     await ossFetch(
-      withQuery(withEnvironmentPath(environment, "/payment-history"), request),
+      withQuery(
+        withProviderEnvironmentPath(provider, environment, "/transactions"),
+        request,
+      ),
     ),
   );
 }

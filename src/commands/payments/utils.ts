@@ -1,23 +1,65 @@
-import type { StripeEnvironment } from "@insforge/shared-schemas";
+import type {
+  PaymentEnvironment,
+  RazorpayPlanPeriod,
+} from "@insforge/shared-schemas";
 import { getProjectConfig } from "../../lib/config.js";
 import { CLIError } from "../../lib/errors.js";
 import { shutdownAnalytics, trackPayments } from "../../lib/analytics.js";
+
+const MAX_TELEMETRY_ERROR_MESSAGE_LENGTH = 500;
 
 export type PaymentCommandTelemetry = Record<
   string,
   string | number | boolean | undefined
 >;
 
-export function parseEnvironment(value: string): StripeEnvironment {
+function getErrorTelemetry(error: unknown): PaymentCommandTelemetry {
+  const message = error instanceof Error ? error.message : String(error);
+  const truncatedMessage =
+    message.length > MAX_TELEMETRY_ERROR_MESSAGE_LENGTH
+      ? `${message.slice(0, MAX_TELEMETRY_ERROR_MESSAGE_LENGTH)}...`
+      : message;
+
+  return {
+    error_name: error instanceof Error ? error.name : typeof error,
+    error_message: truncatedMessage,
+    ...(error instanceof CLIError
+      ? {
+          error_code: error.code,
+          exit_code: error.exitCode,
+          status_code: error.statusCode,
+        }
+      : {}),
+  };
+}
+
+export function parseEnvironment(value: string): PaymentEnvironment {
   if (value === "test" || value === "live") return value;
   throw new CLIError('Environment must be "test" or "live".');
 }
 
 export function parseEnvironmentOrAll(
   value: string,
-): StripeEnvironment | "all" {
+): PaymentEnvironment | "all" {
   if (value === "all") return value;
   return parseEnvironment(value);
+}
+
+export function parseRazorpayPlanPeriod(
+  value: string | undefined,
+): RazorpayPlanPeriod | undefined {
+  if (value === undefined) return undefined;
+  if (
+    value === "daily" ||
+    value === "weekly" ||
+    value === "monthly" ||
+    value === "yearly"
+  ) {
+    return value;
+  }
+  throw new CLIError(
+    "--period must be one of: daily, weekly, monthly, yearly.",
+  );
 }
 
 export function parseBooleanOption(
@@ -122,6 +164,7 @@ export async function trackPaymentUsage(
   subcommand: string,
   success: boolean,
   properties: PaymentCommandTelemetry = {},
+  error?: unknown,
 ): Promise<void> {
   try {
     const config = getProjectConfig();
@@ -129,6 +172,7 @@ export async function trackPaymentUsage(
       trackPayments(subcommand, config, {
         success,
         ...properties,
+        ...(error !== undefined ? getErrorTelemetry(error) : {}),
       });
     }
   } catch {

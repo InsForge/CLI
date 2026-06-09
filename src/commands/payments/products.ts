@@ -1,19 +1,19 @@
 import type { Command } from "commander";
 import * as prompts from "../../lib/prompts.js";
 import {
-  createPaymentProduct,
-  deletePaymentProduct,
-  getPaymentProduct,
-  listPaymentProducts,
-  updatePaymentProduct,
+  createStripeProduct,
+  deleteStripeProduct,
+  getStripeProduct,
+  listStripeProducts,
+  updateStripeProduct,
 } from "../../lib/api/payments.js";
 import { requireAuth } from "../../lib/credentials.js";
 import { CLIError, getRootOpts, handleError } from "../../lib/errors.js";
 import { outputJson, outputSuccess, outputTable } from "../../lib/output.js";
 import type {
-  CreatePaymentProductBody,
-  ListPaymentProductsResponse,
-  UpdatePaymentProductBody,
+  CreateStripeProductBody,
+  ListStripeProductsResponse,
+  UpdateStripeProductBody,
 } from "@insforge/shared-schemas";
 import {
   formatAmount,
@@ -23,14 +23,14 @@ import {
   parseMetadataOption,
   trackPaymentUsage,
 } from "./utils.js";
-type PaymentProduct = ListPaymentProductsResponse["products"][number];
+type StripeProduct = ListStripeProductsResponse["products"][number];
 
 function nullableString(value: string | undefined): string | null | undefined {
   if (value === undefined) return undefined;
   return value === "null" ? null : value;
 }
 
-function outputProductsTable(products: PaymentProduct[]): void {
+function outputProductsTable(products: StripeProduct[]): void {
   if (products.length === 0) {
     console.log("No Stripe products found.");
     return;
@@ -40,7 +40,7 @@ function outputProductsTable(products: PaymentProduct[]): void {
     ["Env", "Product ID", "Name", "Active", "Default Price", "Synced At"],
     products.map((product) => [
       product.environment,
-      product.stripeProductId,
+      product.productId,
       product.name,
       product.active ? "Yes" : "No",
       product.defaultPriceId ?? "-",
@@ -67,7 +67,7 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
         const environment = parseEnvironment(opts.environment);
         await requireAuth();
 
-        const data = await listPaymentProducts(environment);
+        const data = await listStripeProducts(environment);
 
         if (json) {
           outputJson(data);
@@ -75,11 +75,20 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
           outputProductsTable(data.products);
         }
 
-        await trackPaymentUsage("products.list", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("products.list", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("products.list", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "products.list",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
@@ -97,7 +106,7 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
         const environment = parseEnvironment(opts.environment);
         await requireAuth();
 
-        const data = await getPaymentProduct(environment, productId);
+        const data = await getStripeProduct(environment, productId);
 
         if (json) {
           outputJson(data);
@@ -108,7 +117,7 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
             outputTable(
               ["Price ID", "Amount", "Type", "Active", "Lookup Key"],
               data.prices.map((price) => [
-                price.stripePriceId,
+                price.priceId,
                 formatAmount(price.unitAmount, price.currency),
                 price.type,
                 price.active ? "Yes" : "No",
@@ -118,11 +127,20 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
           }
         }
 
-        await trackPaymentUsage("products.get", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("products.get", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("products.get", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "products.get",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
@@ -145,7 +163,7 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
         const environment = parseEnvironment(opts.environment);
         await requireAuth();
 
-        const request: CreatePaymentProductBody = { name: opts.name };
+        const request: CreateStripeProductBody = { name: opts.name };
         const description = nullableString(opts.description);
         const active = parseBooleanOption(opts.active, "--active");
         const metadata = parseMetadataOption(opts.metadata);
@@ -156,21 +174,28 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
           request.idempotencyKey = opts.idempotencyKey;
         }
 
-        const data = await createPaymentProduct(environment, request);
+        const data = await createStripeProduct(environment, request);
 
         if (json) {
           outputJson(data);
         } else {
-          outputSuccess(
-            `Stripe product created: ${data.product.stripeProductId}`,
-          );
+          outputSuccess(`Stripe product created: ${data.product.productId}`);
         }
 
-        await trackPaymentUsage("products.create", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("products.create", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("products.create", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "products.create",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
@@ -192,7 +217,7 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
         const environment = parseEnvironment(opts.environment);
         await requireAuth();
 
-        const request: UpdatePaymentProductBody = {};
+        const request: UpdateStripeProductBody = {};
         const description = nullableString(opts.description);
         const active = parseBooleanOption(opts.active, "--active");
         const metadata = parseMetadataOption(opts.metadata);
@@ -207,25 +232,28 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
           );
         }
 
-        const data = await updatePaymentProduct(
-          environment,
-          productId,
-          request,
-        );
+        const data = await updateStripeProduct(environment, productId, request);
 
         if (json) {
           outputJson(data);
         } else {
-          outputSuccess(
-            `Stripe product updated: ${data.product.stripeProductId}`,
-          );
+          outputSuccess(`Stripe product updated: ${data.product.productId}`);
         }
 
-        await trackPaymentUsage("products.update", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("products.update", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("products.update", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "products.update",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
@@ -256,19 +284,28 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
           if (prompts.isCancel(confirm) || !confirm) process.exit(0);
         }
 
-        const data = await deletePaymentProduct(environment, productId);
+        const data = await deleteStripeProduct(environment, productId);
 
         if (json) {
           outputJson(data);
         } else {
-          outputSuccess(`Stripe product deleted: ${data.stripeProductId}`);
+          outputSuccess(`Stripe product deleted: ${data.productId}`);
         }
 
-        await trackPaymentUsage("products.delete", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("products.delete", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("products.delete", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "products.delete",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
