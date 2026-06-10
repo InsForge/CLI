@@ -17,7 +17,12 @@ const analyticsMock = vi.hoisted(() => ({
 vi.mock("../../lib/analytics.js", () => analyticsMock);
 
 import { CLIError } from "../../lib/errors.js";
-import { trackPaymentUsage } from "./utils.js";
+import {
+  nullableString,
+  parseRequiredIntegerOption,
+  parseRequiredRazorpayPlanPeriod,
+  trackPaymentUsage,
+} from "./utils.js";
 
 describe("payment command telemetry", () => {
   beforeEach(() => {
@@ -31,7 +36,7 @@ describe("payment command telemetry", () => {
     });
   });
 
-  it("includes provider and structured error fields for failed payment commands", async () => {
+  it("includes provider and structured error fields without raw messages", async () => {
     const error = new CLIError(
       `${"failed ".repeat(100)}done`,
       5,
@@ -63,8 +68,52 @@ describe("payment command telemetry", () => {
     const properties = analyticsMock.trackPayments.mock.calls[0]?.[2] as
       | Record<string, unknown>
       | undefined;
-    expect(properties?.error_message).toMatch(/^failed failed/);
-    expect(String(properties?.error_message).length).toBeLessThanOrEqual(503);
+    expect(properties).not.toHaveProperty("error_message");
     expect(analyticsMock.shutdownAnalytics).toHaveBeenCalledOnce();
+  });
+
+  it("does not send raw invalid environment telemetry", async () => {
+    await trackPaymentUsage(
+      "sync",
+      false,
+      { provider: "stripe", environment: "prod free text" },
+      new Error("user entered free text"),
+    );
+
+    const properties = analyticsMock.trackPayments.mock.calls[0]?.[2] as
+      | Record<string, unknown>
+      | undefined;
+    expect(properties).toEqual(
+      expect.objectContaining({
+        success: false,
+        provider: "stripe",
+        environment_valid: false,
+        error_name: "Error",
+      }),
+    );
+    expect(properties).not.toHaveProperty("environment");
+    expect(properties).not.toHaveProperty("error_message");
+  });
+});
+
+describe("payment command parsers", () => {
+  it("normalizes nullable strings", () => {
+    expect(nullableString(undefined)).toBeUndefined();
+    expect(nullableString("null")).toBeNull();
+    expect(nullableString("value")).toBe("value");
+  });
+
+  it("parses required integer options without defaulting missing values", () => {
+    expect(parseRequiredIntegerOption("0", "--amount", { min: 0 })).toBe(0);
+    expect(() => parseRequiredIntegerOption(undefined, "--amount")).toThrow(
+      "Provide --amount.",
+    );
+  });
+
+  it("parses required Razorpay plan periods", () => {
+    expect(parseRequiredRazorpayPlanPeriod("monthly")).toBe("monthly");
+    expect(() => parseRequiredRazorpayPlanPeriod(undefined)).toThrow(
+      "Provide --period.",
+    );
   });
 });

@@ -18,10 +18,10 @@ export function registerPaymentsWebhooksCommand(paymentsCmd: Command): void {
       "Stripe environment: test or live",
     )
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await configureStripeWebhook(environment);
 

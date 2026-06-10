@@ -43,12 +43,12 @@ export function registerPaymentsCustomersCommand(
     )
     .option("--limit <limit>", "Maximum rows to return (1-100)", "50")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
         const limit =
           parseIntegerOption(opts.limit, "--limit", { min: 1, max: 100 }) ?? 50;
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await listPaymentCustomers(provider, environment, {
           limit,

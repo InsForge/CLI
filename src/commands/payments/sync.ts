@@ -26,10 +26,10 @@ export function registerPaymentsSyncCommand(
       "all",
     )
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironmentOrAll(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         if (provider === "stripe") {
           const data = await syncStripePayments(environment);

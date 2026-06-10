@@ -18,17 +18,13 @@ import type {
 import {
   formatAmount,
   formatDate,
+  nullableString,
   parseBooleanOption,
   parseEnvironment,
   parseMetadataOption,
   trackPaymentUsage,
 } from "./utils.js";
 type StripeProduct = ListStripeProductsResponse["products"][number];
-
-function nullableString(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  return value === "null" ? null : value;
-}
 
 function outputProductsTable(products: StripeProduct[]): void {
   if (products.length === 0) {
@@ -62,10 +58,10 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
       "Stripe environment: test or live",
     )
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await listStripeProducts(environment);
 
@@ -101,10 +97,10 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
       "Stripe environment: test or live",
     )
     .action(async (productId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await getStripeProduct(environment, productId);
 
@@ -158,10 +154,10 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
     .option("--metadata <json>", "Metadata JSON object with string values")
     .option("--idempotency-key <key>", "Caller-stable idempotency key")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const request: CreateStripeProductBody = { name: opts.name };
         const description = nullableString(opts.description);
@@ -212,10 +208,10 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
     .option("--active <bool>", "Set active status (true/false)")
     .option("--metadata <json>", "Metadata JSON object with string values")
     .action(async (productId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const request: UpdateStripeProductBody = {};
         const description = nullableString(opts.description);
@@ -266,10 +262,10 @@ export function registerPaymentsProductsCommand(paymentsCmd: Command): void {
       "Stripe environment: test or live",
     )
     .action(async (productId: string, opts, cmd) => {
-      const { json, yes } = getRootOpts(cmd);
+      const { json, yes, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         if (json && !yes) {
           throw new CLIError(

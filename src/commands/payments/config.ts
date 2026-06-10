@@ -45,10 +45,10 @@ export function registerPaymentsConfigCommand(
       "Payment environment: test or live",
     )
     .action(async (opts, cmd) => {
-      const { json, yes } = getRootOpts(cmd);
+      const { json, yes, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         if (json && !yes) {
           throw new CLIError(
@@ -104,10 +104,10 @@ function registerStripeConfigSetCommand(configCmd: Command): void {
     )
     .option("--secret-key <secretKey>", "Stripe secret key")
     .action(async (secretKeyValue: string | undefined, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         let secretKey = opts.secretKey ?? secretKeyValue;
         if (!secretKey) {
@@ -162,10 +162,10 @@ function registerRazorpayConfigSetCommand(configCmd: Command): void {
     .option("--key-id <keyId>", "Razorpay key id")
     .option("--key-secret <keySecret>", "Razorpay key secret")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         let keyId: string | undefined = opts.keyId;
         let keySecret: string | undefined = opts.keySecret;

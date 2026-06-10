@@ -17,9 +17,9 @@ export function registerPaymentsStatusCommand(
     .command("status")
     .description("Show payment connection, sync, and webhook status")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         if (provider === "stripe") {
           const data = await getStripePaymentsStatus();

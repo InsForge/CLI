@@ -39,7 +39,7 @@ export function registerPaymentsSubscriptionsCommand(
     )
     .option("--limit <limit>", "Maximum rows to return (1-100)", "50")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
         const limit =
@@ -53,7 +53,7 @@ export function registerPaymentsSubscriptionsCommand(
             ? { subjectId: opts.subjectId }
             : {}),
         };
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         if (provider === "stripe") {
           const data = await listStripeSubscriptions(environment, request);

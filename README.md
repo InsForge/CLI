@@ -550,7 +550,7 @@ npx @insforge/cli payments stripe status --json
 
 #### `npx @insforge/cli payments <provider> config`
 
-Set or remove provider keys. Use `payments <provider> status` to inspect whether keys are configured and whether account, sync, and webhook state are healthy.
+Set or remove provider keys. `config set` validates the keys and automatically syncs provider state when the key or account changes. Use `payments <provider> status` to inspect key, account, sync, and webhook health.
 
 ```bash
 npx @insforge/cli payments stripe config set --environment test sk_test_xxx
@@ -562,7 +562,7 @@ npx @insforge/cli payments razorpay config remove --environment test -y
 
 #### `npx @insforge/cli payments <provider> sync`
 
-Sync provider catalog, customers, subscriptions, and transaction projections from configured environments.
+Manually refresh or retry provider catalog, customers, subscriptions, and transaction projections from configured environments. `config set` already syncs automatically when keys or accounts change.
 
 ```bash
 npx @insforge/cli payments stripe sync
@@ -645,6 +645,8 @@ List or create Razorpay subscription plans.
 npx @insforge/cli payments razorpay plans list --environment test
 npx @insforge/cli payments razorpay plans create --environment test --period monthly --interval 1 --item-name "Pro Plan" --item-amount 200000 --item-currency inr
 ```
+
+Use `--notes '{"key":"value"}'` when the Razorpay Plan needs native Razorpay notes.
 
 #### `npx @insforge/cli payments <provider> subscriptions --environment <environment>`
 
@@ -1058,13 +1060,13 @@ If you build the CLI from source without setting `POSTHOG_API_KEY` at build time
 
 ## Environment Variables
 
-| Variable                | Description                                                     |
-| ----------------------- | --------------------------------------------------------------- |
-| `INSFORGE_ACCESS_TOKEN` | Override the stored access token                                |
-| `INSFORGE_PROJECT_ID`   | Override the linked project ID                                  |
-| `INSFORGE_API_URL`      | Override the Platform API URL                                   |
-| `INSFORGE_EMAIL`        | Email for non-interactive login                                 |
-| `INSFORGE_PASSWORD`     | Password for non-interactive login                              |
+| Variable                | Description                        |
+| ----------------------- | ---------------------------------- |
+| `INSFORGE_ACCESS_TOKEN` | Override the stored access token   |
+| `INSFORGE_PROJECT_ID`   | Override the linked project ID     |
+| `INSFORGE_API_URL`      | Override the Platform API URL      |
+| `INSFORGE_EMAIL`        | Email for non-interactive login    |
+| `INSFORGE_PASSWORD`     | Password for non-interactive login |
 
 ## Non-Interactive / CI Usage
 

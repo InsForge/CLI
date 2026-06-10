@@ -15,19 +15,15 @@ import type {
 import {
   formatAmount,
   formatDate,
+  nullableString,
   parseBooleanOption,
   parseEnvironment,
   parseIntegerOption,
-  parseMetadataOption,
+  parseRequiredIntegerOption,
   trackPaymentUsage,
 } from "./utils.js";
 
 type RazorpayItem = ListRazorpayCatalogResponse["items"][number];
-
-function nullableString(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  return value === "null" ? null : value;
-}
 
 function outputItemsTable(items: RazorpayItem[]): void {
   if (items.length === 0) {
@@ -62,10 +58,10 @@ export function registerPaymentsItemsCommand(paymentsCmd: Command): void {
       "Razorpay environment: test or live",
     )
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await listRazorpayCatalog(environment);
 
@@ -107,22 +103,21 @@ export function registerPaymentsItemsCommand(paymentsCmd: Command): void {
       "Three-letter currency code, e.g. inr",
     )
     .option("--description <description>", 'Item description, or "null"')
-    .option("--metadata <json>", "Metadata JSON object with string values")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const request: CreateRazorpayItemBody = {
           name: opts.name,
-          amount: parseIntegerOption(opts.amount, "--amount", { min: 0 }) ?? 0,
+          amount: parseRequiredIntegerOption(opts.amount, "--amount", {
+            min: 0,
+          }),
           currency: opts.currency,
         };
         const description = nullableString(opts.description);
-        const metadata = parseMetadataOption(opts.metadata);
         if (description !== undefined) request.description = description;
-        if (metadata !== undefined) request.metadata = metadata;
 
         const data = await createRazorpayItem(environment, request);
 
@@ -162,28 +157,25 @@ export function registerPaymentsItemsCommand(paymentsCmd: Command): void {
     .option("--amount <amount>", "Amount in the smallest currency unit")
     .option("--currency <currency>", "Three-letter currency code")
     .option("--active <bool>", "Set active status (true/false)")
-    .option("--metadata <json>", "Metadata JSON object with string values")
     .action(async (itemId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const request: UpdateRazorpayItemBody = {};
         const description = nullableString(opts.description);
         const amount = parseIntegerOption(opts.amount, "--amount", { min: 0 });
         const active = parseBooleanOption(opts.active, "--active");
-        const metadata = parseMetadataOption(opts.metadata);
         if (opts.name !== undefined) request.name = opts.name;
         if (description !== undefined) request.description = description;
         if (amount !== undefined) request.amount = amount;
         if (opts.currency !== undefined) request.currency = opts.currency;
         if (active !== undefined) request.active = active;
-        if (metadata !== undefined) request.metadata = metadata;
 
         if (Object.keys(request).length === 0) {
           throw new CLIError(
-            "Provide at least one option to update (--name, --description, --amount, --currency, --active, --metadata).",
+            "Provide at least one option to update (--name, --description, --amount, --currency, --active).",
           );
         }
 

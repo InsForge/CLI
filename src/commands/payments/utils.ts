@@ -6,23 +6,49 @@ import { getProjectConfig } from "../../lib/config.js";
 import { CLIError } from "../../lib/errors.js";
 import { shutdownAnalytics, trackPayments } from "../../lib/analytics.js";
 
-const MAX_TELEMETRY_ERROR_MESSAGE_LENGTH = 500;
-
 export type PaymentCommandTelemetry = Record<
   string,
   string | number | boolean | undefined
 >;
 
-function getErrorTelemetry(error: unknown): PaymentCommandTelemetry {
-  const message = error instanceof Error ? error.message : String(error);
-  const truncatedMessage =
-    message.length > MAX_TELEMETRY_ERROR_MESSAGE_LENGTH
-      ? `${message.slice(0, MAX_TELEMETRY_ERROR_MESSAGE_LENGTH)}...`
-      : message;
+function sanitizePaymentTelemetry(
+  properties: PaymentCommandTelemetry,
+): PaymentCommandTelemetry {
+  const sanitized: PaymentCommandTelemetry = {};
 
+  if (properties.provider === "stripe" || properties.provider === "razorpay") {
+    sanitized.provider = properties.provider;
+  }
+
+  if (
+    properties.environment === "test" ||
+    properties.environment === "live" ||
+    properties.environment === "all"
+  ) {
+    sanitized.environment = properties.environment;
+  } else if (properties.environment !== undefined) {
+    sanitized.environment_valid = false;
+  }
+
+  if (typeof properties.error_name === "string") {
+    sanitized.error_name = properties.error_name;
+  }
+  if (typeof properties.error_code === "string") {
+    sanitized.error_code = properties.error_code;
+  }
+  if (typeof properties.exit_code === "number") {
+    sanitized.exit_code = properties.exit_code;
+  }
+  if (typeof properties.status_code === "number") {
+    sanitized.status_code = properties.status_code;
+  }
+
+  return sanitized;
+}
+
+function getErrorTelemetry(error: unknown): PaymentCommandTelemetry {
   return {
     error_name: error instanceof Error ? error.name : typeof error,
-    error_message: truncatedMessage,
     ...(error instanceof CLIError
       ? {
           error_code: error.code,
@@ -62,6 +88,21 @@ export function parseRazorpayPlanPeriod(
   );
 }
 
+export function parseRequiredRazorpayPlanPeriod(
+  value: string | undefined,
+): RazorpayPlanPeriod {
+  const period = parseRazorpayPlanPeriod(value);
+  if (period === undefined) throw new CLIError("Provide --period.");
+  return period;
+}
+
+export function nullableString(
+  value: string | undefined,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  return value === "null" ? null : value;
+}
+
 export function parseBooleanOption(
   value: string | undefined,
   flagName: string,
@@ -95,8 +136,20 @@ export function parseIntegerOption(
   return parsed;
 }
 
-export function parseMetadataOption(
+export function parseRequiredIntegerOption(
   value: string | undefined,
+  flagName: string,
+  options: { min?: number; max?: number } = {},
+): number {
+  const parsed = parseIntegerOption(value, flagName, options);
+  if (parsed === undefined) throw new CLIError(`Provide ${flagName}.`);
+  return parsed;
+}
+
+function parseStringRecordOption(
+  value: string | undefined,
+  flagName: string,
+  fieldName: string,
 ): Record<string, string> | undefined {
   if (value === undefined) return undefined;
 
@@ -104,22 +157,34 @@ export function parseMetadataOption(
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new CLIError("Invalid JSON for --metadata.");
+    throw new CLIError(`Invalid JSON for ${flagName}.`);
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new CLIError("--metadata must be a JSON object.");
+    throw new CLIError(`${flagName} must be a JSON object.`);
   }
 
-  const metadata: Record<string, string> = {};
+  const result: Record<string, string> = {};
   for (const [key, raw] of Object.entries(parsed)) {
     if (typeof raw !== "string") {
-      throw new CLIError(`Metadata value for "${key}" must be a string.`);
+      throw new CLIError(`${fieldName} value for "${key}" must be a string.`);
     }
-    metadata[key] = raw;
+    result[key] = raw;
   }
 
-  return metadata;
+  return result;
+}
+
+export function parseMetadataOption(
+  value: string | undefined,
+): Record<string, string> | undefined {
+  return parseStringRecordOption(value, "--metadata", "Metadata");
+}
+
+export function parseNotesOption(
+  value: string | undefined,
+): Record<string, string> | undefined {
+  return parseStringRecordOption(value, "--notes", "Notes");
 }
 
 export function formatDate(value: string | null | undefined): string {
@@ -171,8 +236,10 @@ export async function trackPaymentUsage(
     if (config) {
       trackPayments(subcommand, config, {
         success,
-        ...properties,
-        ...(error !== undefined ? getErrorTelemetry(error) : {}),
+        ...sanitizePaymentTelemetry({
+          ...properties,
+          ...(error !== undefined ? getErrorTelemetry(error) : {}),
+        }),
       });
     }
   } catch {

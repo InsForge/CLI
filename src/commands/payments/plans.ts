@@ -4,7 +4,7 @@ import {
   listRazorpayCatalog,
 } from "../../lib/api/payments.js";
 import { requireAuth } from "../../lib/credentials.js";
-import { CLIError, getRootOpts, handleError } from "../../lib/errors.js";
+import { getRootOpts, handleError } from "../../lib/errors.js";
 import { outputJson, outputSuccess, outputTable } from "../../lib/output.js";
 import type {
   CreateRazorpayPlanBody,
@@ -13,19 +13,15 @@ import type {
 import {
   formatAmount,
   formatDate,
+  nullableString,
   parseEnvironment,
-  parseIntegerOption,
-  parseMetadataOption,
-  parseRazorpayPlanPeriod,
+  parseNotesOption,
+  parseRequiredIntegerOption,
+  parseRequiredRazorpayPlanPeriod,
   trackPaymentUsage,
 } from "./utils.js";
 
 type RazorpayPlan = ListRazorpayCatalogResponse["plans"][number];
-
-function nullableString(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  return value === "null" ? null : value;
-}
 
 function outputPlansTable(plans: RazorpayPlan[]): void {
   if (plans.length === 0) {
@@ -70,10 +66,10 @@ export function registerPaymentsPlansCommand(paymentsCmd: Command): void {
       "Razorpay environment: test or live",
     )
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await listRazorpayCatalog(environment);
 
@@ -126,26 +122,25 @@ export function registerPaymentsPlansCommand(paymentsCmd: Command): void {
       "--item-description <description>",
       'Plan item description, or "null"',
     )
-    .option("--metadata <json>", "Metadata JSON object with string values")
+    .option("--notes <json>", "Razorpay notes JSON object with string values")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        const period = parseRazorpayPlanPeriod(opts.period);
-        const interval = parseIntegerOption(opts.interval, "--interval", {
-          min: 1,
-        });
-        const itemAmount = parseIntegerOption(
+        const period = parseRequiredRazorpayPlanPeriod(opts.period);
+        const interval = parseRequiredIntegerOption(
+          opts.interval,
+          "--interval",
+          {
+            min: 1,
+          },
+        );
+        const itemAmount = parseRequiredIntegerOption(
           opts.itemAmount,
           "--item-amount",
           { min: 0 },
         );
-        if (!period || interval === undefined || itemAmount === undefined) {
-          throw new CLIError(
-            "Provide --period, --interval, and --item-amount.",
-          );
-        }
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const request: CreateRazorpayPlanBody = {
           period,
@@ -157,11 +152,11 @@ export function registerPaymentsPlansCommand(paymentsCmd: Command): void {
           },
         };
         const itemDescription = nullableString(opts.itemDescription);
-        const metadata = parseMetadataOption(opts.metadata);
+        const notes = parseNotesOption(opts.notes);
         if (itemDescription !== undefined) {
           request.item.description = itemDescription;
         }
-        if (metadata !== undefined) request.metadata = metadata;
+        if (notes !== undefined) request.notes = notes;
 
         const data = await createRazorpayPlan(environment, request);
 

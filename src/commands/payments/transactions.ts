@@ -12,6 +12,27 @@ import {
   trackPaymentUsage,
 } from "./utils.js";
 
+type PaymentTransaction = Awaited<
+  ReturnType<typeof listPaymentTransactions>
+>["transactions"][number];
+
+export function getTransactionTimestamp(
+  entry: PaymentTransaction,
+): string | null {
+  if (String(entry.status).includes("refund")) {
+    return (
+      entry.refundedAt ??
+      entry.paidAt ??
+      entry.providerCreatedAt ??
+      entry.createdAt
+    );
+  }
+  if (entry.status === "failed") {
+    return entry.failedAt ?? entry.providerCreatedAt ?? entry.createdAt;
+  }
+  return entry.paidAt ?? entry.providerCreatedAt ?? entry.createdAt;
+}
+
 export function registerPaymentsTransactionsCommand(
   paymentsCmd: Command,
   provider: PaymentProvider,
@@ -30,12 +51,12 @@ export function registerPaymentsTransactionsCommand(
     )
     .option("--limit <limit>", "Maximum rows to return (1-100)", "50")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
         const limit =
           parseIntegerOption(opts.limit, "--limit", { min: 1, max: 100 }) ?? 50;
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await listPaymentTransactions(provider, environment, {
           limit,
@@ -75,13 +96,7 @@ export function registerPaymentsTransactionsCommand(
               entry.providerReferenceType && entry.providerReferenceId
                 ? `${entry.providerReferenceType}:${entry.providerReferenceId}`
                 : (entry.providerReferenceId ?? "-"),
-              formatDate(
-                entry.paidAt ??
-                  entry.failedAt ??
-                  entry.refundedAt ??
-                  entry.providerCreatedAt ??
-                  entry.createdAt,
-              ),
+              formatDate(getTransactionTimestamp(entry)),
             ]),
           );
         }

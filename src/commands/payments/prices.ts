@@ -20,18 +20,15 @@ import {
   formatAmount,
   formatDate,
   formatRecurring,
+  nullableString,
   parseBooleanOption,
   parseEnvironment,
   parseIntegerOption,
   parseMetadataOption,
+  parseRequiredIntegerOption,
   trackPaymentUsage,
 } from "./utils.js";
 type StripePrice = ListStripePricesResponse["prices"][number];
-
-function nullableString(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  return value === "null" ? null : value;
-}
 
 function parseRecurringInterval(
   value: string | undefined,
@@ -112,10 +109,10 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
     )
     .option("--product <productId>", "Filter by Stripe product id")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await listStripePrices(environment, opts.product);
 
@@ -151,10 +148,10 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
       "Stripe environment: test or live",
     )
     .action(async (priceId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await getStripePrice(environment, priceId);
 
@@ -209,10 +206,10 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
     .option("--metadata <json>", "Metadata JSON object with string values")
     .option("--idempotency-key <key>", "Caller-stable idempotency key")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const interval = parseRecurringInterval(opts.interval);
         const intervalCount = parseIntegerOption(
@@ -227,9 +224,11 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
         const request: CreateStripePriceBody = {
           productId: opts.product,
           currency: opts.currency,
-          unitAmount:
-            parseIntegerOption(opts.unitAmount, "--unit-amount", { min: 0 }) ??
-            0,
+          unitAmount: parseRequiredIntegerOption(
+            opts.unitAmount,
+            "--unit-amount",
+            { min: 0 },
+          ),
         };
         const lookupKey = nullableString(opts.lookupKey);
         const active = parseBooleanOption(opts.active, "--active");
@@ -287,10 +286,10 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
     .option("--tax-behavior <behavior>", "exclusive, inclusive, or unspecified")
     .option("--metadata <json>", "Metadata JSON object with string values")
     .action(async (priceId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const request: UpdateStripePriceBody = {};
         const active = parseBooleanOption(opts.active, "--active");
@@ -342,10 +341,10 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
       "Stripe environment: test or live",
     )
     .action(async (priceId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const data = await archiveStripePrice(environment, priceId);
 
