@@ -81,6 +81,44 @@ describe('assess — SQL classification (db query)', () => {
     expect(assess(sql('DELETE FROM users; SELECT 1 WHERE 1=1')).kind).toBe('sql.delete_all');
     expect(assess(sql('UPDATE users SET x=1; SELECT 1 WHERE 1=1')).kind).toBe('sql.update_all');
   });
+
+  // Allowlist (fail-closed): verified bypasses from the security review must now gate.
+  it('gates COPY ... PROGRAM (command execution on the DB host)', () => {
+    const r = assess(sql("COPY t TO PROGRAM 'rm -rf /'"));
+    expect(r.severity).toBe('critical');
+    expect(r.kind).toBe('sql.copy_program');
+  });
+
+  it('gates data-modifying CTEs that the ^DELETE anchor used to miss', () => {
+    expect(assess(sql('WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x')).severity).not.toBe('safe');
+    expect(assess(sql('WITH x AS (UPDATE t SET a=1 RETURNING *) SELECT * FROM x')).severity).not.toBe('safe');
+  });
+
+  it('gates DROP object types beyond the original list', () => {
+    for (const s of ['DROP FUNCTION f()', 'DROP INDEX idx', 'DROP TRIGGER trg ON t', 'DROP EXTENSION pgcrypto CASCADE', 'DROP ROLE app', 'DROP OWNED BY app']) {
+      expect(assess(sql(s)).severity, s).not.toBe('safe');
+    }
+  });
+
+  it('gates comment-obfuscated DROP and privilege/role changes', () => {
+    expect(assess(sql('DROP/**/TABLE x')).severity).not.toBe('safe');
+    expect(assess(sql('GRANT ALL ON ALL TABLES IN SCHEMA public TO anon')).severity).not.toBe('safe');
+    expect(assess(sql('ALTER ROLE app SUPERUSER')).severity).not.toBe('safe');
+    expect(assess(sql('MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN DELETE')).severity).not.toBe('safe');
+  });
+
+  it('still lets reads and additive writes through (no over-gating of normal work)', () => {
+    expect(assess(sql('SELECT * FROM users WHERE id = 1')).severity).toBe('safe');
+    expect(assess(sql('WITH x AS (SELECT 1) SELECT * FROM x')).severity).toBe('safe');
+    expect(assess(sql('INSERT INTO users (email) VALUES ($1)')).severity).toBe('safe');
+    expect(assess(sql('CREATE TABLE t (id serial primary key)')).severity).toBe('safe');
+    expect(assess(sql('EXPLAIN SELECT * FROM users')).severity).toBe('safe');
+  });
+
+  it('gates unrecognized / non-read statements by default (fail-closed)', () => {
+    expect(assess(sql('VACUUM FULL users')).severity).not.toBe('safe');
+    expect(assess(sql('EXPLAIN ANALYZE DELETE FROM users')).severity).not.toBe('safe');
+  });
 });
 
 describe('assess — command-path classification', () => {

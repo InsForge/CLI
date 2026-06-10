@@ -47,13 +47,59 @@ const DESTRUCTIVE_VERBS = ['delete', 'destroy', 'remove', 'drop', 'purge', 'wipe
 
 const SEV_RANK: Record<Severity, number> = { safe: 0, high: 1, critical: 2 };
 
+/**
+ * ALLOWLIST (fail-closed): a statement is `safe` only if we can positively
+ * recognize it as a READ or an ADDITIVE write (INSERT/CREATE) with no destructive,
+ * privilege, or host-touching keyword. Everything else — DROP of any object,
+ * TRUNCATE, DELETE/UPDATE, data-modifying CTEs (`WITH … (DELETE …)`), MERGE,
+ * COPY…PROGRAM, GRANT/REVOKE, dynamic SQL, or anything we simply don't recognize
+ * — gates by default. This inverts the old denylist: an attacker can't slip a
+ * destructive statement through by writing it in a form we didn't enumerate.
+ */
+function isNonDestructive(s: string): boolean {
+  const u = s.toUpperCase();
+  // Must START with a read or additive-write verb.
+  if (!/^\s*(SELECT|WITH|EXPLAIN|SHOW|TABLE|VALUES|INSERT|CREATE)\b/.test(u)) return false;
+  // EXPLAIN ANALYZE actually executes the inner statement.
+  if (/^\s*EXPLAIN\b/.test(u) && /\bANALYZE\b/.test(u)) return false;
+  // Any destructive / DDL-mutating / privilege / host keyword anywhere → gate.
+  if (/\b(DROP|TRUNCATE|DELETE|UPDATE|ALTER|GRANT|REVOKE|COPY|MERGE|CALL|DO|VACUUM|REINDEX|CLUSTER|REFRESH|LOCK|REASSIGN|IMPORT|SECURITY|PROGRAM)\b/.test(u)) return false;
+  // Locking reads take row locks — not read-only (but harmless on INSERT/CREATE).
+  if (/\bFOR\s+(UPDATE|NO\s+KEY\s+UPDATE|SHARE|KEY\s+SHARE)\b/.test(u)) return false;
+  // Side-effecting / host-touching functions.
+  if (/\b(pg_terminate_backend|pg_cancel_backend|lo_export|lo_import|pg_read_file|pg_ls_dir|pg_write|dblink)\s*\(/i.test(s)) return false;
+  return true;
+}
+
+const UNCLASSIFIED: RiskAssessment = {
+  severity: 'high',
+  kind: 'sql.unclassified',
+  title: 'Unrecognized statement (not a read)',
+  whatHappens: 'This is not a recognized read-only query, so it may modify data, schema, privileges, or run a command on the host.',
+  blastRadius: 'Unknown — InsForge could not classify it. Review the exact SQL before approving.',
+  risk: 'Anything that is not a plain SELECT/EXPLAIN/SHOW is gated by default (fail-closed).',
+};
+
 /** Classify a SINGLE SQL statement. `hasWhere` is scoped to this statement only,
  *  so a WHERE in a sibling statement can't mask an unfiltered DELETE/UPDATE. */
 function classifyStatement(stmt: string): RiskAssessment {
   const s = stmt.trim();
   if (!s) return SAFE;
+  if (isNonDestructive(s)) return SAFE; // allowlist: reads + additive writes pass
   const upper = s.toUpperCase();
   const hasWhere = /\bWHERE\b/i.test(s);
+
+  // COPY … TO/FROM PROGRAM is arbitrary command execution on the DB host.
+  if (/\bCOPY\b/i.test(s) && /\bPROGRAM\b/i.test(s)) {
+    return {
+      severity: 'critical',
+      kind: 'sql.copy_program',
+      title: 'Run a shell command on the database host',
+      whatHappens: 'COPY … PROGRAM executes an arbitrary OS command as the database server user.',
+      blastRadius: 'Full command execution on the database host — not just data loss.',
+      risk: 'This is remote code execution. Approve only if you wrote this exact command intentionally.',
+    };
+  }
 
   if (/\bDROP\s+(TABLE|SCHEMA|DATABASE|TYPE|VIEW|MATERIALIZED\s+VIEW)\b/i.test(s)) {
     return {
@@ -125,8 +171,10 @@ function classifyStatement(stmt: string): RiskAssessment {
       risk: 'Mutations are hard to undo without a backup.',
     };
   }
-  // SELECT / INSERT / CREATE / etc. — not destructive.
-  return SAFE;
+  // Reached only for statements that are NOT a proven read and didn't match a
+  // specific rule above — DDL, privilege changes, unknown verbs, obfuscated SQL.
+  // Fail closed: gate it.
+  return UNCLASSIFIED;
 }
 
 /**
