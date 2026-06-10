@@ -168,7 +168,8 @@ async function createZipBuffer(
     archive.directory(sourceDir, false, (entry) => {
       if (shouldExclude(entry.name)) return false;
       const normalized = entry.name.replace(/\\/g, '/');
-      if (normalized && deployIgnore?.ignores(normalized)) return false;
+      const candidate = entry.stats?.isDirectory() ? `${normalized}/` : normalized;
+      if (normalized && deployIgnore?.ignores(candidate)) return false;
       return entry;
     });
 
