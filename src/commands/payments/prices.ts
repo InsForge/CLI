@@ -1,37 +1,34 @@
 import type { Command } from "commander";
 import {
-  archivePaymentPrice,
-  createPaymentPrice,
-  getPaymentPrice,
-  listPaymentPrices,
-  updatePaymentPrice,
+  archiveStripePrice,
+  createStripePrice,
+  getStripePrice,
+  listStripePrices,
+  updateStripePrice,
 } from "../../lib/api/payments.js";
 import { requireAuth } from "../../lib/credentials.js";
 import { CLIError, getRootOpts, handleError } from "../../lib/errors.js";
 import { outputJson, outputSuccess, outputTable } from "../../lib/output.js";
 import type {
-  CreatePaymentPriceBody,
-  ListPaymentPricesResponse,
+  CreateStripePriceBody,
+  ListStripePricesResponse,
   StripePriceRecurringInterval,
   StripePriceTaxBehavior,
-  UpdatePaymentPriceBody,
+  UpdateStripePriceBody,
 } from "@insforge/shared-schemas";
 import {
   formatAmount,
   formatDate,
   formatRecurring,
+  nullableString,
   parseBooleanOption,
   parseEnvironment,
   parseIntegerOption,
   parseMetadataOption,
+  parseRequiredIntegerOption,
   trackPaymentUsage,
 } from "./utils.js";
-type PaymentPrice = ListPaymentPricesResponse["prices"][number];
-
-function nullableString(value: string | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  return value === "null" ? null : value;
-}
+type StripePrice = ListStripePricesResponse["prices"][number];
 
 function parseRecurringInterval(
   value: string | undefined,
@@ -68,7 +65,7 @@ function parseTaxBehavior(
   );
 }
 
-function outputPricesTable(prices: PaymentPrice[]): void {
+function outputPricesTable(prices: StripePrice[]): void {
   if (prices.length === 0) {
     console.log("No Stripe prices found.");
     return;
@@ -87,8 +84,8 @@ function outputPricesTable(prices: PaymentPrice[]): void {
     ],
     prices.map((price) => [
       price.environment,
-      price.stripePriceId,
-      price.stripeProductId ?? "-",
+      price.priceId,
+      price.productId ?? "-",
       formatAmount(price.unitAmount, price.currency),
       price.type,
       price.active ? "Yes" : "No",
@@ -112,12 +109,12 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
     )
     .option("--product <productId>", "Filter by Stripe product id")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
-        const data = await listPaymentPrices(environment, opts.product);
+        const data = await listStripePrices(environment, opts.product);
 
         if (json) {
           outputJson(data);
@@ -125,11 +122,20 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
           outputPricesTable(data.prices);
         }
 
-        await trackPaymentUsage("prices.list", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("prices.list", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("prices.list", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "prices.list",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
@@ -142,12 +148,12 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
       "Stripe environment: test or live",
     )
     .action(async (priceId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
-        const data = await getPaymentPrice(environment, priceId);
+        const data = await getStripePrice(environment, priceId);
 
         if (json) {
           outputJson(data);
@@ -155,11 +161,20 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
           outputPricesTable([data.price]);
         }
 
-        await trackPaymentUsage("prices.get", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("prices.get", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("prices.get", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "prices.get",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
@@ -191,10 +206,10 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
     .option("--metadata <json>", "Metadata JSON object with string values")
     .option("--idempotency-key <key>", "Caller-stable idempotency key")
     .action(async (opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
         const interval = parseRecurringInterval(opts.interval);
         const intervalCount = parseIntegerOption(
@@ -206,12 +221,14 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
           throw new CLIError("Provide --interval when using --interval-count.");
         }
 
-        const request: CreatePaymentPriceBody = {
-          stripeProductId: opts.product,
+        const request: CreateStripePriceBody = {
+          productId: opts.product,
           currency: opts.currency,
-          unitAmount:
-            parseIntegerOption(opts.unitAmount, "--unit-amount", { min: 0 }) ??
-            0,
+          unitAmount: parseRequiredIntegerOption(
+            opts.unitAmount,
+            "--unit-amount",
+            { min: 0 },
+          ),
         };
         const lookupKey = nullableString(opts.lookupKey);
         const active = parseBooleanOption(opts.active, "--active");
@@ -231,19 +248,28 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
           };
         }
 
-        const data = await createPaymentPrice(environment, request);
+        const data = await createStripePrice(environment, request);
 
         if (json) {
           outputJson(data);
         } else {
-          outputSuccess(`Stripe price created: ${data.price.stripePriceId}`);
+          outputSuccess(`Stripe price created: ${data.price.priceId}`);
         }
 
-        await trackPaymentUsage("prices.create", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("prices.create", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("prices.create", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "prices.create",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
@@ -260,12 +286,12 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
     .option("--tax-behavior <behavior>", "exclusive, inclusive, or unspecified")
     .option("--metadata <json>", "Metadata JSON object with string values")
     .action(async (priceId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
-        const request: UpdatePaymentPriceBody = {};
+        const request: UpdateStripePriceBody = {};
         const active = parseBooleanOption(opts.active, "--active");
         const lookupKey = nullableString(opts.lookupKey);
         const taxBehavior = parseTaxBehavior(opts.taxBehavior);
@@ -281,50 +307,67 @@ export function registerPaymentsPricesCommand(paymentsCmd: Command): void {
           );
         }
 
-        const data = await updatePaymentPrice(environment, priceId, request);
+        const data = await updateStripePrice(environment, priceId, request);
 
         if (json) {
           outputJson(data);
         } else {
-          outputSuccess(`Stripe price updated: ${data.price.stripePriceId}`);
+          outputSuccess(`Stripe price updated: ${data.price.priceId}`);
         }
 
-        await trackPaymentUsage("prices.update", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("prices.update", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("prices.update", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "prices.update",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });
 
   pricesCmd
     .command("archive <priceId>")
-    .alias("delete")
     .description("Archive a Stripe price")
     .requiredOption(
       "--environment <environment>",
       "Stripe environment: test or live",
     )
     .action(async (priceId: string, opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth();
+        await requireAuth(apiUrl);
 
-        const data = await archivePaymentPrice(environment, priceId);
+        const data = await archiveStripePrice(environment, priceId);
 
         if (json) {
           outputJson(data);
         } else {
-          outputSuccess(`Stripe price archived: ${data.price.stripePriceId}`);
+          outputSuccess(`Stripe price archived: ${data.price.priceId}`);
         }
 
-        await trackPaymentUsage("prices.archive", true, { environment });
-      } catch (err) {
-        await trackPaymentUsage("prices.archive", false, {
-          environment: opts.environment,
+        await trackPaymentUsage("prices.archive", true, {
+          provider: "stripe",
+          environment,
         });
+      } catch (err) {
+        await trackPaymentUsage(
+          "prices.archive",
+          false,
+          {
+            provider: "stripe",
+            environment: opts.environment,
+          },
+          err,
+        );
         handleError(err, json);
       }
     });

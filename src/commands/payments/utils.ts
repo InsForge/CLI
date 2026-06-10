@@ -1,4 +1,7 @@
-import type { StripeEnvironment } from "@insforge/shared-schemas";
+import type {
+  PaymentEnvironment,
+  RazorpayPlanPeriod,
+} from "@insforge/shared-schemas";
 import { getProjectConfig } from "../../lib/config.js";
 import { CLIError } from "../../lib/errors.js";
 import { shutdownAnalytics, trackPayments } from "../../lib/analytics.js";
@@ -8,16 +11,96 @@ export type PaymentCommandTelemetry = Record<
   string | number | boolean | undefined
 >;
 
-export function parseEnvironment(value: string): StripeEnvironment {
+function sanitizePaymentTelemetry(
+  properties: PaymentCommandTelemetry,
+): PaymentCommandTelemetry {
+  const sanitized: PaymentCommandTelemetry = {};
+
+  if (properties.provider === "stripe" || properties.provider === "razorpay") {
+    sanitized.provider = properties.provider;
+  }
+
+  if (
+    properties.environment === "test" ||
+    properties.environment === "live" ||
+    properties.environment === "all"
+  ) {
+    sanitized.environment = properties.environment;
+  } else if (properties.environment !== undefined) {
+    sanitized.environment_valid = false;
+  }
+
+  if (typeof properties.error_name === "string") {
+    sanitized.error_name = properties.error_name;
+  }
+  if (typeof properties.error_code === "string") {
+    sanitized.error_code = properties.error_code;
+  }
+  if (typeof properties.exit_code === "number") {
+    sanitized.exit_code = properties.exit_code;
+  }
+  if (typeof properties.status_code === "number") {
+    sanitized.status_code = properties.status_code;
+  }
+
+  return sanitized;
+}
+
+function getErrorTelemetry(error: unknown): PaymentCommandTelemetry {
+  return {
+    error_name: error instanceof Error ? error.name : typeof error,
+    ...(error instanceof CLIError
+      ? {
+          error_code: error.code,
+          exit_code: error.exitCode,
+          status_code: error.statusCode,
+        }
+      : {}),
+  };
+}
+
+export function parseEnvironment(value: string): PaymentEnvironment {
   if (value === "test" || value === "live") return value;
   throw new CLIError('Environment must be "test" or "live".');
 }
 
 export function parseEnvironmentOrAll(
   value: string,
-): StripeEnvironment | "all" {
+): PaymentEnvironment | "all" {
   if (value === "all") return value;
   return parseEnvironment(value);
+}
+
+export function parseRazorpayPlanPeriod(
+  value: string | undefined,
+): RazorpayPlanPeriod | undefined {
+  if (value === undefined) return undefined;
+  if (
+    value === "daily" ||
+    value === "weekly" ||
+    value === "monthly" ||
+    value === "yearly"
+  ) {
+    return value;
+  }
+  throw new CLIError(
+    "--period must be one of: daily, weekly, monthly, yearly.",
+  );
+}
+
+export function parseRequiredRazorpayPlanPeriod(
+  value: string | undefined,
+): RazorpayPlanPeriod {
+  const period = parseRazorpayPlanPeriod(value);
+  if (period === undefined) throw new CLIError("Provide --period.");
+  return period;
+}
+
+export function nullableString(
+  value: string | undefined,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  return value === "null" ? null : value;
 }
 
 export function parseBooleanOption(
@@ -53,8 +136,20 @@ export function parseIntegerOption(
   return parsed;
 }
 
-export function parseMetadataOption(
+export function parseRequiredIntegerOption(
   value: string | undefined,
+  flagName: string,
+  options: { min?: number; max?: number } = {},
+): number {
+  const parsed = parseIntegerOption(value, flagName, options);
+  if (parsed === undefined) throw new CLIError(`Provide ${flagName}.`);
+  return parsed;
+}
+
+function parseStringRecordOption(
+  value: string | undefined,
+  flagName: string,
+  fieldName: string,
 ): Record<string, string> | undefined {
   if (value === undefined) return undefined;
 
@@ -62,22 +157,34 @@ export function parseMetadataOption(
   try {
     parsed = JSON.parse(value);
   } catch {
-    throw new CLIError("Invalid JSON for --metadata.");
+    throw new CLIError(`Invalid JSON for ${flagName}.`);
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new CLIError("--metadata must be a JSON object.");
+    throw new CLIError(`${flagName} must be a JSON object.`);
   }
 
-  const metadata: Record<string, string> = {};
+  const result: Record<string, string> = {};
   for (const [key, raw] of Object.entries(parsed)) {
     if (typeof raw !== "string") {
-      throw new CLIError(`Metadata value for "${key}" must be a string.`);
+      throw new CLIError(`${fieldName} value for "${key}" must be a string.`);
     }
-    metadata[key] = raw;
+    result[key] = raw;
   }
 
-  return metadata;
+  return result;
+}
+
+export function parseMetadataOption(
+  value: string | undefined,
+): Record<string, string> | undefined {
+  return parseStringRecordOption(value, "--metadata", "Metadata");
+}
+
+export function parseNotesOption(
+  value: string | undefined,
+): Record<string, string> | undefined {
+  return parseStringRecordOption(value, "--notes", "Notes");
 }
 
 export function formatDate(value: string | null | undefined): string {
@@ -122,13 +229,17 @@ export async function trackPaymentUsage(
   subcommand: string,
   success: boolean,
   properties: PaymentCommandTelemetry = {},
+  error?: unknown,
 ): Promise<void> {
   try {
     const config = getProjectConfig();
     if (config) {
       trackPayments(subcommand, config, {
         success,
-        ...properties,
+        ...sanitizePaymentTelemetry({
+          ...properties,
+          ...(error !== undefined ? getErrorTelemetry(error) : {}),
+        }),
       });
     }
   } catch {
