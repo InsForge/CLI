@@ -158,6 +158,10 @@ export async function ossFetch(
       message = 'AI Model Gateway setup is not available on this backend.\nUpgrade your InsForge project to a version with Model Gateway support, or keep using the legacy @insforge/sdk AI modules for projects that still rely on the older AI API surface.';
     }
 
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/memory')) {
+      message = 'Agent memory is not available on this backend.\nSelf-hosted: upgrade your InsForge instance to a version with the memory feature. Cloud: contact your InsForge admin to enable agent memory.';
+    }
+
     throw new CLIError(message, 1, err.error, res.status);
   }
 
