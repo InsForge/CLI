@@ -192,7 +192,7 @@ const diagnoseCmd = program.command('diagnose');
 registerDiagnoseCommands(diagnoseCmd);
 
 // Payments commands
-const paymentsCmd = program.command('payments').description('Manage Stripe payments');
+const paymentsCmd = program.command('payments').description('Manage payments');
 registerPaymentsCommands(paymentsCmd);
 
 // Compute commands

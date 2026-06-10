@@ -550,14 +550,12 @@ npx @insforge/cli payments stripe status --json
 
 #### `npx @insforge/cli payments <provider> config`
 
-List, set, or remove provider keys.
+Set or remove provider keys. Use `payments <provider> status` to inspect whether keys are configured and whether account, sync, and webhook state are healthy.
 
 ```bash
-npx @insforge/cli payments stripe config list
 npx @insforge/cli payments stripe config set --environment test sk_test_xxx
 npx @insforge/cli payments stripe config set --environment live        # prompts securely
 npx @insforge/cli payments stripe config remove --environment test -y
-npx @insforge/cli payments razorpay config list
 npx @insforge/cli payments razorpay config set --environment test --key-id rzp_test_xxx --key-secret xxx
 npx @insforge/cli payments razorpay config remove --environment test -y
 ```

@@ -1,54 +1,26 @@
 import type { Command } from "commander";
 import * as prompts from "../../lib/prompts.js";
 import {
-  getRazorpayPaymentsConfig,
-  getStripePaymentsConfig,
   removeRazorpayKeys,
   removeStripeSecretKey,
   setRazorpayKeys,
   setStripeSecretKey,
 } from "../../lib/api/payments.js";
-import type { PaymentProvider } from "@insforge/shared-schemas";
+import type {
+  PaymentEnvironment,
+  PaymentProvider,
+} from "@insforge/shared-schemas";
 import { requireAuth } from "../../lib/credentials.js";
 import { CLIError, getRootOpts, handleError } from "../../lib/errors.js";
-import { outputJson, outputSuccess, outputTable } from "../../lib/output.js";
+import { outputJson, outputSuccess } from "../../lib/output.js";
 import { parseEnvironment, trackPaymentUsage } from "./utils.js";
 
-function outputStripeConfigTable(
-  data: Awaited<ReturnType<typeof getStripePaymentsConfig>>,
+function outputConfigMutationJson(
+  provider: PaymentProvider,
+  environment: PaymentEnvironment,
+  configured: boolean,
 ): void {
-  if (data.keys.length === 0) {
-    console.log("No Stripe keys configured.");
-    return;
-  }
-
-  outputTable(
-    ["Env", "Configured", "Key"],
-    data.keys.map((key) => [
-      key.environment,
-      key.hasKey ? "Yes" : "No",
-      key.maskedKey ?? "-",
-    ]),
-  );
-}
-
-function outputRazorpayConfigTable(
-  data: Awaited<ReturnType<typeof getRazorpayPaymentsConfig>>,
-): void {
-  if (data.razorpayKeys.length === 0) {
-    console.log("No Razorpay keys configured.");
-    return;
-  }
-
-  outputTable(
-    ["Env", "Type", "Configured", "Key"],
-    data.razorpayKeys.map((key) => [
-      key.environment,
-      key.keyType,
-      key.hasKey ? "Yes" : "No",
-      key.maskedKey ?? "-",
-    ]),
-  );
+  outputJson({ provider, environment, configured });
 }
 
 export function registerPaymentsConfigCommand(
@@ -57,38 +29,7 @@ export function registerPaymentsConfigCommand(
 ): void {
   const configCmd = paymentsCmd
     .command("config")
-    .description("Manage payment provider keys");
-
-  configCmd
-    .command("list")
-    .description("List configured payment provider keys")
-    .action(async (_opts, cmd) => {
-      const { json } = getRootOpts(cmd);
-      try {
-        await requireAuth();
-
-        if (provider === "stripe") {
-          const data = await getStripePaymentsConfig();
-          if (json) {
-            outputJson(data);
-          } else {
-            outputStripeConfigTable(data);
-          }
-        } else {
-          const data = await getRazorpayPaymentsConfig();
-          if (json) {
-            outputJson(data);
-          } else {
-            outputRazorpayConfigTable(data);
-          }
-        }
-
-        await trackPaymentUsage("config", true, { provider });
-      } catch (err) {
-        await trackPaymentUsage("config", false, { provider }, err);
-        handleError(err, json);
-      }
-    });
+    .description("Set or remove payment provider keys");
 
   if (provider === "stripe") {
     registerStripeConfigSetCommand(configCmd);
@@ -122,13 +63,14 @@ export function registerPaymentsConfigCommand(
           if (prompts.isCancel(confirm) || !confirm) process.exit(0);
         }
 
-        const data =
-          provider === "stripe"
-            ? await removeStripeSecretKey(environment)
-            : await removeRazorpayKeys(environment);
+        if (provider === "stripe") {
+          await removeStripeSecretKey(environment);
+        } else {
+          await removeRazorpayKeys(environment);
+        }
 
         if (json) {
-          outputJson(data);
+          outputConfigMutationJson(provider, environment, false);
         } else {
           outputSuccess(`${provider} ${environment} keys removed.`);
         }
@@ -182,10 +124,10 @@ function registerStripeConfigSetCommand(configCmd: Command): void {
           secretKey = input;
         }
 
-        const data = await setStripeSecretKey(environment, secretKey);
+        await setStripeSecretKey(environment, secretKey);
 
         if (json) {
-          outputJson(data);
+          outputConfigMutationJson("stripe", environment, true);
         } else {
           outputSuccess(`Stripe ${environment} key configured.`);
         }
@@ -250,13 +192,13 @@ function registerRazorpayConfigSetCommand(configCmd: Command): void {
           keySecret = input;
         }
 
-        const data = await setRazorpayKeys(environment, {
+        await setRazorpayKeys(environment, {
           keyId,
           keySecret,
         });
 
         if (json) {
-          outputJson(data);
+          outputConfigMutationJson("razorpay", environment, true);
         } else {
           outputSuccess(`Razorpay ${environment} keys configured.`);
         }

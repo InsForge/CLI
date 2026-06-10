@@ -7,9 +7,7 @@ import type {
   CreateStripePriceBody,
   CreateStripeProductBody,
   DeleteStripeProductResponse,
-  GetRazorpayConfigResponse,
   GetRazorpayStatusResponse,
-  GetStripeConfigResponse,
   GetStripePriceResponse,
   GetStripeProductResponse,
   GetStripeStatusResponse,
@@ -85,67 +83,44 @@ export async function getRazorpayPaymentsStatus(): Promise<GetRazorpayStatusResp
   return readJson(await ossFetch(withProviderPath("razorpay", "/status")));
 }
 
-export async function getStripePaymentsConfig(): Promise<GetStripeConfigResponse> {
-  return readJson(await ossFetch(withProviderPath("stripe", "/config")));
-}
-
-export async function getRazorpayPaymentsConfig(): Promise<GetRazorpayConfigResponse> {
-  return readJson(await ossFetch(withProviderPath("razorpay", "/config")));
-}
-
 export async function setStripeSecretKey(
   environment: PaymentEnvironment,
   secretKey: string,
-): Promise<GetStripeConfigResponse> {
+): Promise<void> {
   const request: UpsertStripeConfigBody = { secretKey };
-  return readJson(
-    await ossFetch(
-      withProviderEnvironmentPath("stripe", environment, "/config"),
-      {
-        method: "PUT",
-        body: JSON.stringify(request),
-      },
-    ),
-  );
+  await ossFetch(withProviderEnvironmentPath("stripe", environment, "/config"), {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
 }
 
 export async function setRazorpayKeys(
   environment: PaymentEnvironment,
   request: UpsertRazorpayConfigBody,
-): Promise<GetRazorpayConfigResponse> {
-  return readJson(
-    await ossFetch(
-      withProviderEnvironmentPath("razorpay", environment, "/config"),
-      {
-        method: "PUT",
-        body: JSON.stringify(request),
-      },
-    ),
+): Promise<void> {
+  await ossFetch(
+    withProviderEnvironmentPath("razorpay", environment, "/config"),
+    {
+      method: "PUT",
+      body: JSON.stringify(request),
+    },
   );
 }
 
 export async function removeStripeSecretKey(
   environment: PaymentEnvironment,
-): Promise<GetStripeConfigResponse> {
-  return readJson(
-    await ossFetch(
-      withProviderEnvironmentPath("stripe", environment, "/config"),
-      {
-        method: "DELETE",
-      },
-    ),
-  );
+): Promise<void> {
+  await ossFetch(withProviderEnvironmentPath("stripe", environment, "/config"), {
+    method: "DELETE",
+  });
 }
 
 export async function removeRazorpayKeys(
   environment: PaymentEnvironment,
-): Promise<GetRazorpayConfigResponse> {
-  return readJson(
-    await ossFetch(
-      withProviderEnvironmentPath("razorpay", environment, "/config"),
-      { method: "DELETE" },
-    ),
-  );
+): Promise<void> {
+  await ossFetch(withProviderEnvironmentPath("razorpay", environment, "/config"), {
+    method: "DELETE",
+  });
 }
 
 export async function syncStripePayments(
