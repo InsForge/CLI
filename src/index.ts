@@ -77,6 +77,7 @@ import { registerPaymentsCommands } from './commands/payments/index.js';
 import { registerPosthogSetupCommand } from './commands/posthog/setup.js';
 import { registerConfigCommand } from './commands/config/index.js';
 import { registerAiCommands } from './commands/ai/index.js';
+import { registerMemoryCommands } from './commands/memory/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -213,6 +214,9 @@ registerPosthogSetupCommand(posthogCmd);
 // AI commands
 const aiCmd = program.command('ai').description('Manage AI model gateway setup');
 registerAiCommands(aiCmd);
+
+const memoryCmd = program.command('memory').description('Store and recall durable agent memories');
+registerMemoryCommands(memoryCmd);
 
 // Schedules commands
 const schedulesCmd = program.command('schedules').description('Manage scheduled tasks (cron jobs)');
