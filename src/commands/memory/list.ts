@@ -1,9 +1,10 @@
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
+import { getProjectConfig } from '../../lib/config.js';
+import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
-import { reportCliUsage } from '../../lib/skills.js';
 
 interface MemoryIndexEntry {
   id: string;
@@ -38,9 +39,18 @@ export function registerMemoryListCommand(memoryCmd: Command): void {
           }
           console.log(`\n${result.entries.length} memories.`);
         }
-        await reportCliUsage('cli.memory.list', true);
+
+        const project = getProjectConfig();
+        if (project) {
+          captureEvent(project.project_id, 'cli_memory_list', {
+            project_id: project.project_id,
+            entries: result.entries.length,
+          });
+        }
       } catch (err) {
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }

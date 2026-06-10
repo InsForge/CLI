@@ -1,9 +1,10 @@
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
+import { getProjectConfig } from '../../lib/config.js';
+import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
-import { reportCliUsage } from '../../lib/skills.js';
 
 interface RecalledMemory {
   id: string;
@@ -51,9 +52,18 @@ export function registerMemoryRecallCommand(memoryCmd: Command): void {
             console.log(`        ${m.content}`);
           }
         }
-        await reportCliUsage('cli.memory.recall', true);
+
+        const project = getProjectConfig();
+        if (project) {
+          captureEvent(project.project_id, 'cli_memory_recall', {
+            project_id: project.project_id,
+            results: result.memories.length,
+          });
+        }
       } catch (err) {
         handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
       }
     });
 }
