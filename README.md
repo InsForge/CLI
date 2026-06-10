@@ -496,6 +496,15 @@ npx @insforge/cli deployments deploy ./my-app
 npx @insforge/cli deployments deploy --env '{"API_URL": "https://api.example.com"}'
 ```
 
+To exclude files from the upload, add a `.vercelignore` file to the deploy directory. It uses `.gitignore` syntax (including `!` negation) and is applied on top of the built-in excludes (`node_modules`, `.git`, `.env`, etc. — these always stay excluded and cannot be re-included).
+
+```gitignore
+# .vercelignore
+*.md
+drafts/
+!IMPORTANT.md
+```
+
 #### `npx @insforge/cli deployments list`
 
 List all deployments.

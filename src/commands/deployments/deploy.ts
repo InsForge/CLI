@@ -21,6 +21,7 @@ import type {
   StartDeploymentRequest,
 } from '../../types.js';
 import { trackDeploymentUsage } from './utils.js';
+import { loadDeployIgnore, IGNORE_FILE_NAME, type DeployIgnore } from './ignore-file.js';
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 300_000;
@@ -52,6 +53,7 @@ const EXCLUDE_PATTERNS = [
   '.cache',
   'skills',
   'coverage',
+  IGNORE_FILE_NAME,
 ];
 
 type LocalDeploymentFile = DeploymentManifestFileEntry & {
@@ -106,7 +108,10 @@ async function hashFile(filePath: string): Promise<{ sha: string; size: number }
   return { sha: hash.digest('hex'), size };
 }
 
-async function collectDeploymentFiles(sourceDir: string): Promise<LocalDeploymentFile[]> {
+export async function collectDeploymentFiles(
+  sourceDir: string,
+  deployIgnore?: DeployIgnore | null,
+): Promise<LocalDeploymentFile[]> {
   const files: LocalDeploymentFile[] = [];
 
   async function walk(currentDir: string): Promise<void> {
@@ -118,6 +123,10 @@ async function collectDeploymentFiles(sourceDir: string): Promise<LocalDeploymen
       const normalizedPath = normalizeRelativePath(sourceDir, absolutePath);
 
       if (!normalizedPath || shouldExclude(normalizedPath)) {
+        continue;
+      }
+
+      if (deployIgnore?.ignores(entry.isDirectory() ? `${normalizedPath}/` : normalizedPath)) {
         continue;
       }
 
@@ -144,7 +153,10 @@ async function collectDeploymentFiles(sourceDir: string): Promise<LocalDeploymen
   return files;
 }
 
-async function createZipBuffer(sourceDir: string): Promise<Buffer> {
+export async function createZipBuffer(
+  sourceDir: string,
+  deployIgnore?: DeployIgnore | null,
+): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const archive = archiver('zip', { zlib: { level: 9 } });
     const chunks: Buffer[] = [];
@@ -155,6 +167,9 @@ async function createZipBuffer(sourceDir: string): Promise<Buffer> {
 
     archive.directory(sourceDir, false, (entry) => {
       if (shouldExclude(entry.name)) return false;
+      const normalized = entry.name.replace(/\\/g, '/');
+      const candidate = entry.stats?.isDirectory() ? `${normalized}/` : normalized;
+      if (normalized && deployIgnore?.ignores(candidate)) return false;
       return entry;
     });
 
@@ -309,11 +324,12 @@ async function pollDeployment(
 async function deployProjectDirect(
   opts: DeployProjectOptions,
   config: ProjectConfig,
+  deployIgnore: DeployIgnore | null,
 ): Promise<DeployProjectResult> {
   const { sourceDir, startBody = {}, spinner } = opts;
 
   spinner?.start('Scanning source files...');
-  const localFiles = await collectDeploymentFiles(sourceDir);
+  const localFiles = await collectDeploymentFiles(sourceDir, deployIgnore);
   if (localFiles.length === 0) {
     throw new CLIError('No deployable files found in the source directory.');
   }
@@ -349,6 +365,7 @@ async function deployProjectDirect(
 
 async function deployProjectLegacy(
   opts: DeployProjectOptions,
+  deployIgnore: DeployIgnore | null,
 ): Promise<DeployProjectResult> {
   const { sourceDir, startBody = {}, spinner } = opts;
 
@@ -358,7 +375,7 @@ async function deployProjectLegacy(
     (await createRes.json()) as CreateDeploymentResponse;
 
   spinner?.message('Compressing source files...');
-  const zipBuffer = await createZipBuffer(sourceDir);
+  const zipBuffer = await createZipBuffer(sourceDir, deployIgnore);
 
   spinner?.message('Uploading...');
   const formData = new FormData();
@@ -407,15 +424,22 @@ export async function deployProject(opts: DeployProjectOptions): Promise<DeployP
     throw new ProjectNotLinkedError();
   }
 
+  const deployIgnore = await loadDeployIgnore(opts.sourceDir);
+  if (deployIgnore && opts.spinner) {
+    clack.log.info(
+      `Applying ${IGNORE_FILE_NAME} (${deployIgnore.patternCount} pattern${deployIgnore.patternCount === 1 ? '' : 's'})`,
+    );
+  }
+
   try {
-    return await deployProjectDirect(opts, config);
+    return await deployProjectDirect(opts, config, deployIgnore);
   } catch (error) {
     if (!(error instanceof DirectDeploymentUnsupportedError)) {
       throw error;
     }
 
     opts.spinner?.message('Direct deployment is not available on this backend. Falling back to the legacy zip upload flow...');
-    return await deployProjectLegacy(opts);
+    return await deployProjectLegacy(opts, deployIgnore);
   }
 }
 
@@ -427,6 +451,7 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
     .option('--meta <meta>', 'Deployment metadata as JSON')
     .action(async (directory: string | undefined, opts, cmd) => {
       const { json } = getRootOpts(cmd);
+      let hasIgnoreFile = false;
       try {
         await requireAuth();
         const config = getProjectConfig();
@@ -446,6 +471,11 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
             `"${dirName}" is an excluded directory and cannot be used as a deploy source. Please specify your project root or output directory instead.`,
           );
         }
+
+        hasIgnoreFile = await fs
+          .stat(path.join(sourceDir, IGNORE_FILE_NAME))
+          .then((s) => s.isFile())
+          .catch(() => false);
 
         const spinner = !json ? clack.spinner() : null;
 
@@ -505,12 +535,14 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
         await trackDeploymentUsage('deploy', true, {
           has_env: opts.env !== undefined,
           has_meta: opts.meta !== undefined,
+          has_ignore_file: hasIgnoreFile,
           ready: result.isReady,
         });
       } catch (err) {
         await trackDeploymentUsage('deploy', false, {
           has_env: opts.env !== undefined,
           has_meta: opts.meta !== undefined,
+          has_ignore_file: hasIgnoreFile,
         });
         handleError(err, json);
       }
