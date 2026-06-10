@@ -153,7 +153,7 @@ export async function collectDeploymentFiles(
   return files;
 }
 
-async function createZipBuffer(
+export async function createZipBuffer(
   sourceDir: string,
   deployIgnore?: DeployIgnore | null,
 ): Promise<Buffer> {

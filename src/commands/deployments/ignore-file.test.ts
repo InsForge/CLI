@@ -3,7 +3,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { loadDeployIgnore } from './ignore-file.js';
-import { collectDeploymentFiles } from './deploy.js';
+import { collectDeploymentFiles, createZipBuffer } from './deploy.js';
+import { CLIError } from '../../lib/errors.js';
 
 const tempDirs: string[] = [];
 
@@ -47,6 +48,14 @@ describe('loadDeployIgnore', () => {
     const matcher = await loadDeployIgnore(dir);
     expect(matcher?.ignores('README.md')).toBe(true);
     expect(matcher?.ignores('KEEP.md')).toBe(false);
+  });
+
+  it('throws CLIError when .vercelignore exists but cannot be read', async () => {
+    const dir = await makeTempProject({ 'index.html': '<html></html>' });
+    // A directory named .vercelignore triggers EISDIR — portable, unlike chmod tricks
+    await fs.mkdir(path.join(dir, '.vercelignore'));
+    await expect(loadDeployIgnore(dir)).rejects.toThrow(CLIError);
+    await expect(loadDeployIgnore(dir)).rejects.toThrow(/Failed to read \.vercelignore/);
   });
 
   it('handles CRLF line endings', async () => {
@@ -134,5 +143,61 @@ describe('collectDeploymentFiles with .vercelignore', () => {
     expect(matcher).toBeNull();
     const files = await collectDeploymentFiles(dir, matcher);
     expect(files.map((f) => f.path).sort()).toEqual(['README.md', 'index.html']);
+  });
+});
+
+/** Entry names from a zip buffer's central directory (signature PK\x01\x02). */
+function listZipEntryNames(zip: Buffer): string[] {
+  const names: string[] = [];
+  const SIG = 0x02014b50;
+  let offset = 0;
+  while ((offset = zip.indexOf('PK', offset, 'binary')) !== -1) {
+    if (zip.readUInt32LE(offset) === SIG) {
+      const nameLength = zip.readUInt16LE(offset + 28);
+      names.push(zip.subarray(offset + 46, offset + 46 + nameLength).toString('utf8'));
+    }
+    offset += 4;
+  }
+  return names;
+}
+
+describe('createZipBuffer with .vercelignore (legacy upload path)', () => {
+  it('excludes ignored files, directory-only patterns, and built-ins from the archive', async () => {
+    const dir = await makeTempProject({
+      '.vercelignore': '*.md\ndrafts/\n!KEEP.md\n',
+      'index.html': '<html></html>',
+      'README.md': '# readme',
+      'KEEP.md': '# kept',
+      'drafts/wip.txt': 'wip',
+      'node_modules/pkg/index.js': 'x',
+      'src/app.js': 'console.log(1)',
+    });
+    const matcher = await loadDeployIgnore(dir);
+    const zip = await createZipBuffer(dir, matcher);
+    const entries = listZipEntryNames(zip).sort();
+
+    expect(entries).toContain('index.html');
+    expect(entries).toContain('KEEP.md');
+    expect(entries).toContain('src/app.js');
+    expect(entries).not.toContain('README.md');
+    expect(entries).not.toContain('.vercelignore');
+    expect(entries.filter((e) => e.startsWith('drafts'))).toEqual([]);
+    expect(entries.filter((e) => e.startsWith('node_modules'))).toEqual([]);
+  });
+
+  it('matches the direct-upload path file set for the same project', async () => {
+    const dir = await makeTempProject({
+      '.vercelignore': '*.tmp\nprivate/\n',
+      'index.html': '<html></html>',
+      'cache.tmp': 'x',
+      'private/data.json': '{}',
+      'src/main.ts': 'code',
+    });
+    const matcher = await loadDeployIgnore(dir);
+    const walked = (await collectDeploymentFiles(dir, matcher)).map((f) => f.path).sort();
+    const zipped = listZipEntryNames(await createZipBuffer(dir, matcher))
+      .filter((e) => !e.endsWith('/'))
+      .sort();
+    expect(zipped).toEqual(walked);
   });
 });
