@@ -153,6 +153,12 @@ describe('posthog setup', () => {
       const [body, title] = clackNoteMock.mock.calls[0];
       expect(title).toBe('Next step');
       expect(body).toMatch(/npx(\.cmd)? -y @posthog\/wizard@latest/);
+      // The note must make it unmissable that setup is incomplete until the
+      // user runs the wizard, and surface the connected project's public
+      // client key so env vars can be wired against the right project.
+      expect(body).toContain('⚠️');
+      expect(body).toContain('NOT finished');
+      expect(body).toContain('phc_');
     });
   });
 
@@ -177,10 +183,16 @@ describe('posthog setup', () => {
         success: boolean;
         wizardSkipped: boolean;
         wizardCommand: string;
+        connection: { apiKey?: string; host?: string; posthogProjectId?: string | number };
       };
       expect(payload.success).toBe(true);
       expect(payload.wizardSkipped).toBe(true);
       expect(payload.wizardCommand).toMatch(/^npx(\.cmd)? -y @posthog\/wizard@latest$/);
+      expect(payload.connection).toMatchObject({
+        apiKey: 'phc_',
+        host: 'h',
+        posthogProjectId: '1',
+      });
     });
   });
 

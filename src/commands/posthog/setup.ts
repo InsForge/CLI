@@ -14,6 +14,7 @@ import {
   fetchPosthogConnection,
   pollPosthogConnection,
   startPosthogCliFlow,
+  type PosthogConnectionResponse,
 } from '../../lib/api/posthog.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackPosthog, shutdownAnalytics } from '../../lib/analytics.js';
@@ -29,6 +30,19 @@ interface SetupResult {
   wizardSkipped: true;
   /** The command the user should run themselves to complete the SDK install. */
   wizardCommand: string;
+  /**
+   * Details of the connected PostHog project. `apiKey` is PostHog's public
+   * client-side key (`phc_…`) — it ships in frontend bundles by design, so
+   * printing it is safe and lets the user (or an agent, when the interactive
+   * wizard can't run) wire env vars against the exact project the InsForge
+   * dashboard reads from.
+   */
+  connection: {
+    apiKey?: string;
+    host?: string;
+    posthogProjectId?: string | number;
+    projectName?: string;
+  };
 }
 
 // `npx` is installed as `npx.cmd` on Windows.
@@ -94,7 +108,11 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
   }
 
   // 3. Ensure dashboard connection exists
-  const dashboardConnection = await ensureDashboardConnection(proj.project_id, token, opts);
+  const { state: dashboardConnection, connection } = await ensureDashboardConnection(
+    proj.project_id,
+    token,
+    opts,
+  );
 
   // 4. Print the wizard command and exit. The wizard is interactive (browser
   // OAuth + framework picker) and reliably detecting "do we have a real,
@@ -103,10 +121,25 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
   // the wizard step to the user; they paste-and-run one command in their own
   // terminal. CLI's job ends here.
   if (!opts.json) {
+    const details = [
+      connection.projectName ? `  Project:    ${connection.projectName}` : null,
+      connection.posthogProjectId ? `  Project ID: ${connection.posthogProjectId}` : null,
+      connection.apiKey ? `  API key:    ${connection.apiKey}` : null,
+      connection.host ? `  Host:       ${connection.host}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
     clack.note(
-      `Run this in your terminal to wire PostHog into your app code:\n\n` +
+      `⚠️  Setup is NOT finished yet. Your app code has no PostHog SDK and no\n` +
+        `env vars, so no events will flow until you run the wizard yourself:\n\n` +
         `  ${WIZARD_COMMAND}\n\n` +
-        `Once it completes, open the Analytics page in your InsForge dashboard.`,
+        `Run it in your own terminal (it is interactive). It installs the SDK,\n` +
+        `writes the PostHog env vars, and adds the init code. When it asks,\n` +
+        `pick the PostHog project your InsForge dashboard is connected to:\n\n` +
+        `${details}\n\n` +
+        `The API key is PostHog's public client-side key, safe to use in\n` +
+        `frontend env vars. Once the wizard completes, open the Analytics\n` +
+        `page in your InsForge dashboard.`,
       'Next step',
     );
   }
@@ -115,17 +148,27 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
     dashboardConnection,
     wizardSkipped: true,
     wizardCommand: WIZARD_COMMAND,
+    connection: {
+      apiKey: connection.apiKey,
+      host: connection.host,
+      posthogProjectId: connection.posthogProjectId,
+      projectName: connection.projectName,
+    },
   };
 }
 
 // Calls cli-start. If already connected, no-op. Otherwise opens the OAuth
 // browser flow and polls until the connection appears. Returns whether we
-// hit the fast path or had to wait.
+// hit the fast path or had to wait, plus the connection details (public
+// `phc_` key, host, project id) for the wizard handoff note.
 async function ensureDashboardConnection(
   projectId: string,
   token: string,
   opts: RunSetupOpts,
-): Promise<'already-connected' | 'newly-connected'> {
+): Promise<{
+  state: 'already-connected' | 'newly-connected';
+  connection: PosthogConnectionResponse;
+}> {
   const startResult = await startPosthogCliFlow(projectId, token, opts.apiUrl);
 
   if (startResult.type === 'connected') {
@@ -140,11 +183,11 @@ async function ensureDashboardConnection(
         'cli-start reported connected, but /connection returned not-connected. Try again, or check the dashboard.',
       );
     }
-    return 'already-connected';
+    return { state: 'already-connected', connection: fetchResult.connection };
   }
 
-  await runConnectFlow(projectId, token, startResult.authorizeUrl, opts);
-  return 'newly-connected';
+  const connection = await runConnectFlow(projectId, token, startResult.authorizeUrl, opts);
+  return { state: 'newly-connected', connection };
 }
 
 async function runConnectFlow(
@@ -152,7 +195,7 @@ async function runConnectFlow(
   token: string,
   authorizeUrl: string,
   opts: RunSetupOpts,
-): Promise<void> {
+): Promise<PosthogConnectionResponse> {
   if (opts.json) {
     // JSON mode: keep stdout clean for the final result object. Print the
     // URL to stderr so a human can copy it if the browser fails to open.
@@ -187,7 +230,7 @@ async function runConnectFlow(
   }
 
   try {
-    await pollPosthogConnection(
+    const connection = await pollPosthogConnection(
       projectId,
       token,
       {
@@ -212,6 +255,7 @@ async function runConnectFlow(
     } else if (!opts.json) {
       clack.log.success('InsForge dashboard connection received.');
     }
+    return connection;
   } catch (err) {
     if (spinner) {
       spinner.stop('InsForge dashboard connection wait failed.');
