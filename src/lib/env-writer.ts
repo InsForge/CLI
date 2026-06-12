@@ -78,3 +78,39 @@ export function upsertEnvFile(
 
   return result;
 }
+
+/**
+ * Overwrite (or append) env vars in-place. Unlike upsertEnvFile, this REPLACES
+ * the value of keys that already exist. Used to repoint a frontend at a branch
+ * preview backend. Returns which keys were changed vs newly added.
+ */
+export function overwriteEnvFile(
+  path: string,
+  entries: Record<string, string>,
+): { changed: string[]; added: string[] } {
+  const exists = existsSync(path);
+  let content = exists ? readFileSync(path, 'utf-8') : '';
+  const changed: string[] = [];
+  const added: string[] = [];
+  const additions: string[] = [];
+
+  for (const [key, value] of Object.entries(entries)) {
+    const re = KEY_LINE_RE(key);
+    if (re.test(content)) {
+      content = content.replace(re, `${key}=${value}`);
+      changed.push(key);
+    } else {
+      additions.push(`${key}=${value}`);
+      added.push(key);
+    }
+  }
+
+  if (additions.length > 0) {
+    if (content.length > 0 && !content.endsWith('\n')) content += '\n';
+    content += additions.join('\n') + '\n';
+  }
+  if (changed.length > 0 || additions.length > 0) {
+    writeFileSync(path, content);
+  }
+  return { changed, added };
+}

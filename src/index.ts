@@ -11,6 +11,7 @@ import { registerWhoamiCommand } from './commands/whoami.js';
 import { registerOrgsCommands } from './commands/orgs/list.js';
 import { registerProjectsCommands } from './commands/projects/list.js';
 import { registerBranchCommands } from './commands/branch/index.js';
+import { registerPreviewCommands } from './commands/preview/index.js';
 import { registerProjectLinkCommand } from './commands/projects/link.js';
 import { registerDbCommands } from './commands/db/query.js';
 import { registerDbTablesCommand } from './commands/db/tables.js';
@@ -124,6 +125,9 @@ registerProjectsCommands(projectsCmd);
 
 // Branch commands
 registerBranchCommands(program);
+
+// Preview commands (experimental, hidden from --help)
+registerPreviewCommands(program);
 
 // Database commands
 const dbCmd = program.command('db').description('Database operations');
