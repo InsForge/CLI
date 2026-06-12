@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import path from 'node:path';
 import { existsSync, copyFileSync } from 'node:fs';
-import { createBranchApi, getBranchApi } from '../../lib/api/platform.js';
+import { createBranchApi, getBranchApi, deleteBranchApi } from '../../lib/api/platform.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
@@ -38,7 +38,22 @@ export function registerPreviewCreateCommand(preview: Command): void {
 
         const created = await createBranchApi(project.project_id, { mode: 'full', name }, apiUrl);
         captureEvent(project.project_id, 'cli_preview_create', { name });
-        const ready = await pollUntilReady(created.id, apiUrl);
+
+        let ready: Branch;
+        try {
+          ready = await pollUntilReady(created.id, apiUrl);
+        } catch (pollErr) {
+          try {
+            await deleteBranchApi(created.id, apiUrl);
+          } catch {
+            // Best effort — fall through to the actionable error below.
+          }
+          const detail = pollErr instanceof Error ? pollErr.message : String(pollErr);
+          throw new CLIError(
+            `Preview '${name}' did not become ready: ${detail}. ` +
+              `If the branch still exists, remove it with: insforge branch delete ${name}`,
+          );
+        }
 
         const previewUrl = `https://${ready.appkey}.${ready.region}.insforge.app`;
 

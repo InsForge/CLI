@@ -68,4 +68,20 @@ describe('overwriteEnvFile', () => {
     expect(out).toContain(`NEXT_PUBLIC_INSFORGE_URL=${tricky}`);
   });
 
+
+  it('rewrites ALL occurrences of a duplicated key', async () => {
+    const file = path.join(dir, '.env');
+    await writeFile(file, [
+      'NEXT_PUBLIC_INSFORGE_URL=https://a.example.com',
+      'OTHER=keep',
+      'NEXT_PUBLIC_INSFORGE_URL=https://b.example.com',
+    ].join('\n') + '\n');
+    overwriteEnvFile(file, { NEXT_PUBLIC_INSFORGE_URL: 'https://branch.insforge.app' });
+    const out = await readFile(file, 'utf8');
+    expect(out.match(/NEXT_PUBLIC_INSFORGE_URL=https:\/\/branch\.insforge\.app/g)?.length).toBe(2);
+    expect(out).not.toContain('a.example.com');
+    expect(out).not.toContain('b.example.com');
+    expect(out).toContain('OTHER=keep');
+  });
+
 });

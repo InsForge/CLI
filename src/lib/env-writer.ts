@@ -95,8 +95,9 @@ export function overwriteEnvFile(
   const additions: string[] = [];
 
   for (const [key, value] of Object.entries(entries)) {
-    const re = KEY_LINE_RE(key);
+    const re = new RegExp(KEY_LINE_RE(key).source, 'gm');
     if (re.test(content)) {
+      re.lastIndex = 0;
       content = content.replace(re, () => `${key}=${value}`);
       changed.push(key);
     } else {
