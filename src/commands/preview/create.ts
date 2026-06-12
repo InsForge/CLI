@@ -42,23 +42,36 @@ export function registerPreviewCreateCommand(preview: Command): void {
 
         const previewUrl = `https://${ready.appkey}.${ready.region}.insforge.app`;
 
-        let wiredEnvFile: string | undefined;
-        if (opts.wireEnv) {
-          wiredEnvFile = typeof opts.wireEnv === 'string' ? opts.wireEnv : '.env.local';
-          const envPath = path.resolve(process.cwd(), wiredEnvFile);
-          if (existsSync(envPath)) {
-            copyFileSync(envPath, envPath + '.preview-bak');
-          }
-          overwriteEnvFile(envPath, { NEXT_PUBLIC_INSFORGE_URL: previewUrl });
-        }
-
         await writePreviewManifest(process.cwd(), {
           name,
           branchId: ready.id,
           appkey: ready.appkey,
           createdAt: ready.branch_created_at,
-          ...(wiredEnvFile ? { wiredEnvFile } : {}),
         });
+
+        let wiredEnvFile: string | undefined;
+        if (opts.wireEnv) {
+          const envFile: string = typeof opts.wireEnv === 'string' ? opts.wireEnv : '.env.local';
+          wiredEnvFile = envFile;
+          const envPath = path.resolve(process.cwd(), envFile);
+          // Back up an existing file so teardown can restore it. If the file
+          // doesn't exist, `overwriteEnvFile` creates it — record that so
+          // teardown deletes our creation instead of looking for a backup.
+          const envExisted = existsSync(envPath);
+          if (envExisted) {
+            copyFileSync(envPath, envPath + '.preview-bak');
+          }
+          overwriteEnvFile(envPath, { NEXT_PUBLIC_INSFORGE_URL: previewUrl });
+
+          await writePreviewManifest(process.cwd(), {
+            name,
+            branchId: ready.id,
+            appkey: ready.appkey,
+            createdAt: ready.branch_created_at,
+            wiredEnvFile,
+            ...(envExisted ? {} : { wiredEnvCreated: true }),
+          });
+        }
 
         if (json) {
           outputJson({ preview: { name, branchId: ready.id, appkey: ready.appkey, url: previewUrl } });
@@ -70,8 +83,10 @@ export function registerPreviewCreateCommand(preview: Command): void {
               `  Wired ${wiredEnvFile}: NEXT_PUBLIC_INSFORGE_URL -> branch backend (backup: ${wiredEnvFile}.preview-bak)`,
             );
           }
-          outputInfo(`  Point your frontend at this backend, then run:`);
-          outputInfo(`    insforge preview test ${name}`);
+          if (!wiredEnvFile) {
+            outputInfo(`  Point your frontend at this backend (set NEXT_PUBLIC_INSFORGE_URL), then verify.`);
+          }
+          outputInfo(`  Tear down when done: insforge preview teardown ${name}`);
         }
       } catch (err) {
         handleError(err, json);

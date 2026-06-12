@@ -22,13 +22,26 @@ export function registerPreviewTeardownCommand(preview: Command): void {
         }
         await deleteBranchApi(manifest.branchId, apiUrl);
 
+        // The branch is now gone (irreversible). Finish local cleanup defensively
+        // so a failure restoring the env file never aborts before the manifest is
+        // removed — otherwise the manifest would keep pointing at a deleted branch.
         if (manifest.wiredEnvFile) {
-          const envPath = path.resolve(process.cwd(), manifest.wiredEnvFile);
-          const backupPath = envPath + '.preview-bak';
-          if (existsSync(backupPath)) {
-            copyFileSync(backupPath, envPath);
-            rmSync(backupPath, { force: true });
-            outputInfo(`  Restored ${manifest.wiredEnvFile} from backup.`);
+          try {
+            const envPath = path.resolve(process.cwd(), manifest.wiredEnvFile);
+            const backupPath = envPath + '.preview-bak';
+            if (manifest.wiredEnvCreated) {
+              // We created this file during `--wire-env`; remove it rather than
+              // leave it pointing at a deleted preview backend.
+              rmSync(envPath, { force: true });
+              outputInfo(`  Removed ${manifest.wiredEnvFile} (created by preview).`);
+            } else if (existsSync(backupPath)) {
+              copyFileSync(backupPath, envPath);
+              rmSync(backupPath, { force: true });
+              outputInfo(`  Restored ${manifest.wiredEnvFile} from backup.`);
+            }
+          } catch (envErr) {
+            const msg = envErr instanceof Error ? envErr.message : String(envErr);
+            outputInfo(`  ⚠ Could not restore ${manifest.wiredEnvFile} (${msg}). Restore it manually.`);
           }
         }
 

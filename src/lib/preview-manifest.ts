@@ -7,13 +7,21 @@ export interface PreviewManifest {
   appkey: string;
   createdAt: string;
   wiredEnvFile?: string;
+  wiredEnvCreated?: boolean;
 }
 
 function previewDir(baseDir: string): string {
   return path.join(baseDir, '.insforge', 'previews');
 }
 
+function assertSafeName(name: string): void {
+  if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+    throw new Error(`Invalid preview name '${name}': use only letters, digits, '.', '_', '-'.`);
+  }
+}
+
 function manifestPath(baseDir: string, name: string): string {
+  assertSafeName(name);
   return path.join(previewDir(baseDir), `${name}.json`);
 }
 

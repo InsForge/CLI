@@ -97,7 +97,7 @@ export function overwriteEnvFile(
   for (const [key, value] of Object.entries(entries)) {
     const re = KEY_LINE_RE(key);
     if (re.test(content)) {
-      content = content.replace(re, `${key}=${value}`);
+      content = content.replace(re, () => `${key}=${value}`);
       changed.push(key);
     } else {
       additions.push(`${key}=${value}`);

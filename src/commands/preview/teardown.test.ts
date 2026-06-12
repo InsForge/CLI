@@ -69,4 +69,29 @@ describe('preview teardown', () => {
     await expect(fs.access(envPath + '.preview-bak')).rejects.toThrow();
     expect(await readPreviewManifest(tmpBase, 'feat-wired')).toBeNull();
   });
+
+  it('deletes an env file that --wire-env created (no backup to restore)', async () => {
+    const envName = '.env.local';
+    const envPath = path.join(tmpBase, envName);
+    // The file exists (preview created it) but there is no .preview-bak.
+    await fs.writeFile(envPath, 'NEXT_PUBLIC_INSFORGE_URL=https://p1ky-x9p.us-east.insforge.app\n');
+    await writePreviewManifest(tmpBase, {
+      name: 'feat-created',
+      branchId: 'branch-789',
+      appkey: 'p1ky-x9p',
+      createdAt: '2026-06-10T00:00:00.000Z',
+      wiredEnvFile: envName,
+      wiredEnvCreated: true,
+    });
+
+    const program = new Command();
+    program.exitOverride();
+    const preview = program.command('preview');
+    registerPreviewTeardownCommand(preview);
+    await program.parseAsync(['preview', 'teardown', 'feat-created'], { from: 'user' });
+
+    // The created env file is removed, not left pointing at the deleted branch.
+    await expect(fs.access(envPath)).rejects.toThrow();
+    expect(await readPreviewManifest(tmpBase, 'feat-created')).toBeNull();
+  });
 });

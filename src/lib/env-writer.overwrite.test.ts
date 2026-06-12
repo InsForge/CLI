@@ -58,4 +58,14 @@ describe('overwriteEnvFile', () => {
     expect(content).toContain('# trailing comment');
     expect(content).toContain('NEXT_PUBLIC_INSFORGE_URL=https://branch.insforge.app');
   });
+
+  it('writes values containing $ literally (no String.replace special patterns)', async () => {
+    const file = path.join(dir, '.env');
+    await writeFile(file, 'NEXT_PUBLIC_INSFORGE_URL=https://old.example.com\n');
+    const tricky = 'https://x.app/?a=$1&b=$&c=$`';
+    overwriteEnvFile(file, { NEXT_PUBLIC_INSFORGE_URL: tricky });
+    const out = await readFile(file, 'utf8');
+    expect(out).toContain(`NEXT_PUBLIC_INSFORGE_URL=${tricky}`);
+  });
+
 });
