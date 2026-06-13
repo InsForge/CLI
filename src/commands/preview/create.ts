@@ -22,7 +22,7 @@ export function registerPreviewCreateCommand(preview: Command): void {
       '--wire-env [file]',
       'Point a frontend env file at the branch backend (default .env.local)',
     )
-    .action(async (name: string, opts, cmd) => {
+    .action(async (name: string, opts: { wireEnv?: string | boolean }, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);

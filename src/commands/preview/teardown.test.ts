@@ -94,4 +94,38 @@ describe('preview teardown', () => {
     await expect(fs.access(envPath)).rejects.toThrow();
     expect(await readPreviewManifest(tmpBase, 'feat-created')).toBeNull();
   });
+
+  it('keeps --json stdout clean of env-restore chatter', async () => {
+    const envName = '.env.local';
+    const envPath = path.join(tmpBase, envName);
+    await fs.writeFile(envPath, 'NEXT_PUBLIC_INSFORGE_URL=https://branch.app\n');
+    await fs.writeFile(envPath + '.preview-bak', 'NEXT_PUBLIC_INSFORGE_URL=https://prod.app\n');
+    await writePreviewManifest(tmpBase, {
+      name: 'feat-json',
+      branchId: 'branch-json',
+      appkey: 'p1ky-x9p',
+      createdAt: '2026-06-10T00:00:00.000Z',
+      wiredEnvFile: envName,
+    });
+
+    const logs: string[] = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((m?: unknown) => {
+      logs.push(String(m));
+    });
+
+    const program = new Command();
+    program.exitOverride();
+    program.option('--json');
+    const preview = program.command('preview');
+    registerPreviewTeardownCommand(preview);
+    await program.parseAsync(['--json', 'preview', 'teardown', 'feat-json'], { from: 'user' });
+
+    logSpy.mockRestore();
+    // Every line written to stdout must be valid JSON — no "Restored ..." chatter.
+    for (const line of logs) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+    expect(logs.some((l) => l.includes('"teardown"'))).toBe(true);
+  });
+
 });

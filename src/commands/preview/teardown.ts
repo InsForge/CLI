@@ -6,7 +6,7 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { outputInfo, outputJson } from '../../lib/output.js';
 import { shutdownAnalytics } from '../../lib/analytics.js';
-import { readPreviewManifest, deletePreviewManifest } from '../../lib/preview-manifest.js';
+import { readPreviewManifest, deletePreviewManifest, assertSafeName } from '../../lib/preview-manifest.js';
 
 export function registerPreviewTeardownCommand(preview: Command): void {
   preview
@@ -16,6 +16,11 @@ export function registerPreviewTeardownCommand(preview: Command): void {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
+        try {
+          assertSafeName(name);
+        } catch (e) {
+          throw new CLIError(e instanceof Error ? e.message : String(e));
+        }
         const manifest = await readPreviewManifest(process.cwd(), name);
         if (!manifest) {
           throw new CLIError(`No preview named '${name}' found in this directory.`);
@@ -35,15 +40,17 @@ export function registerPreviewTeardownCommand(preview: Command): void {
               // We created this file during `--wire-env`; remove it rather than
               // leave it pointing at a deleted preview backend.
               rmSync(envPath, { force: true });
-              outputInfo(`  Removed ${manifest.wiredEnvFile} (created by preview).`);
+              if (!json) outputInfo(`  Removed ${manifest.wiredEnvFile} (created by preview).`);
             } else if (existsSync(backupPath)) {
               copyFileSync(backupPath, envPath);
               rmSync(backupPath, { force: true });
-              outputInfo(`  Restored ${manifest.wiredEnvFile} from backup.`);
+              if (!json) outputInfo(`  Restored ${manifest.wiredEnvFile} from backup.`);
             }
           } catch (envErr) {
             const msg = envErr instanceof Error ? envErr.message : String(envErr);
-            outputInfo(`  ⚠ Could not restore ${manifest.wiredEnvFile} (${msg}). Restore it manually.`);
+            if (!json) {
+              outputInfo(`  ⚠ Could not restore ${manifest.wiredEnvFile} (${msg}). Restore it manually.`);
+            }
           }
         }
 
