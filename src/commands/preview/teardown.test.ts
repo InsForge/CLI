@@ -35,7 +35,7 @@ describe('preview teardown', () => {
     registerPreviewTeardownCommand(preview);
     await program.parseAsync(['preview', 'teardown', 'feat-likes'], { from: 'user' });
 
-    expect(deleteBranchApi).toHaveBeenCalledWith('branch-123', undefined);
+    expect(deleteBranchApi).toHaveBeenCalledWith('branch-123', undefined, { ignoreNotFound: true });
     expect(await readPreviewManifest(tmpBase, 'feat-likes')).toBeNull();
   });
 

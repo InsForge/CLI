@@ -14,7 +14,7 @@ function previewDir(baseDir: string): string {
   return path.join(baseDir, '.insforge', 'previews');
 }
 
-function assertSafeName(name: string): void {
+export function assertSafeName(name: string): void {
   if (!/^[A-Za-z0-9._-]+$/.test(name)) {
     throw new Error(`Invalid preview name '${name}': use only letters, digits, '.', '_', '-'.`);
   }

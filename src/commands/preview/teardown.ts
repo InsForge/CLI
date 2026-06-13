@@ -20,7 +20,9 @@ export function registerPreviewTeardownCommand(preview: Command): void {
         if (!manifest) {
           throw new CLIError(`No preview named '${name}' found in this directory.`);
         }
-        await deleteBranchApi(manifest.branchId, apiUrl);
+        // Tolerate a 404 — if the branch was already deleted by other means, we
+        // still want to clean up the local manifest + wired env file.
+        await deleteBranchApi(manifest.branchId, apiUrl, { ignoreNotFound: true });
 
         // The branch is now gone (irreversible). Finish local cleanup defensively
         // so a failure restoring the env file never aborts before the manifest is

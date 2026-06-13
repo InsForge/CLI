@@ -7,7 +7,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
-import { writePreviewManifest } from '../../lib/preview-manifest.js';
+import { writePreviewManifest, readPreviewManifest, assertSafeName } from '../../lib/preview-manifest.js';
 import { overwriteEnvFile } from '../../lib/env-writer.js';
 import type { Branch } from '../../types.js';
 
@@ -36,8 +36,23 @@ export function registerPreviewCreateCommand(preview: Command): void {
           );
         }
 
+        try {
+          assertSafeName(name);
+        } catch (e) {
+          throw new CLIError(e instanceof Error ? e.message : String(e));
+        }
+
+        if (await readPreviewManifest(process.cwd(), name)) {
+          throw new CLIError(
+            `A preview named '${name}' already exists. Tear it down first: insforge preview teardown ${name}`,
+          );
+        }
+
         const created = await createBranchApi(project.project_id, { mode: 'full', name }, apiUrl);
-        captureEvent(project.project_id, 'cli_preview_create', { name });
+        captureEvent(project.project_id, 'cli_preview_create', {
+          mode: 'full',
+          parent_project_id: project.project_id,
+        });
 
         let ready: Branch;
         try {
@@ -73,7 +88,7 @@ export function registerPreviewCreateCommand(preview: Command): void {
           // doesn't exist, `overwriteEnvFile` creates it — record that so
           // teardown deletes our creation instead of looking for a backup.
           const envExisted = existsSync(envPath);
-          if (envExisted) {
+          if (envExisted && !existsSync(envPath + '.preview-bak')) {
             copyFileSync(envPath, envPath + '.preview-bak');
           }
           overwriteEnvFile(envPath, { NEXT_PUBLIC_INSFORGE_URL: previewUrl });
@@ -121,5 +136,7 @@ async function pollUntilReady(branchId: string, apiUrl: string | undefined): Pro
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
+  const branch = await getBranchApi(branchId, apiUrl);
+  if (branch.branch_state === 'ready') return branch;
   throw new CLIError('Preview creation timed out.');
 }

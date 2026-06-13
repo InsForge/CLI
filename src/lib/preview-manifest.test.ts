@@ -7,6 +7,7 @@ import {
   readPreviewManifest,
   deletePreviewManifest,
   type PreviewManifest,
+  assertSafeName,
 } from './preview-manifest.js';
 
 describe('preview-manifest', () => {
@@ -46,4 +47,15 @@ describe('preview-manifest', () => {
     await deletePreviewManifest(dir, 'feat-likes');
     expect(await readPreviewManifest(dir, 'feat-likes')).toBeNull();
   });
+
+  describe('assertSafeName', () => {
+    it('accepts safe names', () => {
+      expect(() => assertSafeName('feat-likes_1.2')).not.toThrow();
+    });
+    it('rejects git-style and traversal names', () => {
+      expect(() => assertSafeName('feat/likes')).toThrow(/Invalid preview name/);
+      expect(() => assertSafeName('../escape')).toThrow(/Invalid preview name/);
+    });
+  });
+
 });
