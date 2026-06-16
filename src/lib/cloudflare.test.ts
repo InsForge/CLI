@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCloudflareAuthorizeUrl,
   listCloudflareAccounts,
+  performCloudflareOAuthLogin,
   registerCloudflareDomain,
   upsertCloudflareDnsRecord,
 } from './cloudflare.js';
@@ -196,5 +197,30 @@ describe('Cloudflare OAuth helpers', () => {
       'https://api.cloudflare.com/client/v4/zones/zone-123/dns_records/existing-record',
       expect.objectContaining({ method: 'PUT' }),
     );
+  });
+
+  it('rejects login immediately when the OAuth callback state does not match', async () => {
+    // Silence the OAuth URL banner the login flow writes to stderr.
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+
+    // Without the fix this never settles and the test times out instead of
+    // hanging the real CLI for the full 5-minute callback timeout.
+    const loginPromise = performCloudflareOAuthLogin({ skipBrowser: true });
+    const rejection = expect(loginPromise).rejects.toThrow('Cloudflare OAuth state mismatch.');
+
+    // Wait for the callback server to bind, then deliver a mismatched state.
+    let delivered = false;
+    for (let attempt = 0; attempt < 50 && !delivered; attempt += 1) {
+      try {
+        await fetch('http://127.0.0.1:8787/callback?code=test-code&state=wrong-state');
+        delivered = true;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
+    expect(delivered).toBe(true);
+
+    await rejection;
+    stderrSpy.mockRestore();
   });
 });

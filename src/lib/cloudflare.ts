@@ -203,6 +203,7 @@ function startCloudflareCallbackServer(expectedState: string): Promise<{
       if (state !== expectedState) {
         res.writeHead(400, { 'Content-Type': 'text/html' });
         res.end('<html><body><h2>Invalid Cloudflare callback</h2><p>State mismatch.</p></body></html>');
+        rejectResult(new Error('Cloudflare OAuth state mismatch.'));
         return;
       }
 
