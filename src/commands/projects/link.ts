@@ -76,8 +76,22 @@ export function registerProjectLinkCommand(program: Command): void {
     .option('--api-base-url <url>', 'API Base URL for direct linking (OSS/Self-hosted)')
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
     .option('--with-test-agents', 'Also install Playwright Test Agents for `insforge-verify` (restart Claude Code after)')
+    .option('--guard [state]', 'Enable the human-in-the-loop safety guard for this project (use --guard off to disable)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
+
+      // `--guard` (or `--guard on`) enables the HITL guard for this project;
+      // `--guard off`/`false` disables it. Absent → leave the setting untouched.
+      // Persisted into .insforge/project.json; INSFORGE_GUARD env still overrides.
+      let guardSetting: boolean | undefined;
+      if (opts.guard !== undefined) {
+        const g = String(opts.guard).toLowerCase();
+        guardSetting = !(g === 'off' || g === 'false' || g === '0' || g === 'no' || g === 'disabled');
+      }
+      const saveProject = (cfg: ProjectConfig): void => {
+        if (guardSetting !== undefined) cfg.guard = guardSetting;
+        saveProjectConfig(cfg);
+      };
 
       // Every template value accepted here is a directory in the InsForge
       // templates repo, so validation and the download call reference the
@@ -189,7 +203,7 @@ export function registerProjectLinkCommand(program: Command): void {
               await fs.mkdir(templateDir);
               process.chdir(templateDir);
 
-              saveProjectConfig(projectConfig);
+              saveProject(projectConfig);
 
               if (json) {
                 outputJson({
@@ -258,7 +272,7 @@ export function registerProjectLinkCommand(program: Command): void {
             }
 
             // Non-template direct-link: save config in cwd and return.
-            saveProjectConfig(projectConfig);
+            saveProject(projectConfig);
 
             if (json) {
               outputJson({ success: true, project: { id: projectConfig.project_id, name: projectConfig.project_name, region: projectConfig.region } });
@@ -397,7 +411,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
         // Save config in cwd only if not using --template (template flow saves in subdirectory)
         if (!opts.template) {
-          saveProjectConfig(projectConfig);
+          saveProject(projectConfig);
         }
 
         trackCommand('link', project.organization_id);
@@ -447,7 +461,7 @@ export function registerProjectLinkCommand(program: Command): void {
           process.chdir(templateDir);
 
           // Save project config in the new directory
-          saveProjectConfig(projectConfig);
+          saveProject(projectConfig);
 
           captureEvent(orgId ?? project.organization_id, 'template_selected', { template, source: 'link' });
 

@@ -79,6 +79,7 @@ import { registerPosthogSetupCommand } from './commands/posthog/setup.js';
 import { registerConfigCommand } from './commands/config/index.js';
 import { registerAiCommands } from './commands/ai/index.js';
 import { registerMemoryCommands } from './commands/memory/index.js';
+import { guardHook } from './lib/guard/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -103,7 +104,16 @@ program
 program
   .option('--json', 'Output in JSON format')
   .option('--api-url <url>', 'Override Platform API URL')
-  .option('-y, --yes', 'Skip confirmation prompts');
+  .option('-y, --yes', 'Skip confirmation prompts')
+  .option('--reason <text>', 'Agent: what the operation does and why (intent) — shown to the human approver for destructive operations')
+  .option('--impact <text>', 'Agent: implications — who/what is affected, data loss, reversibility — shown on the approval page')
+  .option('--recommendation <text>', 'Agent: your recommendation to the human approver')
+  .option('--flag-destructive [reason]', 'Agent: flag this op as destructive for human approval even if InsForge\'s rules consider it safe (escalate-only — cannot downgrade the verdict)');
+
+// Human-in-the-loop guard: a dispatch-pipeline stage that stops dangerous
+// operations for human approval. Lives in the CLI so it protects every caller
+// (Claude Code, Cursor, scripts, CI, humans) automatically.
+program.hook('preAction', guardHook);
 
 // Top-level commands
 registerLoginCommand(program);
@@ -237,7 +247,7 @@ registerConfigCommand(program);
 if (process.argv.length <= 2 && process.stdout.isTTY) {
   await showInteractiveMenu();
 } else {
-  program.parse();
+  await program.parseAsync();
 }
 
 async function showInteractiveMenu(): Promise<void> {
