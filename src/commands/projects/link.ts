@@ -75,6 +75,7 @@ export function registerProjectLinkCommand(program: Command): void {
     .option('--auth <provider>', 'Wire a third-party auth provider into the chosen template (currently: better-auth)')
     .option('--api-base-url <url>', 'API Base URL for direct linking (OSS/Self-hosted)')
     .option('--api-key <key>', 'API Key for direct linking (OSS/Self-hosted)')
+    .option('--with-test-agents', 'Also install Playwright Test Agents for `insforge-verify` (restart Claude Code after)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
 
@@ -110,7 +111,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
         if (isSkillsOnly) {
           try {
-            await installSkills(json);
+            await installSkills(json, undefined, Boolean(opts.withTestAgents));
             trackCommand('link', 'skills-only', { skills_only: true });
             await reportCliUsage('cli.link_skills_only', true, 1);
 
@@ -229,7 +230,7 @@ export function registerProjectLinkCommand(program: Command): void {
                 }
               }
 
-              await installSkills(json, opts.auth as string | undefined);
+              await installSkills(json, opts.auth as string | undefined, Boolean(opts.withTestAgents));
               trackCommand('link', 'oss-org', { direct: true, template });
               await reportCliUsage('cli.link_direct', true, 6, projectConfig);
 
@@ -291,7 +292,7 @@ export function registerProjectLinkCommand(program: Command): void {
             trackCommand('link', 'oss-org', { direct: true });
 
             // Install agent skills
-            await installSkills(json, opts.auth as string | undefined);
+            await installSkills(json, opts.auth as string | undefined, Boolean(opts.withTestAgents));
             await reportCliUsage('cli.link_direct', true, 6, projectConfig);
 
             // Report agent-connected event (best-effort)
@@ -475,7 +476,7 @@ export function registerProjectLinkCommand(program: Command): void {
           }
 
           // Install agent skills inside the project directory
-          await installSkills(json, opts.auth as string | undefined);
+          await installSkills(json, opts.auth as string | undefined, Boolean(opts.withTestAgents));
           await reportCliUsage('cli.link', true, 6, projectConfig);
 
           if (!json) {
@@ -517,7 +518,7 @@ export function registerProjectLinkCommand(program: Command): void {
           }
 
           // No template — install agent skills in the current directory
-          await installSkills(json, opts.auth as string | undefined);
+          await installSkills(json, opts.auth as string | undefined, Boolean(opts.withTestAgents));
           await reportCliUsage('cli.link', true, 6, projectConfig);
 
           if (!json) {
