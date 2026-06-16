@@ -53,6 +53,9 @@ const EXCLUDE_PATTERNS = [
   '.cache',
   'skills',
   'coverage',
+  'test-results',
+  'playwright-report',
+  '.playwright-mcp',
   IGNORE_FILE_NAME,
 ];
 
