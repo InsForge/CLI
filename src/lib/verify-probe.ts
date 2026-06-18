@@ -57,13 +57,15 @@ export function classifyTruth(
  * WITH and chains no further statements (a trailing `;` is fine). Guards against an
  * agent-generated destructive query (`DELETE FROM …`, `…; UPDATE …`) running with the
  * admin key. Not a full SQL parser, but it blocks the common destructive shapes.
+ * `into` is blocked because `SELECT … INTO new_table` creates a table while still
+ * starting with SELECT (a read-only SELECT never needs INTO).
  */
 export function isReadOnlyQuery(query: string): boolean {
   const q = query.trim();
   if (!/^(select|with)\b/i.test(q)) return false;
   // No statement chaining beyond a single trailing semicolon.
   if (q.replace(/;\s*$/, '').includes(';')) return false;
-  if (/\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke)\b/i.test(q)) return false;
+  if (/\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke|into)\b/i.test(q)) return false;
   return true;
 }
 
@@ -76,6 +78,18 @@ export function isLikelyEmail(s: string): boolean {
 }
 
 // ---- fetch wiring (not unit-tested; the verdicts above are) ----
+
+const REQUEST_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function extractToken(j: unknown): string {
   const obj = j as { accessToken?: string; data?: { accessToken?: string } };
@@ -97,7 +111,7 @@ async function assertOk(res: Response, what: string): Promise<void> {
 }
 
 export async function login(baseUrl: string, email: string, password: string): Promise<string> {
-  const res = await fetch(`${baseUrl}/api/auth/sessions`, {
+  const res = await fetchWithTimeout(`${baseUrl}/api/auth/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -106,24 +120,6 @@ export async function login(baseUrl: string, email: string, password: string): P
   return extractToken(await res.json().catch(() => ({})));
 }
 
-export async function getAnonKey(baseUrl: string, adminKey: string): Promise<string> {
-  const res = await fetch(`${baseUrl}/api/auth/tokens/anon`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${adminKey}` },
-  });
-  await assertOk(res, 'anon-key fetch');
-  return extractToken(await res.json().catch(() => ({})));
-}
-
-export async function rawsqlRows(baseUrl: string, adminKey: string, query: string): Promise<unknown[]> {
-  const res = await fetch(`${baseUrl}/api/database/advance/rawsql`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminKey}` },
-    body: JSON.stringify({ query, params: [] }),
-  });
-  await assertOk(res, 'rawsql query');
-  return extractRows(await res.json().catch(() => ({})));
-}
 
 /** Count rows from the data API. A 401/403 (RLS/auth blocked) counts as 0 rows — the
  *  expected "can't see it" result; any other non-2xx throws so a transport/server error
@@ -138,7 +134,7 @@ export async function recordsCount(
   const url = `${baseUrl}/api/database/records/${encodeURIComponent(table)}${query ? `?${query}` : ''}`;
   const headers: Record<string, string> = { apikey: anon };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(url, { headers });
+  const res = await fetchWithTimeout(url, { headers });
   if (res.status === 401 || res.status === 403) return 0;
   await assertOk(res, `data API read (${table})`);
   return extractRows(await res.json().catch(() => [])).length;

@@ -3,7 +3,8 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { shutdownAnalytics, trackVerifyFinding } from '../../lib/analytics.js';
-import { classifyTruth, isReadOnlyQuery, rawsqlRows } from '../../lib/verify-probe.js';
+import { classifyTruth, isReadOnlyQuery } from '../../lib/verify-probe.js';
+import { runRawSql } from '../../lib/api/oss.js';
 
 export function registerVerifyTruthCommand(verify: Command): void {
   verify
@@ -27,7 +28,7 @@ export function registerVerifyTruthCommand(verify: Command): void {
           throw new CLIError('Provide either --expect <value> or --expect-count <n>, not both.');
         }
 
-        const rows = await rawsqlRows(config.oss_host, config.api_key, opts.query);
+        const { rows } = await runRawSql(opts.query);
 
         let result: { type: 'false_pass' | 'none'; evidence: Record<string, unknown> };
         if (opts.expectCount !== undefined) {

@@ -5,13 +5,12 @@ import { outputJson, outputInfo } from '../../lib/output.js';
 import { shutdownAnalytics, trackVerifyFinding } from '../../lib/analytics.js';
 import {
   classifyRls,
-  getAnonKey,
   isLikelyEmail,
   isSafeIdentifier,
   login,
-  rawsqlRows,
   recordsCount,
 } from '../../lib/verify-probe.js';
+import { getAnonKey, runRawSql } from '../../lib/api/oss.js';
 
 export function registerVerifyRlsCommand(verify: Command): void {
   verify
@@ -28,7 +27,6 @@ export function registerVerifyRlsCommand(verify: Command): void {
         const config = getProjectConfig();
         if (!config) throw new CLIError('No linked project found — run `insforge link` first.');
         const baseUrl = config.oss_host;
-        const adminKey = config.api_key;
 
         // --table/--owner are interpolated into a PostgREST resource path and filter; keep
         // them to bare identifiers so a value like `user_id&select=secret` can't inject extra
@@ -46,16 +44,14 @@ export function registerVerifyRlsCommand(verify: Command): void {
 
         const aToken = await login(baseUrl, opts.userA, opts.password);
         const bToken = await login(baseUrl, opts.userB, opts.password);
-        const anon = await getAnonKey(baseUrl, adminKey);
+        const anon = await getAnonKey();
         if (!aToken || !bToken || !anon) {
           throw new CLIError(
             'Login or anon-key fetch returned empty — seed BOTH users first. An empty token turns every probe into an anonymous request that silently "passes" isolation.',
           );
         }
 
-        const rows = await rawsqlRows(
-          baseUrl,
-          adminKey,
+        const { rows } = await runRawSql(
           `select id from auth.users where email='${String(opts.userA).replace(/'/g, "''")}'`,
         );
         const aId = (rows[0] as { id?: string })?.id;

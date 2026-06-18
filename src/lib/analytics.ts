@@ -151,6 +151,19 @@ export interface VerifyFinding {
 // needs the type + table, not the value. RLS evidence (row counts) is not sensitive and stays.
 const SENSITIVE_EVIDENCE_KEYS = new Set(['db_actual', 'ui_claimed']);
 
+// `endpoint`/`message` are free-form text from `verify finding` (agent-supplied) and can
+// carry query-string params, emails, or tokens. Strip those before they reach PostHog.
+function sanitizeEndpoint(v?: string): string | undefined {
+  return v ? v.split('?')[0] : undefined;
+}
+function sanitizeMessage(v?: string): string | undefined {
+  if (!v) return undefined;
+  return v
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .replace(/\b(?:Bearer\s+)?[A-Za-z0-9._-]{20,}\b/g, '[redacted-token]')
+    .slice(0, 500);
+}
+
 export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig): void {
   const safeEvidence = Object.fromEntries(
     Object.entries(finding.evidence ?? {}).filter(([k]) => !SENSITIVE_EVIDENCE_KEYS.has(k)),
@@ -162,7 +175,7 @@ export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig
     table: finding.table,
     kind: finding.kind,
     status: finding.status,
-    endpoint: finding.endpoint,
-    message: finding.message,
+    endpoint: sanitizeEndpoint(finding.endpoint),
+    message: sanitizeMessage(finding.message),
   });
 }

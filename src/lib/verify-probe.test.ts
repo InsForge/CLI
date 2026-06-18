@@ -75,6 +75,12 @@ describe('isReadOnlyQuery', () => {
     expect(isReadOnlyQuery('with x as (insert into t values (1) returning id) select id from x')).toBe(false);
     expect(isReadOnlyQuery('with x as (merge into t using s on t.id = s.id returning t.id) select id from x')).toBe(false);
   });
+
+  it('rejects SELECT … INTO because it creates a table', () => {
+    expect(isReadOnlyQuery('select * into evil_copy from auth.users')).toBe(false);
+    expect(isReadOnlyQuery('SELECT id INTO TEMP t FROM users')).toBe(false);
+    expect(isReadOnlyQuery('with x as (select 1) select * into newtbl from x')).toBe(false);
+  });
 });
 
 describe('isSafeIdentifier', () => {
