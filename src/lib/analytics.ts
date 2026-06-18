@@ -128,3 +128,33 @@ export async function shutdownAnalytics(): Promise<void> {
     // ignore
   }
 }
+
+export interface VerifyFinding {
+  type: string;
+  table?: string;
+  kind?: string;
+  status?: number;
+  endpoint?: string;
+  message?: string;
+  evidence?: Record<string, unknown>;
+}
+
+/**
+ * Emit a verify finding to PostHog — the central, cross-user rail (finding rate + what
+ * broke), same as the other track* helpers here. NOT the per-project `oss_host/api/usage/mcp`
+ * table, which only stores `(tool_name, success)` and drops the finding. The recording lives
+ * in the tool — a finding is recorded because the probe ran, not because the agent remembered
+ * to. Best-effort; the caller flushes via `shutdownAnalytics()` before exit.
+ */
+export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig): void {
+  captureEvent(config.project_id, 'verify_finding', {
+    finding_type: finding.type,
+    passed: finding.type === 'none',
+    table: finding.table,
+    kind: finding.kind,
+    status: finding.status,
+    endpoint: finding.endpoint,
+    message: finding.message,
+    ...finding.evidence,
+  });
+}

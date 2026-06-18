@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import * as clack from '@clack/prompts';
 import { writeLocalAgentsMd } from './agents-md.js';
+import { configureBrowserMcp } from './browser-mcp.js';
 import { getProjectConfig } from './config.js';
 
 const execAsync = promisify(exec);
@@ -87,7 +88,7 @@ const PROVIDER_SKILLS: Record<string, { repo: string; label: string }> = {
 export async function installSkills(
   json: boolean,
   authProvider?: string,
-  withTestAgents = false,
+  withBrowserMcp = true,
 ): Promise<void> {
   try {
     if (!json) clack.log.info('Installing InsForge agent skills (global)...');
@@ -156,31 +157,31 @@ export async function installSkills(
     // non-critical, silently ignore
   }
 
-  // Opt-in: install Playwright Test Agents (planner/generator/healer) into the
-  // project's `.claude/agents/` so the `insforge-verify` skill can drive UI
-  // testing. We do this at link time — BEFORE the user's Claude Code session —
-  // because subagents load at session start: running `init-agents` mid-session
-  // leaves them unavailable ("Agent type 'playwright-test-planner' not found").
-  if (withTestAgents) {
+  // Opt-in: configure the Playwright browser MCP (`@playwright/mcp`) so the `insforge-verify`
+  // skill can drive the UI directly (light mode — no spec-generation subagents).
+  // This only declares the MCP server in `.mcp.json`; the driving "brain" is the
+  // user's own agent, so it stays agent-agnostic and needs no extra LLM key. The
+  // server loads at session start like any MCP config, so we do it at link time.
+  if (withBrowserMcp) {
     try {
-      if (!json) clack.log.info('Installing Playwright Test Agents (.claude/agents)...');
-      await execAsync('npx playwright init-agents --loop=claude', {
-        cwd: process.cwd(),
-        timeout: SKILL_INSTALL_TIMEOUT_MS,
-      });
+      const configured = await configureBrowserMcp();
       if (!json) {
-        clack.log.success('Playwright Test Agents installed.');
-        // The one step the CLI cannot do for the user — and the one that
-        // actually avoids the "not found" wall.
-        clack.log.warn(
-          'Restart Claude Code (or start a fresh session) so the test agents load before verifying.',
-        );
+        if (configured.length) {
+          clack.log.success(`Configured the Playwright browser MCP for: ${configured.join(', ')}.`);
+          clack.log.warn(
+            'Restart your agent (or reload MCP servers) so the browser tools load before verifying.',
+          );
+        } else {
+          clack.log.info(
+            'No supported agent found to auto-configure the browser MCP. Add it manually — Claude: `claude mcp add playwright -s user -- npx @playwright/mcp@latest --headless`.',
+          );
+        }
       }
     } catch (err) {
       if (!json) {
-        clack.log.warn(`Could not install Playwright Test Agents: ${describeExecError(err)}`);
+        clack.log.warn(`Could not configure the browser MCP: ${describeExecError(err)}`);
         clack.log.info(
-          'Ensure Playwright is available (`npm i -D @playwright/test && npx playwright install chromium`), then run `npx playwright init-agents --loop=claude`.',
+          'Add a `playwright` MCP server to your agent manually (command: `npx @playwright/mcp@latest --headless`).',
         );
       }
     }
