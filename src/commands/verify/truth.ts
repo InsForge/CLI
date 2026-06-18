@@ -23,6 +23,9 @@ export function registerVerifyTruthCommand(verify: Command): void {
             'verify truth runs a single read-only query — it must start with SELECT or WITH and not chain statements.',
           );
         }
+        if (opts.expect !== undefined && opts.expectCount !== undefined) {
+          throw new CLIError('Provide either --expect <value> or --expect-count <n>, not both.');
+        }
 
         const rows = await rawsqlRows(config.oss_host, config.api_key, opts.query);
 

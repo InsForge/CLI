@@ -63,8 +63,16 @@ export function isReadOnlyQuery(query: string): boolean {
   if (!/^(select|with)\b/i.test(q)) return false;
   // No statement chaining beyond a single trailing semicolon.
   if (q.replace(/;\s*$/, '').includes(';')) return false;
-  if (/\b(insert|update|delete|truncate|drop|alter|create|grant|revoke)\b/i.test(q)) return false;
+  if (/\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke)\b/i.test(q)) return false;
   return true;
+}
+
+export function isSafeIdentifier(s: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s);
+}
+
+export function isLikelyEmail(s: string): boolean {
+  return /^[^\s'";@]+@[^\s'";@]+\.[^\s'";@]+$/.test(s);
 }
 
 // ---- fetch wiring (not unit-tested; the verdicts above are) ----

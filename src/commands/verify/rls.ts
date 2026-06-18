@@ -3,7 +3,15 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { shutdownAnalytics, trackVerifyFinding } from '../../lib/analytics.js';
-import { classifyRls, getAnonKey, login, rawsqlRows, recordsCount } from '../../lib/verify-probe.js';
+import {
+  classifyRls,
+  getAnonKey,
+  isLikelyEmail,
+  isSafeIdentifier,
+  login,
+  rawsqlRows,
+  recordsCount,
+} from '../../lib/verify-probe.js';
 
 export function registerVerifyRlsCommand(verify: Command): void {
   verify
@@ -22,6 +30,20 @@ export function registerVerifyRlsCommand(verify: Command): void {
         const baseUrl = config.oss_host;
         const adminKey = config.api_key;
 
+        // --table/--owner are interpolated into a PostgREST resource path and filter; keep
+        // them to bare identifiers so a value like `user_id&select=secret` can't inject extra
+        // params. --user-a/-b go into a raw SQL lookup; require an email shape (the single-
+        // quote escaping below already blocks string-literal injection — this removes the rest).
+        if (!isSafeIdentifier(String(opts.table))) {
+          throw new CLIError(`--table must be a bare table name (got ${JSON.stringify(opts.table)}).`);
+        }
+        if (!isSafeIdentifier(String(opts.owner))) {
+          throw new CLIError(`--owner must be a bare column name (got ${JSON.stringify(opts.owner)}).`);
+        }
+        if (!isLikelyEmail(String(opts.userA)) || !isLikelyEmail(String(opts.userB))) {
+          throw new CLIError('--user-a and --user-b must be valid email addresses.');
+        }
+
         const aToken = await login(baseUrl, opts.userA, opts.password);
         const bToken = await login(baseUrl, opts.userB, opts.password);
         const anon = await getAnonKey(baseUrl, adminKey);
@@ -39,7 +61,7 @@ export function registerVerifyRlsCommand(verify: Command): void {
         const aId = (rows[0] as { id?: string })?.id;
         if (!aId) throw new CLIError(`Could not find user A (${opts.userA}) — seed it first.`);
 
-        const filter = `${opts.owner}=eq.${aId}`;
+        const filter = `${opts.owner}=eq.${encodeURIComponent(aId)}`;
         const bReadRowsOfA = await recordsCount(baseUrl, opts.table, filter, bToken, anon);
         const aReadOwnRows = await recordsCount(baseUrl, opts.table, filter, aToken, anon);
         const anonReadRows = await recordsCount(baseUrl, opts.table, undefined, undefined, anon);

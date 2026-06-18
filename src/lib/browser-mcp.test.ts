@@ -61,6 +61,16 @@ describe('mergeJsonMcp', () => {
       expect(JSON.parse(readFileSync(f, 'utf-8')).mcpServers['playwright']).toEqual(HEADLESS_SERVER);
     }
   });
+
+  it('normalizes a non-object value under the section key (e.g. {"mcpServers": "x"})', () => {
+    for (const badSection of ['"x"', '[1,2]', '5']) {
+      const f = join(dir, `section${badSection.replace(/\W/g, '')}.json`);
+      writeFileSync(f, `{"mcpServers": ${badSection}}`);
+      // Would otherwise throw (assigning a prop on a string in strict ESM) or drop the server.
+      expect(mergeJsonMcp(f, 'mcpServers', HEADLESS_SERVER)).toBe(true);
+      expect(JSON.parse(readFileSync(f, 'utf-8')).mcpServers['playwright']).toEqual(HEADLESS_SERVER);
+    }
+  });
 });
 
 describe('ensureCodexToml', () => {

@@ -38,7 +38,8 @@ export function mergeJsonMcp(
       config = {};
     }
   }
-  config[key] ??= {};
+  const section = config[key];
+  if (!section || typeof section !== 'object' || Array.isArray(section)) config[key] = {};
   if (JSON.stringify(config[key][MCP_SERVER_NAME]) === JSON.stringify(server)) return false;
   config[key][MCP_SERVER_NAME] = server;
   mkdirSync(dirname(file), { recursive: true });
@@ -58,7 +59,8 @@ export function ensureCodexToml(file: string): boolean {
 }
 
 async function commandExists(cmd: string): Promise<boolean> {
-  return execAsync(`command -v ${cmd}`).then(
+  const check = process.platform === 'win32' ? `where ${cmd}` : `command -v ${cmd}`;
+  return execAsync(check).then(
     () => true,
     () => false,
   );

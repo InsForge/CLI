@@ -146,9 +146,17 @@ export interface VerifyFinding {
  * in the tool — a finding is recorded because the probe ran, not because the agent remembered
  * to. Best-effort; the caller flushes via `shutdownAnalytics()` before exit.
  */
+// `verify truth` evidence holds the raw DB value the UI claimed (`db_actual`/`ui_claimed`),
+// which can be PII (a name, email, balance). Drop those before sending — finding rate only
+// needs the type + table, not the value. RLS evidence (row counts) is not sensitive and stays.
+const SENSITIVE_EVIDENCE_KEYS = new Set(['db_actual', 'ui_claimed']);
+
 export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig): void {
+  const safeEvidence = Object.fromEntries(
+    Object.entries(finding.evidence ?? {}).filter(([k]) => !SENSITIVE_EVIDENCE_KEYS.has(k)),
+  );
   captureEvent(config.project_id, 'verify_finding', {
-    ...finding.evidence,
+    ...safeEvidence,
     finding_type: finding.type,
     passed: finding.type === 'none',
     table: finding.table,
