@@ -153,10 +153,11 @@ const SENSITIVE_EVIDENCE_KEYS = new Set(['db_actual', 'ui_claimed']);
 
 // `endpoint`/`message` are free-form text from `verify finding` (agent-supplied) and can
 // carry query-string params, emails, or tokens. Strip those before they reach PostHog.
-function sanitizeEndpoint(v?: string): string | undefined {
+// Exported for unit tests — these regexes are the PII guard and deserve pinning.
+export function sanitizeEndpoint(v?: string): string | undefined {
   return v ? v.split('?')[0] : undefined;
 }
-function sanitizeMessage(v?: string): string | undefined {
+export function sanitizeMessage(v?: string): string | undefined {
   if (!v) return undefined;
   return v
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
@@ -168,7 +169,7 @@ export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig
   const safeEvidence = Object.fromEntries(
     Object.entries(finding.evidence ?? {}).filter(([k]) => !SENSITIVE_EVIDENCE_KEYS.has(k)),
   );
-  captureEvent(config.project_id, 'verify_finding', {
+  captureEvent(config.project_id, 'cli_verify_finding', {
     ...safeEvidence,
     finding_type: finding.type,
     passed: finding.type === 'none',
@@ -177,5 +178,10 @@ export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig
     status: finding.status,
     endpoint: sanitizeEndpoint(finding.endpoint),
     message: sanitizeMessage(finding.message),
+    project_id: config.project_id,
+    project_name: config.project_name,
+    org_id: config.org_id,
+    region: config.region,
+    oss_mode: config.project_id === FAKE_PROJECT_ID,
   });
 }

@@ -32,7 +32,12 @@ export function registerVerifyTruthCommand(verify: Command): void {
 
         let result: { type: 'false_pass' | 'none'; evidence: Record<string, unknown> };
         if (opts.expectCount !== undefined) {
-          result = classifyTruth(rows.length, String(opts.expectCount));
+          // Compare as a number so `--expect-count 03` matches 3 rows (string compare wouldn't).
+          const expected = Number(opts.expectCount);
+          if (!Number.isInteger(expected) || expected < 0) {
+            throw new CLIError(`--expect-count must be a non-negative integer (got ${JSON.stringify(opts.expectCount)}).`);
+          }
+          result = classifyTruth(rows.length, String(expected));
         } else if (opts.expect !== undefined) {
           const first = rows[0];
           const dbValue =
