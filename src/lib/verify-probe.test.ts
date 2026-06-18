@@ -68,4 +68,10 @@ describe('isReadOnlyQuery', () => {
     expect(isReadOnlyQuery('select 1; delete from users')).toBe(false);
     expect(isReadOnlyQuery('select 1; update t set x = 1')).toBe(false);
   });
+
+  it('rejects DML hidden inside a CTE (WITH … DELETE/UPDATE/INSERT … SELECT)', () => {
+    expect(isReadOnlyQuery('with x as (delete from users returning id) select id from x')).toBe(false);
+    expect(isReadOnlyQuery('WITH x AS (UPDATE t SET c = 1 RETURNING id) SELECT * FROM x')).toBe(false);
+    expect(isReadOnlyQuery('with x as (insert into t values (1) returning id) select id from x')).toBe(false);
+  });
 });
