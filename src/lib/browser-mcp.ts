@@ -30,7 +30,10 @@ export function mergeJsonMcp(
   let config: Record<string, Record<string, unknown>> = {};
   if (existsSync(file)) {
     try {
-      config = JSON.parse(readFileSync(file, 'utf-8')) as typeof config;
+      const parsed = JSON.parse(readFileSync(file, 'utf-8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        config = parsed as typeof config;
+      }
     } catch {
       config = {};
     }

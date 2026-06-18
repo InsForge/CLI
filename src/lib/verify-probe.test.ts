@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyRls, classifyTruth } from './verify-probe.js';
+import { classifyRls, classifyTruth, isReadOnlyQuery } from './verify-probe.js';
 
 describe('classifyRls', () => {
   it('flags rls_leak when B reads any of A\'s rows', () => {
@@ -46,5 +46,26 @@ describe('classifyTruth', () => {
 
   it('passes when both sides are empty', () => {
     expect(classifyTruth(null, '').type).toBe('none');
+  });
+});
+
+describe('isReadOnlyQuery', () => {
+  it('allows SELECT / WITH (any case, leading whitespace, trailing semicolon)', () => {
+    expect(isReadOnlyQuery('select 1')).toBe(true);
+    expect(isReadOnlyQuery('SELECT * FROM t')).toBe(true);
+    expect(isReadOnlyQuery('  with c as (select 1) select * from c')).toBe(true);
+    expect(isReadOnlyQuery('select 1;')).toBe(true);
+  });
+
+  it('rejects writes / DDL', () => {
+    expect(isReadOnlyQuery('delete from users')).toBe(false);
+    expect(isReadOnlyQuery('UPDATE accounts SET balance = 0')).toBe(false);
+    expect(isReadOnlyQuery('insert into t values (1)')).toBe(false);
+    expect(isReadOnlyQuery('drop table t')).toBe(false);
+  });
+
+  it('rejects statement chaining', () => {
+    expect(isReadOnlyQuery('select 1; delete from users')).toBe(false);
+    expect(isReadOnlyQuery('select 1; update t set x = 1')).toBe(false);
   });
 });

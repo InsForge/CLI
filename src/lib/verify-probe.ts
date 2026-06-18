@@ -52,6 +52,20 @@ export function classifyTruth(
   };
 }
 
+/**
+ * A query is safe for `verify truth` only if it's a single read — starts with SELECT or
+ * WITH and chains no further statements (a trailing `;` is fine). Guards against an
+ * agent-generated destructive query (`DELETE FROM …`, `…; UPDATE …`) running with the
+ * admin key. Not a full SQL parser, but it blocks the common destructive shapes.
+ */
+export function isReadOnlyQuery(query: string): boolean {
+  const q = query.trim();
+  if (!/^(select|with)\b/i.test(q)) return false;
+  // No statement chaining beyond a single trailing semicolon.
+  if (q.replace(/;\s*$/, '').includes(';')) return false;
+  return true;
+}
+
 // ---- fetch wiring (not unit-tested; the verdicts above are) ----
 
 function extractToken(j: unknown): string {
@@ -65,12 +79,21 @@ function extractRows(j: unknown): unknown[] {
   return obj?.data ?? obj?.records ?? obj?.rows ?? [];
 }
 
+/** Throw on a non-2xx response so a backend error (expired key, bad SQL, 500) isn't read
+ *  as an empty/zero result — which would masquerade as a passing probe. */
+async function assertOk(res: Response, what: string): Promise<void> {
+  if (res.ok) return;
+  const body = await res.text().catch(() => '');
+  throw new Error(`${what} failed (HTTP ${res.status})${body ? `: ${body.slice(0, 200)}` : ''}`);
+}
+
 export async function login(baseUrl: string, email: string, password: string): Promise<string> {
   const res = await fetch(`${baseUrl}/api/auth/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
+  await assertOk(res, `login (${email})`);
   return extractToken(await res.json().catch(() => ({})));
 }
 
@@ -79,6 +102,7 @@ export async function getAnonKey(baseUrl: string, adminKey: string): Promise<str
     method: 'POST',
     headers: { Authorization: `Bearer ${adminKey}` },
   });
+  await assertOk(res, 'anon-key fetch');
   return extractToken(await res.json().catch(() => ({})));
 }
 
@@ -88,10 +112,13 @@ export async function rawsqlRows(baseUrl: string, adminKey: string, query: strin
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminKey}` },
     body: JSON.stringify({ query, params: [] }),
   });
+  await assertOk(res, 'rawsql query');
   return extractRows(await res.json().catch(() => ({})));
 }
 
-/** Count rows from the data API. A 401/403 (or any non-2xx) counts as 0 rows. */
+/** Count rows from the data API. A 401/403 (RLS/auth blocked) counts as 0 rows — the
+ *  expected "can't see it" result; any other non-2xx throws so a transport/server error
+ *  isn't read as 0 rows (which would be a false isolation pass). */
 export async function recordsCount(
   baseUrl: string,
   table: string,
@@ -103,6 +130,7 @@ export async function recordsCount(
   const headers: Record<string, string> = { apikey: anon };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(url, { headers });
-  if (!res.ok) return 0;
+  if (res.status === 401 || res.status === 403) return 0;
+  await assertOk(res, `data API read (${table})`);
   return extractRows(await res.json().catch(() => [])).length;
 }

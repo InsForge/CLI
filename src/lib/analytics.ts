@@ -148,6 +148,7 @@ export interface VerifyFinding {
  */
 export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig): void {
   captureEvent(config.project_id, 'verify_finding', {
+    ...finding.evidence,
     finding_type: finding.type,
     passed: finding.type === 'none',
     table: finding.table,
@@ -155,6 +156,5 @@ export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig
     status: finding.status,
     endpoint: finding.endpoint,
     message: finding.message,
-    ...finding.evidence,
   });
 }

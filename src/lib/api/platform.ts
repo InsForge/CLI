@@ -312,16 +312,8 @@ export async function getBranchApi(branchId: string, apiUrl?: string): Promise<B
   return data.branch;
 }
 
-export async function deleteBranchApi(
-  branchId: string,
-  apiUrl?: string,
-  opts?: { ignoreNotFound?: boolean },
-): Promise<void> {
-  await platformFetch(
-    `/projects/v1/branches/${branchId}`,
-    { method: 'DELETE', ...(opts?.ignoreNotFound ? { passThroughStatuses: [404] } : {}) },
-    apiUrl,
-  );
+export async function deleteBranchApi(branchId: string, apiUrl?: string): Promise<void> {
+  await platformFetch(`/projects/v1/branches/${branchId}`, { method: 'DELETE' }, apiUrl);
 }
 
 /**

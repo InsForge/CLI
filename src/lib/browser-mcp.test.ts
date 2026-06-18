@@ -51,6 +51,16 @@ describe('mergeJsonMcp', () => {
     expect(mergeJsonMcp(file, 'servers', HEADLESS_SERVER)).toBe(true);
     expect(read().servers['playwright']).toEqual(HEADLESS_SERVER);
   });
+
+  it('starts fresh on valid-but-non-object JSON (array / null / primitive)', () => {
+    for (const bad of ['[1,2,3]', 'null', '"a string"', '42']) {
+      const f = join(dir, `${bad.replace(/\W/g, '')}.json`);
+      writeFileSync(f, bad);
+      expect(mergeJsonMcp(f, 'mcpServers', HEADLESS_SERVER)).toBe(true);
+      // No crash, no silent loss — server is written under a fresh object.
+      expect(JSON.parse(readFileSync(f, 'utf-8')).mcpServers['playwright']).toEqual(HEADLESS_SERVER);
+    }
+  });
 });
 
 describe('ensureCodexToml', () => {

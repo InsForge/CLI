@@ -3,7 +3,7 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { shutdownAnalytics, trackVerifyFinding } from '../../lib/analytics.js';
-import { classifyTruth, rawsqlRows } from '../../lib/verify-probe.js';
+import { classifyTruth, isReadOnlyQuery, rawsqlRows } from '../../lib/verify-probe.js';
 
 export function registerVerifyTruthCommand(verify: Command): void {
   verify
@@ -18,6 +18,11 @@ export function registerVerifyTruthCommand(verify: Command): void {
       try {
         const config = getProjectConfig();
         if (!config) throw new CLIError('No linked project found — run `insforge link` first.');
+        if (!isReadOnlyQuery(opts.query)) {
+          throw new CLIError(
+            'verify truth runs a single read-only query — it must start with SELECT or WITH and not chain statements.',
+          );
+        }
 
         const rows = await rawsqlRows(config.oss_host, config.api_key, opts.query);
 
