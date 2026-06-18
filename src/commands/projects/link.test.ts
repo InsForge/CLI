@@ -89,7 +89,7 @@ describe('project link: skills-only fast path', () => {
     const { requireAuth } = await import('../../lib/credentials.js');
     const { listOrganizations } = await import('../../lib/api/platform.js');
 
-    expect(installSkills).toHaveBeenCalledWith(false, undefined);
+    expect(installSkills).toHaveBeenCalledWith(false);
     expect(trackCommand).toHaveBeenCalledWith('link', 'skills-only', { skills_only: true });
     expect(reportCliUsage).toHaveBeenCalledWith('cli.link_skills_only', true, 1);
     // Skills-only path must never trigger auth or the org picker.
@@ -104,7 +104,7 @@ describe('project link: skills-only fast path', () => {
     const { installSkills } = await import('../../lib/skills.js');
     const { outputJson } = await import('../../lib/output.js');
 
-    expect(installSkills).toHaveBeenCalledWith(true, undefined);
+    expect(installSkills).toHaveBeenCalledWith(true);
     expect(outputJson).toHaveBeenCalledWith({ success: true, skills_only: true });
   });
 

@@ -124,7 +124,7 @@ export function registerProjectLinkCommand(program: Command): void {
 
         if (isSkillsOnly) {
           try {
-            await installSkills(json, undefined);
+            await installSkills(json);
             trackCommand('link', 'skills-only', { skills_only: true });
             await reportCliUsage('cli.link_skills_only', true, 1);
 
