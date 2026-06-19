@@ -53,12 +53,16 @@ export function classifyTruth(
 }
 
 /**
- * A query is safe for `verify truth` only if it's a single read — starts with SELECT or
- * WITH and chains no further statements (a trailing `;` is fine). Guards against an
- * agent-generated destructive query (`DELETE FROM …`, `…; UPDATE …`) running with the
- * admin key. Not a full SQL parser, but it blocks the common destructive shapes.
- * `into` is blocked because `SELECT … INTO new_table` creates a table while still
- * starting with SELECT (a read-only SELECT never needs INTO).
+ * Best-effort guard that rejects the obvious destructive shapes before a `verify truth`
+ * query runs with the admin key: it must start with SELECT/WITH, chain no further statements
+ * (a trailing `;` is fine), and contain no DML/DDL keyword (`into` included — `SELECT … INTO
+ * new_table` creates a table while still starting with SELECT).
+ *
+ * This is NOT a real read-only guarantee. A side-effecting function call hidden behind a
+ * SELECT — `SELECT setval(…)`, `SELECT pg_terminate_backend(…)` — passes the keyword scan and
+ * still executes, because the query runs with the project admin key. A true guarantee needs a
+ * server-side read-only transaction; until that lands, this only blocks the common
+ * destructive *statement* forms, so callers must not treat it as a sandbox.
  */
 export function isReadOnlyQuery(query: string): boolean {
   const q = query.trim();

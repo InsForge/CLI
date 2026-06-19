@@ -57,10 +57,13 @@ export function registerVerifyRlsCommand(verify: Command): void {
         const aId = (rows[0] as { id?: string })?.id;
         if (!aId) throw new CLIError(`Could not find user A (${opts.userA}) — seed it first.`);
 
+        // All three probes use the SAME owner-scoped filter so we measure "can X read A's
+        // rows", not "can X read any row". Checking the whole table for the anon control would
+        // false-positive a leak on any table that intentionally exposes some public rows.
         const filter = `${opts.owner}=eq.${encodeURIComponent(aId)}`;
         const bReadRowsOfA = await recordsCount(baseUrl, opts.table, filter, bToken, anon);
         const aReadOwnRows = await recordsCount(baseUrl, opts.table, filter, aToken, anon);
-        const anonReadRows = await recordsCount(baseUrl, opts.table, undefined, undefined, anon);
+        const anonReadRows = await recordsCount(baseUrl, opts.table, filter, undefined, anon);
 
         const { type, evidence } = classifyRls({ bReadRowsOfA, aReadOwnRows, anonReadRows });
         const finding = { type, table: opts.table as string, evidence };

@@ -21,7 +21,7 @@ export function registerVerifyTruthCommand(verify: Command): void {
         if (!config) throw new CLIError('No linked project found — run `insforge link` first.');
         if (!isReadOnlyQuery(opts.query)) {
           throw new CLIError(
-            'verify truth runs a single read-only query — it must start with SELECT or WITH and not chain statements.',
+            'verify truth expects a single read query — it must start with SELECT or WITH and not chain statements. (This guard blocks common destructive forms, not a hard read-only guarantee — pass a plain read.)',
           );
         }
         if (opts.expect !== undefined && opts.expectCount !== undefined) {

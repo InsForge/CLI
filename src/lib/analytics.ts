@@ -146,24 +146,13 @@ export interface VerifyFinding {
  * in the tool — a finding is recorded because the probe ran, not because the agent remembered
  * to. Best-effort; the caller flushes via `shutdownAnalytics()` before exit.
  */
-// `verify truth` evidence holds the raw DB value the UI claimed (`db_actual`/`ui_claimed`),
-// which can be PII (a name, email, balance). Drop those before sending — finding rate only
-// needs the type + table, not the value. RLS evidence (row counts) is not sensitive and stays.
+// Only structured, non-free-text fields reach PostHog (DEVELOPMENT.md telemetry guidance:
+// never send user-entered free text). The agent-supplied `endpoint`/`message` are dropped
+// entirely — even sanitized, they can leak params/emails/tokens. The PII-bearing evidence
+// keys (`db_actual`/`ui_claimed`, the raw DB value the UI claimed) are filtered out too; RLS
+// evidence (row counts) is not sensitive and stays. `endpoint`/`message` remain on the local
+// `--json` finding for the caller — they're just never transmitted.
 const SENSITIVE_EVIDENCE_KEYS = new Set(['db_actual', 'ui_claimed']);
-
-// `endpoint`/`message` are free-form text from `verify finding` (agent-supplied) and can
-// carry query-string params, emails, or tokens. Strip those before they reach PostHog.
-// Exported for unit tests — these regexes are the PII guard and deserve pinning.
-export function sanitizeEndpoint(v?: string): string | undefined {
-  return v ? v.split('?')[0] : undefined;
-}
-export function sanitizeMessage(v?: string): string | undefined {
-  if (!v) return undefined;
-  return v
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
-    .replace(/\b(?:Bearer\s+)?[A-Za-z0-9._-]{20,}\b/g, '[redacted-token]')
-    .slice(0, 500);
-}
 
 export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig): void {
   const safeEvidence = Object.fromEntries(
@@ -176,8 +165,6 @@ export function trackVerifyFinding(finding: VerifyFinding, config: ProjectConfig
     table: finding.table,
     kind: finding.kind,
     status: finding.status,
-    endpoint: sanitizeEndpoint(finding.endpoint),
-    message: sanitizeMessage(finding.message),
     project_id: config.project_id,
     project_name: config.project_name,
     org_id: config.org_id,
