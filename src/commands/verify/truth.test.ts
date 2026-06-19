@@ -56,10 +56,12 @@ describe('verify truth (command)', () => {
     expect(runRawSql).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-integer --expect-count', async () => {
+  it('rejects a non-integer --expect-count before touching the DB', async () => {
+    const { runRawSql } = await import('../../lib/api/oss.js');
     await expect(
       makeProgram().parseAsync(['verify', 'truth', '--query', 'select count(*) from t', '--expect-count', 'abc', '--json'], { from: 'user' }),
     ).rejects.toThrow(/exit:/);
+    expect(runRawSql).not.toHaveBeenCalled();
   });
 
   it('passes (exit 0) + records & flushes a finding when DB matches the claim', async () => {

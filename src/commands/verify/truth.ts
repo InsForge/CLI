@@ -24,8 +24,19 @@ export function registerVerifyTruthCommand(verify: Command): void {
             'verify truth expects a single read query — it must start with SELECT or WITH and not chain statements. (This guard blocks common destructive forms, not a hard read-only guarantee — pass a plain read.)',
           );
         }
+        // All input validation runs before any I/O — a bad flag must never fire the admin-key
+        // query (fast-fail). `--expect-count` is parsed/checked here, then reused after.
         if (opts.expect !== undefined && opts.expectCount !== undefined) {
           throw new CLIError('Provide either --expect <value> or --expect-count <n>, not both.');
+        }
+        if (opts.expect === undefined && opts.expectCount === undefined) {
+          throw new CLIError('Provide --expect <value> (scalar) or --expect-count <n> (row count).');
+        }
+        if (opts.expectCount !== undefined) {
+          const n = Number(opts.expectCount);
+          if (!Number.isInteger(n) || n < 0) {
+            throw new CLIError(`--expect-count must be a non-negative integer (got ${JSON.stringify(opts.expectCount)}).`);
+          }
         }
 
         const { rows } = await runRawSql(opts.query);
@@ -33,18 +44,12 @@ export function registerVerifyTruthCommand(verify: Command): void {
         let result: { type: 'false_pass' | 'none'; evidence: Record<string, unknown> };
         if (opts.expectCount !== undefined) {
           // Compare as a number so `--expect-count 03` matches 3 rows (string compare wouldn't).
-          const expected = Number(opts.expectCount);
-          if (!Number.isInteger(expected) || expected < 0) {
-            throw new CLIError(`--expect-count must be a non-negative integer (got ${JSON.stringify(opts.expectCount)}).`);
-          }
-          result = classifyTruth(rows.length, String(expected));
-        } else if (opts.expect !== undefined) {
+          result = classifyTruth(rows.length, String(Number(opts.expectCount)));
+        } else {
           const first = rows[0];
           const dbValue =
             first && typeof first === 'object' ? Object.values(first as Record<string, unknown>)[0] : first;
           result = classifyTruth(dbValue, String(opts.expect));
-        } else {
-          throw new CLIError('Provide --expect <value> (scalar) or --expect-count <n> (row count).');
         }
 
         const finding = { type: result.type, table: opts.table as string | undefined, evidence: result.evidence };
