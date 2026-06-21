@@ -351,6 +351,10 @@ describe('flyctlBuildAndPush', () => {
     expect(body).toContain('app = "my-svc-proj-abc123"');
     expect(body).toContain('primary_region = "iad"');
     expect(body).toContain('internal_port = 8080');
+    // Default scale-to-zero — consistent with the cloud Machines-API path.
+    expect(body).toContain('auto_stop_machines = "stop"');
+    expect(body).toContain('min_machines_running = 0');
+    expect(body).not.toContain('auto_stop_machines = false');
     expect(unlinkSyncMock).toHaveBeenCalledWith('/tmp/app/fly.toml');
   });
 
