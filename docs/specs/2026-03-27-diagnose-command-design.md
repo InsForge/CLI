@@ -45,7 +45,7 @@ Comprehensive health report. Fetches all 4 data sources in parallel via `Promise
 │    Dead tuples: 2,060   Locks waiting: 0        │
 ├─────────────────────────────────────────────────┤
 │  Recent Errors (last 100 logs per source)       │
-│    insforge.logs: 0  postgREST.logs: 2          │
+│    insforge.logs: 0  PostgREST.logs: 2          │
 │    postgres.logs: 0  function.logs: 1           │
 └─────────────────────────────────────────────────┘
 ```
@@ -134,7 +134,7 @@ Latest = last data point. Avg/Max computed from `MetricSeries.data[]`. Network v
 | `--source` | string | all 4 sources | Log source name |
 | `--limit` | number | 100 | Entries per source |
 
-**Log sources:** `insforge.logs`, `postgREST.logs`, `postgres.logs`, `function.logs`
+**Log sources:** `insforge.logs`, `PostgREST.logs`, `postgres.logs`, `function.logs`
 
 **API:** `GET /api/logs/{source}?limit={n}` for each source.
 

@@ -560,7 +560,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 
-const LOG_SOURCES = ['insforge.logs', 'postgREST.logs', 'postgres.logs', 'function.logs'] as const;
+const LOG_SOURCES = ['insforge.logs', 'PostgREST.logs', 'postgres.logs', 'function.logs'] as const;
 
 const ERROR_PATTERN = /\b(error|fatal|panic)\b/i;
 
