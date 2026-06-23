@@ -462,8 +462,8 @@ export async function updateMemberRole(
     method: 'PUT',
     body: JSON.stringify({ role }),
   }, apiUrl);
-  const data = await res.json() as { member: Member };
-  return data.member;
+  const data = await res.json() as { member?: Member };
+  return data.member ?? (data as unknown as Member);
 }
 
 // --- Backups ---
