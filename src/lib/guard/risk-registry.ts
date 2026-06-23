@@ -236,6 +236,78 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     blastRadius: 'Functions/services reading this secret lose access at next run.',
     risk: 'Can break running workloads that depend on the value.',
   }),
+
+  'projects delete': (ctx) => ({
+    severity: 'critical',
+    kind: 'project.delete',
+    title: 'Delete a project',
+    whatHappens: `Permanently deletes project "${(ctx.opts.project as string) ?? '(linked)'}" and all of its resources.`,
+    blastRadius: 'The database, storage buckets, edge functions, and every backend resource are destroyed.',
+    risk: 'Irreversible. Every app and integration pointing at this project breaks immediately.',
+  }),
+
+  'projects restore': () => ({
+    severity: 'high',
+    kind: 'project.restore',
+    title: 'Restore a project',
+    whatHappens: 'Brings a paused/deleted project back online, re-provisioning its instance.',
+    blastRadius: 'The project transitions state and may incur billing for the restored instance.',
+    risk: 'Changes live infrastructure state. Verify you mean to bring this project back.',
+  }),
+
+  'projects update-version': () => ({
+    severity: 'high',
+    kind: 'project.update_version',
+    title: 'Update the backend version',
+    whatHappens: 'Restarts the project onto the latest InsForge version.',
+    blastRadius: 'The instance restarts — brief downtime, and a version change can alter behavior.',
+    risk: 'Live traffic is interrupted during the restart. Roll-back means restarting again.',
+  }),
+
+  'projects upgrade-instance': (ctx) => ({
+    severity: 'high',
+    kind: 'project.upgrade_instance',
+    title: 'Change instance type',
+    whatHappens: `Changes the project instance type to "${ctx.args[0] ?? '?'}", restarting it.`,
+    blastRadius: 'Brief downtime during the restart, and the change affects your bill.',
+    risk: 'Verify the target instance type — a larger class costs more.',
+  }),
+
+  'backups restore': (ctx) => ({
+    severity: 'critical',
+    kind: 'backup.restore',
+    title: 'Restore project from a backup',
+    whatHappens: `Overwrites the project's current data with backup "${ctx.args[0] ?? '?'}".`,
+    blastRadius: 'The current database and storage are replaced by the backup snapshot.',
+    risk: 'Any data written since that backup is lost. Irreversible without another backup.',
+  }),
+
+  'backups delete': (ctx) => ({
+    severity: 'high',
+    kind: 'backup.delete',
+    title: 'Delete a backup',
+    whatHappens: `Removes backup "${ctx.args[0] ?? '?'}".`,
+    blastRadius: 'That restore point is gone.',
+    risk: 'You can no longer restore the project to this snapshot.',
+  }),
+
+  'orgs members remove': (ctx) => ({
+    severity: 'high',
+    kind: 'org.member_remove',
+    title: 'Remove an organization member',
+    whatHappens: `Removes member "${ctx.args[0] ?? '?'}" from the organization.`,
+    blastRadius: 'That user loses access to all projects in the organization.',
+    risk: 'They must be re-invited to regain access.',
+  }),
+
+  'secrets rotate': (ctx) => ({
+    severity: 'high',
+    kind: 'secrets.rotate',
+    title: 'Rotate a project key',
+    whatHappens: `Rotates the ${ctx.args[0] ?? 'key'} — the old value stops working after the grace period.`,
+    blastRadius: 'Clients still using the old key fail once the grace period ends.',
+    risk: 'Update every consumer of the old key before the grace window closes.',
+  }),
 };
 
 /**

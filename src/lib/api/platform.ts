@@ -3,14 +3,25 @@ import { AuthError, CLIError, formatFetchError } from '../errors.js';
 import { refreshAccessToken } from '../credentials.js';
 import type {
   ApiKeyResponse,
+  Backup,
   Branch,
   BranchMode,
+  CreditBalance,
   DiffResult,
+  LatestVersionResponse,
   LoginResponse,
+  Member,
+  MemberRole,
+  MembersResponse,
   MergeConflictResponse,
   MergeExecuteResponse,
   Organization,
+  OrgUsage,
   Project,
+  SubscriptionStatus,
+  UpdateProjectBody,
+  UpgradeInstanceBody,
+  UpgradeInstanceResult,
   User,
 } from '../../types.js';
 
@@ -283,6 +294,235 @@ export async function createProject(
   }, apiUrl);
   const data = await res.json() as { project?: Project };
   return data.project ?? (data as unknown as Project);
+}
+
+// --- Project lifecycle ---
+
+export async function updateProject(
+  projectId: string,
+  body: UpdateProjectBody,
+  apiUrl?: string,
+): Promise<Project> {
+  const res = await platformFetch(`/projects/v1/${projectId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }, apiUrl);
+  const data = await res.json() as { project?: Project };
+  return data.project ?? (data as unknown as Project);
+}
+
+export async function deleteProject(projectId: string, apiUrl?: string): Promise<void> {
+  await platformFetch(`/projects/v1/${projectId}`, { method: 'DELETE' }, apiUrl);
+}
+
+export async function restoreProject(projectId: string, apiUrl?: string): Promise<Project> {
+  const res = await platformFetch(
+    `/projects/v1/${projectId}/restore`,
+    { method: 'POST' },
+    apiUrl,
+  );
+  const data = await res.json() as { project?: Project };
+  return data.project ?? (data as unknown as Project);
+}
+
+export async function upgradeInstance(
+  projectId: string,
+  body: UpgradeInstanceBody,
+  apiUrl?: string,
+): Promise<UpgradeInstanceResult> {
+  const res = await platformFetch(`/projects/v1/${projectId}/upgrade-instance`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, apiUrl);
+  return await res.json() as UpgradeInstanceResult;
+}
+
+/**
+ * The current latest InsForge OSS version. Resolved by the platform from the
+ * default tag in the OSS docker-compose.yml. Public endpoint, but we reuse
+ * platformFetch (the auth header is harmless) since callers are authenticated.
+ */
+export async function getLatestInsforgeVersion(apiUrl?: string): Promise<string> {
+  const res = await platformFetch('/platform/insforge/latest-version', {}, apiUrl);
+  const data = await res.json() as LatestVersionResponse;
+  return data.version;
+}
+
+/**
+ * Update a project to a specific InsForge OSS version. The platform has no
+ * dedicated "update version" route — restart with an explicit
+ * `insforgeOssVersion` pins the tag in the instance `.env` and redeploys
+ * (the `generateUpdateCommands` path). This mirrors the dashboard's
+ * "update to latest" button, which always passes the resolved version
+ * explicitly rather than relying on the unpinned-restart fallback.
+ *
+ * `wait=true` sets `waitForCompletion` so the call blocks until the restart
+ * job finishes instead of returning while it's still queued.
+ */
+export async function restartProjectVersion(
+  projectId: string,
+  insforgeOssVersion: string,
+  wait: boolean,
+  apiUrl?: string,
+): Promise<Project> {
+  const params = new URLSearchParams({ insforgeOssVersion });
+  if (wait) params.set('waitForCompletion', 'true');
+  const res = await platformFetch(
+    `/projects/v1/${projectId}/restart?${params.toString()}`,
+    { method: 'POST' },
+    apiUrl,
+  );
+  const data = await res.json() as { project?: Project };
+  return data.project ?? (data as unknown as Project);
+}
+
+// --- Billing / usage ---
+
+export async function getSubscriptionStatus(orgId: string, apiUrl?: string): Promise<SubscriptionStatus> {
+  const res = await platformFetch(`/organizations/v1/${orgId}/subscription-status`, {}, apiUrl);
+  return await res.json() as SubscriptionStatus;
+}
+
+export async function getCredits(orgId: string, apiUrl?: string): Promise<CreditBalance> {
+  const res = await platformFetch(`/billing/v1/${orgId}/credits`, {}, apiUrl);
+  return await res.json() as CreditBalance;
+}
+
+export async function getOrgUsage(orgId: string, apiUrl?: string): Promise<OrgUsage> {
+  const res = await platformFetch(`/usage/v1/organizations/${orgId}`, {}, apiUrl);
+  return await res.json() as OrgUsage;
+}
+
+// --- Organization management ---
+
+export async function createOrganization(
+  body: { name: string; type: string },
+  apiUrl?: string,
+): Promise<Organization> {
+  const res = await platformFetch('/organizations/v1', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, apiUrl);
+  const data = await res.json() as { organization?: Organization };
+  return data.organization ?? (data as unknown as Organization);
+}
+
+export async function updateOrganization(
+  orgId: string,
+  body: { name?: string; type?: string },
+  apiUrl?: string,
+): Promise<Organization> {
+  const res = await platformFetch(`/organizations/v1/${orgId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }, apiUrl);
+  const data = await res.json() as { organization?: Organization };
+  return data.organization ?? (data as unknown as Organization);
+}
+
+export async function listMembers(orgId: string, apiUrl?: string): Promise<MembersResponse> {
+  const res = await platformFetch(`/organizations/v1/${orgId}/members`, {}, apiUrl);
+  const data = await res.json() as Partial<MembersResponse>;
+  return { members: data.members ?? [], invitations: data.invitations ?? [] };
+}
+
+export async function inviteMember(
+  orgId: string,
+  email: string,
+  role: MemberRole | undefined,
+  apiUrl?: string,
+): Promise<{ id: string; email: string; role: MemberRole; expires_at: string }> {
+  const body: Record<string, string> = { email };
+  if (role) body.role = role;
+  const res = await platformFetch(`/organizations/v1/${orgId}/members/invite`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, apiUrl);
+  const data = await res.json() as { invitation: { id: string; email: string; role: MemberRole; expires_at: string } };
+  return data.invitation;
+}
+
+export async function removeMember(orgId: string, memberId: string, apiUrl?: string): Promise<void> {
+  await platformFetch(
+    `/organizations/v1/${orgId}/members/${memberId}`,
+    { method: 'DELETE' },
+    apiUrl,
+  );
+}
+
+export async function updateMemberRole(
+  orgId: string,
+  memberId: string,
+  role: MemberRole,
+  apiUrl?: string,
+): Promise<Member> {
+  const res = await platformFetch(`/organizations/v1/${orgId}/members/${memberId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  }, apiUrl);
+  const data = await res.json() as { member: Member };
+  return data.member;
+}
+
+// --- Backups ---
+
+export async function listBackups(projectId: string, apiUrl?: string): Promise<Backup[]> {
+  const res = await platformFetch(`/projects/v1/${projectId}/backups`, {}, apiUrl);
+  const data = await res.json() as { backups?: Backup[] };
+  return data.backups ?? [];
+}
+
+export async function getLatestBackup(projectId: string, apiUrl?: string): Promise<Backup | null> {
+  const res = await platformFetch(
+    `/projects/v1/${projectId}/backup/latest`,
+    { passThroughStatuses: [404] },
+    apiUrl,
+  );
+  if (res.status === 404) return null;
+  return await res.json() as Backup;
+}
+
+export async function createBackup(
+  projectId: string,
+  name: string | undefined,
+  wait: boolean,
+  apiUrl?: string,
+): Promise<{ message: string; project: { id: string; name: string; status: string } }> {
+  const query = wait ? '?waitForCompletion=true' : '';
+  const res = await platformFetch(`/projects/v1/${projectId}/backup${query}`, {
+    method: 'POST',
+    body: JSON.stringify(name ? { name } : {}),
+  }, apiUrl);
+  return await res.json() as { message: string; project: { id: string; name: string; status: string } };
+}
+
+export async function renameBackup(
+  projectId: string,
+  backupId: string,
+  name: string | null,
+  apiUrl?: string,
+): Promise<{ id: string; name: string | null }> {
+  const res = await platformFetch(`/projects/v1/${projectId}/backups/${backupId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  }, apiUrl);
+  return await res.json() as { id: string; name: string | null };
+}
+
+export async function deleteBackup(projectId: string, backupId: string, apiUrl?: string): Promise<void> {
+  await platformFetch(
+    `/projects/v1/${projectId}/backups/${backupId}`,
+    { method: 'DELETE' },
+    apiUrl,
+  );
+}
+
+export async function restoreBackup(projectId: string, backupId: string, apiUrl?: string): Promise<void> {
+  await platformFetch(
+    `/projects/v1/${projectId}/backups/${backupId}/restore`,
+    { method: 'POST' },
+    apiUrl,
+  );
 }
 
 // --- Branching ---
