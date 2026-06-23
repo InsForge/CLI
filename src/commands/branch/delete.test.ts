@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchDeleteCommand } from './delete.js';
 
@@ -59,7 +59,7 @@ describe('branch delete', () => {
 
   it('happy path with --yes calls deleteBranchApi and captures analytics', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -75,7 +75,7 @@ describe('branch delete', () => {
 
   it('errors when the named branch does not exist', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -90,7 +90,7 @@ describe('branch delete', () => {
 
   it('auto-switches back to parent when deleting the currently active branch', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b1',
       project_name: 'feat-x',
       org_id: 'o1',
@@ -112,7 +112,7 @@ describe('branch delete', () => {
 
   it('does not auto-switch when the deleted branch is not the currently active one', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -125,14 +125,14 @@ describe('branch delete', () => {
 
   it('does not abort the delete command when post-delete switch-back fails', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b1',
       project_name: 'feat-x',
       org_id: 'o1',
       branched_from: { project_id: 'p1', project_name: 'parent' },
     });
     const { runBranchSwitch } = await import('./switch.js');
-    (runBranchSwitch as any).mockRejectedValueOnce(new Error('no parent backup'));
+    (runBranchSwitch as Mock).mockRejectedValueOnce(new Error('no parent backup'));
     const program = makeProgram();
     await runSilently(program, ['delete', 'feat-x', '--yes', '--json']);
     // Delete still went through despite the switch-back failure.
@@ -142,7 +142,7 @@ describe('branch delete', () => {
 
   it('json mode reports switched_back=true when the active branch was deleted', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b1',
       project_name: 'feat-x',
       org_id: 'o1',

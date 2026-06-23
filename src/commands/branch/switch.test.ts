@@ -1,11 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { runBranchSwitch } from './switch.js';
+import type { ProjectConfig } from '../../types.js';
 
-const saveCalls: any[] = [];
+const saveCalls: ProjectConfig[] = [];
 
 vi.mock('../../lib/config.js', () => ({
   getProjectConfig: vi.fn(),
-  saveProjectConfig: vi.fn((c: any) => saveCalls.push(c)),
+  saveProjectConfig: vi.fn((c: ProjectConfig) => saveCalls.push(c)),
   getProjectConfigFile: () => '/tmp/_test_/.insforge/project.json',
   getParentBackupFile: () => '/tmp/_test_/.insforge/project.parent.json',
   buildOssHost: (appkey: string, region: string) => `https://${appkey}.${region}.insforge.app`,
@@ -59,7 +60,7 @@ describe('runBranchSwitch', () => {
 
   it('switches from parent to a branch and creates parent.json backup', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -86,7 +87,7 @@ describe('runBranchSwitch', () => {
 
   it('preserves parent backup when switching branch -> branch', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b0',
       project_name: 'feat-y',
       org_id: 'o1',
@@ -107,9 +108,9 @@ describe('runBranchSwitch', () => {
 
   it('refuses to switch to a branch not in ready state', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({ project_id: 'p1', project_name: 'parent', org_id: 'o1' });
+    (getProjectConfig as Mock).mockReturnValue({ project_id: 'p1', project_name: 'parent', org_id: 'o1' });
     const { listBranchesApi } = await import('../../lib/api/platform.js');
-    (listBranchesApi as any).mockResolvedValueOnce([
+    (listBranchesApi as Mock).mockResolvedValueOnce([
       {
         id: 'b1',
         name: 'feat-x',
@@ -129,7 +130,7 @@ describe('runBranchSwitch', () => {
 
   it('--parent restores from backup and removes the backup file', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b1',
       project_name: 'feat-x',
       org_id: 'o1',
@@ -148,7 +149,7 @@ describe('runBranchSwitch', () => {
 
   it('rejects passing both a branch name and --parent', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b1',
       project_name: 'feat-x',
       org_id: 'o1',
@@ -161,7 +162,7 @@ describe('runBranchSwitch', () => {
 
   it('--parent fails clearly when no backup exists', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({ project_id: 'b1', project_name: 'feat-x', org_id: 'o1' });
+    (getProjectConfig as Mock).mockReturnValue({ project_id: 'b1', project_name: 'feat-x', org_id: 'o1' });
     fsMock.existsSync.mockReturnValueOnce(false);
     await expect(
       runBranchSwitch({ toParent: true, apiUrl: undefined, json: true }),

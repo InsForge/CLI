@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchMergeCommand } from './merge.js';
 
@@ -143,7 +143,7 @@ describe('branch merge', () => {
 
   it('conflict path exits with code 2 and prints per-conflict summary', async () => {
     const { mergeBranchDryRunApi } = await import('../../lib/api/platform.js');
-    (mergeBranchDryRunApi as any).mockResolvedValueOnce({
+    (mergeBranchDryRunApi as Mock).mockResolvedValueOnce({
       summary: { added: 0, modified: 0, conflicts: 1 },
       rendered_sql: '-- ⚠️ MERGE BLOCKED: 1 conflict(s) detected.',
       changes: [],
@@ -167,14 +167,14 @@ describe('branch merge', () => {
     // overwrite the meaningful first exit. The first call is what the user sees.
     let exitCode: number | undefined;
     const origExit = process.exit;
-    (process.exit as any) = (code?: number) => {
+    process.exit = ((code?: number) => {
       if (exitCode === undefined) exitCode = code;
       throw new Error('__exit__');
-    };
+    }) as typeof process.exit;
     const origLog = console.log;
     console.log = () => {};
     const origStderr = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (() => true) as any;
+    process.stderr.write = (() => true) as typeof process.stderr.write;
     try {
       await program
         .parseAsync(['merge', 'feat-x', '--dry-run'], { from: 'user' })

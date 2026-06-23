@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchListCommand } from './list.js';
 
@@ -69,7 +69,7 @@ describe('branch list', () => {
 
   it('lists siblings against project_id when not on a branch', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -86,7 +86,7 @@ describe('branch list', () => {
 
   it('lists siblings against branched_from.project_id when currently switched onto a branch', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b1',
       project_name: 'feat-x',
       org_id: 'o1',
@@ -104,7 +104,7 @@ describe('branch list', () => {
 
   it('json mode emits a single JSON document with the branches array', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -119,7 +119,7 @@ describe('branch list', () => {
 
   it('table mode marks the current branch with `*`', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'b1',
       project_name: 'feat-x',
       org_id: 'o1',
@@ -143,7 +143,7 @@ describe('branch list', () => {
 
   it('does not mark any branch when currently on the parent', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -159,13 +159,13 @@ describe('branch list', () => {
 
   it('prints "No branches." when the API returns an empty list', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
     });
     const { listBranchesApi } = await import('../../lib/api/platform.js');
-    (listBranchesApi as any).mockResolvedValueOnce([]);
+    (listBranchesApi as Mock).mockResolvedValueOnce([]);
     const program = makeProgram();
     const logs = await runWithCapturedLog(program, ['list']);
     expect(logs.join('\n')).toContain('No branches.');

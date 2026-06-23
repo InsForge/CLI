@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchCreateCommand } from './create.js';
 
@@ -70,18 +70,18 @@ describe('branch create', () => {
 
   it('rejects when no project linked', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue(null);
+    (getProjectConfig as Mock).mockReturnValue(null);
     const program = new Command().exitOverride();
     program.option('--json').option('--api-url <url>').option('-y, --yes');
     registerBranchCreateCommand(program);
     let exitCode: number | undefined;
     const origExit = process.exit;
-    (process.exit as any) = (code?: number) => {
+    process.exit = ((code?: number) => {
       exitCode = code;
       throw new Error('__exit__');
-    };
+    }) as typeof process.exit;
     const origStderr = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (() => true) as any;
+    process.stderr.write = (() => true) as typeof process.stderr.write;
     try {
       await program
         .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch', '--json'], {
@@ -97,7 +97,7 @@ describe('branch create', () => {
 
   it('rejects an invalid --mode value before any API call', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -107,12 +107,12 @@ describe('branch create', () => {
     registerBranchCreateCommand(program);
     let exitCode: number | undefined;
     const origExit = process.exit;
-    (process.exit as any) = (code?: number) => {
+    process.exit = ((code?: number) => {
       exitCode = code;
       throw new Error('__exit__');
-    };
+    }) as typeof process.exit;
     const origStderr = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (() => true) as any;
+    process.stderr.write = (() => true) as typeof process.stderr.write;
     try {
       await program
         .parseAsync(['create', 'feat-x', '--mode', 'bogus', '--no-switch', '--json'], {
@@ -130,7 +130,7 @@ describe('branch create', () => {
 
   it('happy path with --json: posts then prints branch payload', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -168,7 +168,7 @@ describe('branch create', () => {
 
   it('happy path without --no-switch invokes runBranchSwitch', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -205,7 +205,7 @@ describe('branch create', () => {
 
   it('switch failure after a successful create reports "switch failed", not "creation failed"', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
@@ -215,19 +215,19 @@ describe('branch create', () => {
       oss_host: 'https://p1ky.us-east.insforge.app',
     });
     const { runBranchSwitch } = await import('./switch.js');
-    (runBranchSwitch as any).mockRejectedValueOnce(new Error('network down'));
+    (runBranchSwitch as Mock).mockRejectedValueOnce(new Error('network down'));
 
     const program = new Command().exitOverride();
     program.option('--json').option('--api-url <url>').option('-y, --yes');
     registerBranchCreateCommand(program);
     let exitCode: number | undefined;
     const origExit = process.exit;
-    (process.exit as any) = (code?: number) => {
+    process.exit = ((code?: number) => {
       exitCode = code;
       throw new Error('__exit__');
-    };
+    }) as typeof process.exit;
     const origStderr = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (() => true) as any;
+    process.stderr.write = (() => true) as typeof process.stderr.write;
     try {
       await program
         .parseAsync(['create', 'feat-x', '--mode', 'full'], { from: 'user' })
@@ -249,7 +249,7 @@ describe('branch create', () => {
 
   it('non-JSON path drives the spinner and keeps it active through switch', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
-    (getProjectConfig as any).mockReturnValue({
+    (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
       project_name: 'parent',
       org_id: 'o1',
