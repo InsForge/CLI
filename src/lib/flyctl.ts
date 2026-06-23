@@ -60,12 +60,16 @@ function ensureFlyTomlStub(opts: { dir: string; appId: string; region: string; p
       /* user owns the file — leave as-is */
     };
   }
+  // Default to scale-to-zero (`auto_stop_machines = "stop"`), matching both the
+  // cloud Machines-API provisioning path and Fly's own `fly launch` default —
+  // idle machines stop instead of billing 24/7. Users who need always-on
+  // supply their own fly.toml (the existsSync check above leaves it untouched).
   const serviceBlock =
     opts.protocol === 'tcp'
       ? `[[services]]\n` +
         `  internal_port = ${opts.port}\n` +
         `  protocol = "tcp"\n` +
-        `  auto_stop_machines = false\n` +
+        `  auto_stop_machines = "stop"\n` +
         `  auto_start_machines = true\n` +
         `  min_machines_running = 0\n` +
         `\n` +
@@ -74,7 +78,7 @@ function ensureFlyTomlStub(opts: { dir: string; appId: string; region: string; p
       : `[http_service]\n` +
         `  internal_port = ${opts.port}\n` +
         `  force_https = true\n` +
-        `  auto_stop_machines = false\n` +
+        `  auto_stop_machines = "stop"\n` +
         `  auto_start_machines = true\n` +
         `  min_machines_running = 0\n`;
   const stub =
