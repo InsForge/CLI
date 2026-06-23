@@ -27,7 +27,9 @@ export function registerComputeListCommand(computeCmd: Command): void {
             return;
           }
           outputTable(
-            ['Name', 'Status', 'Image', 'CPU', 'Memory', 'Endpoint'],
+            // ID first: it's the value `compute get/update/stop/delete <id>`
+            // expect, so it should be the easiest column to copy out of `list`.
+            ['ID', 'Name', 'Status', 'Image', 'CPU', 'Memory', 'Endpoint'],
             services.map((s) => {
               // For TCP services the backend's endpointUrl is still https:// (no
               // listener answers there). Show the usable host:port form so users
@@ -37,6 +39,7 @@ export function registerComputeListCommand(computeCmd: Command): void {
                   ? `${String(s.endpointUrl).replace(/^https?:\/\//, '')}:${s.port}`
                   : String(s.endpointUrl ?? '-');
               return [
+                String(s.id ?? '-'),
                 String(s.name ?? '-'),
                 String(s.status ?? '-'),
                 String(s.imageUrl ?? '-'),
