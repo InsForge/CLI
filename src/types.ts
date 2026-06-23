@@ -37,6 +37,8 @@ export interface Project {
   appkey: string;
   region: string;
   status: string;
+  /** In-flight maintenance operation (e.g. restoring, updating_project_version), null when idle. */
+  operation_status?: string | null;
   instance_type: string;
   service_version: string | null;
   customized_domain: string | null;
@@ -213,4 +215,142 @@ export interface FunctionResponse {
     deployedAt: string | null;
   };
   deployment?: FunctionDeploymentResult | null;
+}
+
+// --- Project management (cloud platform) ---
+
+/** Subset of the project body accepted by PUT /projects/v1/:id. */
+export interface UpdateProjectBody {
+  name?: string;
+  customizedDomain?: string;
+  storageDiskSize?: number;
+}
+
+export interface UpgradeInstanceBody {
+  instanceType: string;
+}
+
+/** Response of GET /platform/insforge/latest-version (public). */
+export interface LatestVersionResponse {
+  version: string;
+  cached: boolean;
+}
+
+/** Returned by upgrade-instance — old/new values plus the refreshed project. */
+export interface UpgradeInstanceResult {
+  message: string;
+  project: Project;
+  previousInstanceType: string;
+  newInstanceType: string;
+  previousVolumeSizeGiB: number;
+  newVolumeSizeGiB: number;
+}
+
+// --- Billing / usage (cloud platform) ---
+
+export interface SubscriptionStatus {
+  status: string;
+  plan: string;
+  currentPeriodEnd?: string;
+  cancelAtPeriodEnd?: boolean;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+}
+
+export interface CreditBalance {
+  creditBalanceCents: number;
+  creditBalanceFormatted: string;
+  transactions: { amountCents: number; description: string; created: string }[];
+}
+
+export interface OrgUsage {
+  organization: { id: string; name: string; price_plan: string };
+  usage_summary: Record<string, number>;
+  projects: { id: string; name: string; status: string; [metric: string]: unknown }[];
+  _meta: { requested_at: string };
+}
+
+// --- Organization members (cloud platform) ---
+
+export type MemberRole = 'administrator' | 'developer';
+
+export interface Member {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: MemberRole;
+  invited_by?: string;
+  joined_at: string;
+  name?: string;
+  email?: string;
+  avatar_url?: string;
+}
+
+export interface Invitation {
+  id: string;
+  organization_id: string;
+  email: string;
+  role: MemberRole;
+  status: 'pending' | 'accepted' | 'expired' | 'declined';
+  expires_at: string;
+  created_at: string;
+}
+
+export interface MembersResponse {
+  members: Member[];
+  invitations: Invitation[];
+}
+
+// --- Backups (cloud platform) ---
+
+export interface Backup {
+  id: string;
+  project_id: string;
+  organization_id: string;
+  plan: string;
+  status: 'running' | 'completed' | 'failed';
+  trigger_source: 'manual' | 'scheduled';
+  error_message: string | null;
+  triggered_at: string | null;
+  created_at: string;
+  name: string | null;
+  size_bytes: number | null;
+  created_by: string | null;
+}
+
+/**
+ * GET /projects/v1/:id/backup/latest returns a pointer to the most recent
+ * dump FILE (with a presigned download URL) — NOT a Backup record. Distinct
+ * shape from the `backups` list endpoint.
+ */
+export interface LatestBackup {
+  file: string;
+  download_url: string;
+  size_bytes: number;
+}
+
+// --- Secrets rotation (OSS backend) ---
+
+export interface RotateKeyResponse {
+  success: true;
+  message: string;
+  /** New plaintext key — shown once. `apiKey` for api-key rotate, `anonKey` for anon-key. */
+  apiKey?: string;
+  anonKey?: string;
+  oldKeyExpiresAt: string;
+}
+
+// --- S3 access keys (OSS backend) ---
+
+export interface S3AccessKey {
+  id: string;
+  accessKeyId: string;
+  description: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface S3AccessKeyWithSecret extends S3AccessKey {
+  /** Plaintext secret — returned only at creation, never again. */
+  secretAccessKey: string;
 }

@@ -9,7 +9,12 @@ import { registerLoginCommand } from './commands/login.js';
 import { registerLogoutCommand } from './commands/logout.js';
 import { registerWhoamiCommand } from './commands/whoami.js';
 import { registerOrgsCommands } from './commands/orgs/list.js';
+import { registerOrgsManageCommands } from './commands/orgs/manage.js';
 import { registerProjectsCommands } from './commands/projects/list.js';
+import { registerProjectManageCommands } from './commands/projects/manage.js';
+import { registerBillingCommands } from './commands/billing/index.js';
+import { registerUsageCommand } from './commands/usage/index.js';
+import { registerBackupsCommands } from './commands/backups/index.js';
 import { registerBranchCommands } from './commands/branch/index.js';
 import { registerProjectLinkCommand } from './commands/projects/link.js';
 import { registerDbCommands } from './commands/db/query.js';
@@ -53,6 +58,8 @@ import { registerSecretsGetCommand } from './commands/secrets/get.js';
 import { registerSecretsAddCommand } from './commands/secrets/add.js';
 import { registerSecretsUpdateCommand } from './commands/secrets/update.js';
 import { registerSecretsDeleteCommand } from './commands/secrets/delete.js';
+import { registerSecretsRotateCommand } from './commands/secrets/rotate.js';
+import { registerStorageS3KeysCommand } from './commands/storage/s3-keys.js';
 
 import { registerSchedulesListCommand } from './commands/schedules/list.js';
 import { registerSchedulesGetCommand } from './commands/schedules/get.js';
@@ -125,13 +132,15 @@ registerListCommand(program);
 registerDocsCommand(program);
 registerProjectLinkCommand(program);
 
-// Orgs commands (hidden — use `insforge list` instead)
-const orgsCmd = program.command('orgs', { hidden: true }).description('Manage organizations');
+// Orgs commands
+const orgsCmd = program.command('orgs').description('Manage organizations and members');
 registerOrgsCommands(orgsCmd);
+registerOrgsManageCommands(orgsCmd);
 
-// Projects commands (hidden — use `insforge list` instead)
-const projectsCmd = program.command('projects', { hidden: true }).description('Manage projects');
+// Projects commands
+const projectsCmd = program.command('projects').description('Manage projects');
 registerProjectsCommands(projectsCmd);
+registerProjectManageCommands(projectsCmd);
 
 // Branch commands
 registerBranchCommands(program);
@@ -173,6 +182,7 @@ registerStorageDeleteBucketCommand(storageCmd);
 registerStorageListObjectsCommand(storageCmd);
 registerStorageUploadCommand(storageCmd);
 registerStorageDownloadCommand(storageCmd);
+registerStorageS3KeysCommand(storageCmd);
 
 // Deployments commands
 const deploymentsCmd = program.command('deployments').description('Deploy and manage frontend sites');
@@ -192,6 +202,7 @@ registerSecretsGetCommand(secretsCmd);
 registerSecretsAddCommand(secretsCmd);
 registerSecretsUpdateCommand(secretsCmd);
 registerSecretsDeleteCommand(secretsCmd);
+registerSecretsRotateCommand(secretsCmd);
 
 // Logs command
 registerLogsCommand(program);
@@ -206,6 +217,17 @@ registerDiagnoseCommands(diagnoseCmd);
 // Payments commands
 const paymentsCmd = program.command('payments').description('Manage payments');
 registerPaymentsCommands(paymentsCmd);
+
+// Billing commands (platform subscription / credits)
+const billingCmd = program.command('billing').description('Inspect subscription, plan, and credits');
+registerBillingCommands(billingCmd);
+
+// Usage command (organization consumption)
+registerUsageCommand(program);
+
+// Backups commands (project backups)
+const backupsCmd = program.command('backups').description('Manage project backups');
+registerBackupsCommands(backupsCmd);
 
 // Compute commands
 const computeCmd = program.command('compute').description('Manage compute services (Docker containers on Fly.io)');

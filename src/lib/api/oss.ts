@@ -1,6 +1,11 @@
 import { getProjectConfig } from '../config.js';
 import { CLIError, ProjectNotLinkedError } from '../errors.js';
-import type { ProjectConfig } from '../../types.js';
+import type {
+  ProjectConfig,
+  RotateKeyResponse,
+  S3AccessKey,
+  S3AccessKeyWithSecret,
+} from '../../types.js';
 
 function requireProjectConfig(): ProjectConfig {
   const config = getProjectConfig();
@@ -108,6 +113,48 @@ export async function getDatabaseConnectionString(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// --- Secrets rotation ---
+
+/**
+ * Rotate the project API key or anon key. The old key keeps working for
+ * `gracePeriodHours` (server default applies when omitted) so deployed
+ * clients don't break instantly. The new plaintext key is returned once.
+ */
+export async function rotateApiKey(gracePeriodHours?: number): Promise<RotateKeyResponse> {
+  const res = await ossFetch('/api/secrets/api-key/rotate', {
+    method: 'POST',
+    body: JSON.stringify(gracePeriodHours === undefined ? {} : { gracePeriodHours }),
+  });
+  return await res.json() as RotateKeyResponse;
+}
+
+export async function rotateAnonKey(gracePeriodHours?: number): Promise<RotateKeyResponse> {
+  const res = await ossFetch('/api/secrets/anon-key/rotate', {
+    method: 'POST',
+    body: JSON.stringify(gracePeriodHours === undefined ? {} : { gracePeriodHours }),
+  });
+  return await res.json() as RotateKeyResponse;
+}
+
+// --- S3 access keys ---
+
+export async function listS3AccessKeys(): Promise<S3AccessKey[]> {
+  const res = await ossFetch('/api/storage/s3/access-keys');
+  return await res.json() as S3AccessKey[];
+}
+
+export async function createS3AccessKey(description?: string): Promise<S3AccessKeyWithSecret> {
+  const res = await ossFetch('/api/storage/s3/access-keys', {
+    method: 'POST',
+    body: JSON.stringify(description ? { description } : {}),
+  });
+  return await res.json() as S3AccessKeyWithSecret;
+}
+
+export async function deleteS3AccessKey(id: string): Promise<void> {
+  await ossFetch(`/api/storage/s3/access-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export async function ossFetch(
