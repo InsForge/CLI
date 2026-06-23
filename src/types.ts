@@ -318,6 +318,17 @@ export interface Backup {
   created_by: string | null;
 }
 
+/**
+ * GET /projects/v1/:id/backup/latest returns a pointer to the most recent
+ * dump FILE (with a presigned download URL) — NOT a Backup record. Distinct
+ * shape from the `backups` list endpoint.
+ */
+export interface LatestBackup {
+  file: string;
+  download_url: string;
+  size_bytes: number;
+}
+
 // --- Secrets rotation (OSS backend) ---
 
 export interface RotateKeyResponse {

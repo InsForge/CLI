@@ -76,13 +76,15 @@ export function registerBackupsCommands(backupsCmd: Command): void {
       try {
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
-        const backup = await getLatestBackup(projectId, apiUrl);
+        const latest = await getLatestBackup(projectId, apiUrl);
         if (json) {
-          outputJson(backup);
-        } else if (!backup) {
+          outputJson(latest);
+        } else if (!latest) {
           outputInfo('No backups found.');
         } else {
-          outputTable(BACKUP_HEADERS, [backupRow(backup)]);
+          outputInfo(`File:     ${latest.file}`);
+          outputInfo(`Size:     ${formatBytes(latest.size_bytes)}`);
+          outputInfo(`Download: ${latest.download_url}`);
         }
       } catch (err) {
         handleError(err, json);

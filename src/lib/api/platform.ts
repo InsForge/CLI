@@ -8,6 +8,7 @@ import type {
   BranchMode,
   CreditBalance,
   DiffResult,
+  LatestBackup,
   LatestVersionResponse,
   LoginResponse,
   Member,
@@ -473,14 +474,14 @@ export async function listBackups(projectId: string, apiUrl?: string): Promise<B
   return data.backups ?? [];
 }
 
-export async function getLatestBackup(projectId: string, apiUrl?: string): Promise<Backup | null> {
+export async function getLatestBackup(projectId: string, apiUrl?: string): Promise<LatestBackup | null> {
   const res = await platformFetch(
     `/projects/v1/${projectId}/backup/latest`,
     { passThroughStatuses: [404] },
     apiUrl,
   );
   if (res.status === 404) return null;
-  return await res.json() as Backup;
+  return await res.json() as LatestBackup;
 }
 
 export async function createBackup(
