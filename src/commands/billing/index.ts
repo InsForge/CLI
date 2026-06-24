@@ -7,13 +7,11 @@ import {
   getBillingCycles,
   createCheckoutSession,
   createPortalSession,
-  redeemPromo,
-  getReferralLink,
 } from '../../lib/api/platform.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { resolveOrgId } from '../../lib/resolve-org.js';
-import { outputJson, outputTable, outputInfo, outputSuccess } from '../../lib/output.js';
+import { outputJson, outputTable, outputInfo } from '../../lib/output.js';
 
 const BILLING_PLANS = ['free', 'starter', 'pro', 'team', 'enterprise'];
 
@@ -179,51 +177,6 @@ export function registerBillingCommands(billingCmd: Command): void {
           outputInfo('Manage billing in your browser:');
           outputInfo(session.portalUrl);
           await open(session.portalUrl).catch(() => { /* headless: URL already printed */ });
-        }
-      } catch (err) {
-        handleError(err, json);
-      }
-    });
-
-  billingCmd
-    .command('redeem <code>')
-    .description('Redeem a promo code for account credit')
-    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
-    .action(async (code: string, opts, cmd) => {
-      const { json, apiUrl } = getRootOpts(cmd);
-      try {
-        await requireAuth(apiUrl);
-        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
-        const result = await redeemPromo(orgId, code, apiUrl);
-
-        if (json) {
-          outputJson(result);
-        } else {
-          outputSuccess(
-            `Redeemed ${(result.creditAmountCents / 100).toFixed(2)} in credit. New balance: ${(result.creditBalanceCents / 100).toFixed(2)}.`,
-          );
-        }
-      } catch (err) {
-        handleError(err, json);
-      }
-    });
-
-  billingCmd
-    .command('referral')
-    .description('Show your organization referral link (administrator only)')
-    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
-    .action(async (opts, cmd) => {
-      const { json, apiUrl } = getRootOpts(cmd);
-      try {
-        await requireAuth(apiUrl);
-        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
-        const referral = await getReferralLink(orgId, apiUrl);
-
-        if (json) {
-          outputJson(referral);
-        } else {
-          outputInfo(`Referral link: ${referral.url}`);
-          outputInfo(`Redemptions:   ${referral.redemptionCount}`);
         }
       } catch (err) {
         handleError(err, json);

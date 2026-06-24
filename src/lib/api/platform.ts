@@ -12,8 +12,6 @@ import type {
   DiffResult,
   PaymentRecord,
   PortalSession,
-  RedeemResult,
-  ReferralLink,
   LatestBackup,
   LatestVersionResponse,
   LoginResponse,
@@ -443,20 +441,6 @@ export async function createPortalSession(orgId: string, apiUrl?: string): Promi
     body: JSON.stringify({ organizationId: orgId }),
   }, apiUrl);
   return await res.json() as PortalSession;
-}
-
-export async function redeemPromo(orgId: string, code: string, apiUrl?: string): Promise<RedeemResult> {
-  const res = await platformFetch('/billing/v1/promo/redeem', {
-    method: 'POST',
-    body: JSON.stringify({ organizationId: orgId, code }),
-  }, apiUrl);
-  return await res.json() as RedeemResult;
-}
-
-/** Generate (or fetch) the org's referral link. Administrator only. */
-export async function getReferralLink(orgId: string, apiUrl?: string): Promise<ReferralLink> {
-  const res = await platformFetch(`/billing/v1/${orgId}/referral-link`, { method: 'POST' }, apiUrl);
-  return await res.json() as ReferralLink;
 }
 
 export async function getOrgUsage(orgId: string, apiUrl?: string): Promise<OrgUsage> {

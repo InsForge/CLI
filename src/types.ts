@@ -282,19 +282,6 @@ export interface PortalSession {
   portalUrl: string;
 }
 
-export interface RedeemResult {
-  success: boolean;
-  message?: string;
-  creditAmountCents: number;
-  creditBalanceCents: number;
-}
-
-export interface ReferralLink {
-  code: string;
-  url: string;
-  redemptionCount: number;
-}
-
 export interface CreditBalance {
   creditBalanceCents: number;
   creditBalanceFormatted: string;
