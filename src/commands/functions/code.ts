@@ -29,8 +29,6 @@ export function registerFunctionsCodeCommand(functionsCmd: Command): void {
         const res = await ossFetch(`/api/functions/${encodeURIComponent(slug)}`);
         const fn = await res.json() as FunctionDetails;
 
-        await trackCommandUsage('functions', 'code', true);
-
         if (json) {
           outputJson(fn);
         } else {
@@ -41,6 +39,8 @@ export function registerFunctionsCodeCommand(functionsCmd: Command): void {
           console.log('---');
           console.log(fn.code);
         }
+
+        await trackCommandUsage('functions', 'code', true);
       } catch (err) {
         await trackCommandUsage('functions', 'code', false, {}, err);
         handleError(err, json);

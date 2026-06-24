@@ -43,8 +43,6 @@ export function registerDbExportCommand(dbCmd: Command): void {
 
         const raw = await res.text();
 
-        await trackCommandUsage('db', 'export', true);
-
         // API may return JSON wrapper { format, content, tables } or raw SQL/JSON text
         let content: string;
         let meta: { format?: string; tables?: string[] } | null = null;
@@ -62,6 +60,7 @@ export function registerDbExportCommand(dbCmd: Command): void {
 
         if (json) {
           outputJson(meta ?? { content });
+          await trackCommandUsage('db', 'export', true);
           return;
         }
 
@@ -73,6 +72,7 @@ export function registerDbExportCommand(dbCmd: Command): void {
         } else {
           console.log(content);
         }
+        await trackCommandUsage('db', 'export', true);
       } catch (err) {
         await trackCommandUsage('db', 'export', false, {}, err);
         handleError(err, json);

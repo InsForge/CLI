@@ -29,16 +29,17 @@ Examples:
         await requireAuth();
 
         await reportCliUsage('cli.docs', true);
-        await trackTopLevelUsage('docs', true);
         // No args → list all docs
         if (!feature) {
           await listDocs(json);
+          await trackTopLevelUsage('docs', true);
           return;
         }
 
         // Single arg → legacy doc type (e.g. "instructions")
         if (!language) {
           await fetchDoc(`/api/docs/${encodeURIComponent(feature)}`, feature, json);
+          await trackTopLevelUsage('docs', true);
           return;
         }
 
@@ -48,6 +49,7 @@ Examples:
           `${feature}/${language}`,
           json,
         );
+        await trackTopLevelUsage('docs', true);
       } catch (err) {
         await trackTopLevelUsage('docs', false, {}, err);
         handleError(err, json);

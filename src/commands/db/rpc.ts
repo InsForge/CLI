@@ -34,6 +34,7 @@ export function registerDbRpcCommand(dbCmd: Command): void {
         }
         await reportCliUsage('cli.db.rpc', true);
       } catch (err) {
+        await reportCliUsage('cli.db.rpc', false);
         await trackCommandUsage('db', 'rpc', false, {}, err);
         handleError(err, json);
       }

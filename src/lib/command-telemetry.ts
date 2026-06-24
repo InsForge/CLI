@@ -32,7 +32,7 @@ export type CommandTelemetry = Record<
 
 const MAX_STRING_LENGTH = 80;
 
-function sanitizeTelemetry(properties: CommandTelemetry): CommandTelemetry {
+export function sanitizeTelemetry(properties: CommandTelemetry): CommandTelemetry {
   const sanitized: CommandTelemetry = {};
   for (const [key, value] of Object.entries(properties)) {
     if (value === undefined) continue;
@@ -47,7 +47,7 @@ function sanitizeTelemetry(properties: CommandTelemetry): CommandTelemetry {
   return sanitized;
 }
 
-function getErrorTelemetry(error: unknown): CommandTelemetry {
+export function getErrorTelemetry(error: unknown): CommandTelemetry {
   return {
     error_name: error instanceof Error ? error.name : typeof error,
     ...(error instanceof CLIError
@@ -68,6 +68,28 @@ function safeGetProjectConfig() {
   }
 }
 
+// Flushing must never surface as a command error. `shutdownAnalytics` already
+// swallows its own failures today, but guarding here keeps that invariant even
+// if its implementation changes.
+async function flushTelemetry(): Promise<void> {
+  try {
+    await shutdownAnalytics();
+  } catch {
+    // Telemetry shutdown must never affect command behavior.
+  }
+}
+
+// A CLI process handles exactly one command, which should emit exactly one
+// outcome event. Once an outcome is recorded we suppress any further calls, so
+// a failure thrown during output rendering (after the success event already
+// fired) cannot double-emit success + failure for a single invocation.
+let outcomeRecorded = false;
+
+/** Test-only: reset the once-per-process outcome guard between cases. */
+export function resetTelemetryOutcomeForTests(): void {
+  outcomeRecorded = false;
+}
+
 /**
  * Track a grouped subcommand invocation (`cli_<group>_invoked`).
  */
@@ -78,6 +100,8 @@ export async function trackCommandUsage(
   properties: CommandTelemetry = {},
   error?: unknown,
 ): Promise<void> {
+  if (outcomeRecorded) return;
+  outcomeRecorded = true;
   try {
     trackGroupCommand(group, subcommand, safeGetProjectConfig(), {
       success,
@@ -89,7 +113,7 @@ export async function trackCommandUsage(
   } catch {
     // Telemetry should never affect command behavior.
   } finally {
-    await shutdownAnalytics();
+    await flushTelemetry();
   }
 }
 
@@ -102,6 +126,8 @@ export async function trackTopLevelUsage(
   properties: CommandTelemetry = {},
   error?: unknown,
 ): Promise<void> {
+  if (outcomeRecorded) return;
+  outcomeRecorded = true;
   try {
     trackTopLevelCommand(command, safeGetProjectConfig(), {
       success,
@@ -113,6 +139,6 @@ export async function trackTopLevelUsage(
   } catch {
     // Telemetry should never affect command behavior.
   } finally {
-    await shutdownAnalytics();
+    await flushTelemetry();
   }
 }
