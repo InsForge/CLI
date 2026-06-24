@@ -79,6 +79,7 @@ import { registerConfigCommand } from './commands/config/index.js';
 import { registerAiCommands } from './commands/ai/index.js';
 import { registerDomainsCommands } from './commands/domains/index.js';
 import { registerMemoryCommands } from './commands/memory/index.js';
+import { registerMcpCommands } from './commands/mcp/index.js';
 import { guardHook } from './lib/guard/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -124,6 +125,7 @@ registerContextCommand(program);
 registerListCommand(program);
 registerDocsCommand(program);
 registerProjectLinkCommand(program);
+registerMcpCommands(program);
 
 // Orgs commands (hidden — use `insforge list` instead)
 const orgsCmd = program.command('orgs', { hidden: true }).description('Manage organizations');
