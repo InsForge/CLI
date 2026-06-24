@@ -408,8 +408,10 @@ export async function getCredits(orgId: string, apiUrl?: string): Promise<Credit
 
 export async function getPaymentHistory(orgId: string, apiUrl?: string): Promise<PaymentRecord[]> {
   const res = await platformFetch(`/organizations/v1/${orgId}/payment-history`, {}, apiUrl);
-  const data = await res.json() as { payments?: PaymentRecord[] };
-  return data.payments ?? [];
+  const data = await res.json() as { payments?: PaymentRecord[] } | PaymentRecord[];
+  // Tolerate either the documented `{ payments: [...] }` shape or a bare array,
+  // without silently emptying on shape drift.
+  return Array.isArray(data) ? data : data.payments ?? [];
 }
 
 export async function getBillingCycles(orgId: string, apiUrl?: string): Promise<BillingCycles> {

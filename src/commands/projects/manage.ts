@@ -159,7 +159,9 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
       const { json, apiUrl, yes } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
-        const projectId = resolveProjectId(opts);
+        // Require an explicit --project: transfer moves billing/access to
+        // another org, so it must never act on an ambient linked/env project.
+        const projectId = resolveProjectId(opts, true);
 
         if (!yes && !json) {
           const project = await getProject(projectId, apiUrl).catch(() => null);

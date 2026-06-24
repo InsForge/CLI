@@ -9,11 +9,18 @@ import {
   createPortalSession,
 } from '../../lib/api/platform.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
+import { handleError, getRootOpts } from '../../lib/errors.js';
 import { resolveOrgId } from '../../lib/resolve-org.js';
 import { outputJson, outputTable, outputInfo } from '../../lib/output.js';
 
+// Shown in help only. Not used to validate — the backend owns the plan enum,
+// so a hard-coded allowlist here could reject a newly added plan.
 const BILLING_PLANS = ['free', 'starter', 'pro', 'team', 'enterprise'];
+
+/** Render a backend date-only string (YYYY-MM-DD) without UTC→local day shift. */
+function formatCalendarDate(d: string): string {
+  return new Date(`${d.slice(0, 10)}T00:00:00`).toLocaleDateString();
+}
 
 export function registerBillingCommands(billingCmd: Command): void {
   billingCmd
@@ -122,10 +129,9 @@ export function registerBillingCommands(billingCmd: Command): void {
         if (json) {
           outputJson(cycles);
         } else {
-          const fmt = (d: string): string => new Date(d).toLocaleDateString();
-          const rows = [['current', `${fmt(cycles.current.start_date)} → ${fmt(cycles.current.end_date)}`]];
+          const rows = [['current', `${formatCalendarDate(cycles.current.start_date)} → ${formatCalendarDate(cycles.current.end_date)}`]];
           if (cycles.previous) {
-            rows.push(['previous', `${fmt(cycles.previous.start_date)} → ${fmt(cycles.previous.end_date)}`]);
+            rows.push(['previous', `${formatCalendarDate(cycles.previous.start_date)} → ${formatCalendarDate(cycles.previous.end_date)}`]);
           }
           outputTable(['Cycle', 'Window'], rows);
         }
@@ -142,9 +148,7 @@ export function registerBillingCommands(billingCmd: Command): void {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
-        if (!BILLING_PLANS.includes(plan)) {
-          throw new CLIError(`Invalid plan "${plan}". Valid plans: ${BILLING_PLANS.join(', ')}.`);
-        }
+        // Plan is validated server-side against the canonical billing enum.
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const session = await createCheckoutSession(orgId, plan, apiUrl);
 
