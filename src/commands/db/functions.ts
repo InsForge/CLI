@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { DatabaseFunctionsResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerDbFunctionsCommand(dbCmd: Command): void {
   dbCmd
@@ -21,6 +22,8 @@ export function registerDbFunctionsCommand(dbCmd: Command): void {
           ? raw
           : (raw as DatabaseFunctionsResponse).functions ?? [];
 
+        await trackCommandUsage('db', 'functions', true, { result_count: functions.length });
+
         if (json) {
           outputJson(raw);
         } else {
@@ -36,6 +39,7 @@ export function registerDbFunctionsCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.functions', true);
       } catch (err) {
         await reportCliUsage('cli.db.functions', false);
+        await trackCommandUsage('db', 'functions', false, {}, err);
         handleError(err, json);
       }
     });

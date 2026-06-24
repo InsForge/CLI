@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerRecordsDeleteCommand(recordsCmd: Command): void {
   recordsCmd
@@ -29,6 +30,8 @@ export function registerRecordsDeleteCommand(recordsCmd: Command): void {
 
         const data = await res.json() as { data?: unknown[] };
 
+        await trackCommandUsage('records', 'delete', true);
+
         if (json) {
           outputJson(data);
         } else {
@@ -36,6 +39,7 @@ export function registerRecordsDeleteCommand(recordsCmd: Command): void {
           outputSuccess(`Deleted ${deleted.length} record(s) from "${table}".`);
         }
       } catch (err) {
+        await trackCommandUsage('records', 'delete', false, {}, err);
         handleError(err, json);
       }
     });

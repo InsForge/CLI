@@ -5,6 +5,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 const KEYS = ['api-key', 'anon-key'];
 
@@ -44,6 +45,8 @@ export function registerSecretsRotateCommand(secretsCmd: Command): void {
           : await rotateAnonKey(graceHours);
         const newKey = result.apiKey ?? result.anonKey ?? '';
 
+        await trackCommandUsage('secrets', 'rotate', true);
+
         if (json) {
           outputJson(result);
         } else {
@@ -54,6 +57,7 @@ export function registerSecretsRotateCommand(secretsCmd: Command): void {
         await reportCliUsage('cli.secrets.rotate', true);
       } catch (err) {
         await reportCliUsage('cli.secrets.rotate', false);
+        await trackCommandUsage('secrets', 'rotate', false, {}, err);
         handleError(err, json);
       }
     });

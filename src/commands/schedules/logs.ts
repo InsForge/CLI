@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { ListExecutionLogsResponse } from '../../types.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSchedulesLogsCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -22,6 +23,10 @@ export function registerSchedulesLogsCommand(schedulesCmd: Command): void {
         const res = await ossFetch(`/api/schedules/${encodeURIComponent(id)}/logs?limit=${limit}&offset=${offset}`);
         const data = await res.json() as ListExecutionLogsResponse;
         const logs = data.logs ?? [];
+
+        await trackCommandUsage('schedules', 'logs', true, {
+          result_count: logs.length,
+        });
 
         if (json) {
           outputJson(data);
@@ -44,6 +49,7 @@ export function registerSchedulesLogsCommand(schedulesCmd: Command): void {
           }
         }
       } catch (err) {
+        await trackCommandUsage('schedules', 'logs', false, {}, err);
         handleError(err, json);
       }
     });

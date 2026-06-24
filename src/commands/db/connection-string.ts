@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerDbConnectionStringCommand(dbCmd: Command): void {
   dbCmd
@@ -17,6 +18,7 @@ export function registerDbConnectionStringCommand(dbCmd: Command): void {
         if (!url) {
           throw new CLIError('Could not fetch the database connection string. This command requires a cloud project (self-hosted instances expose Postgres directly via your docker-compose).');
         }
+        await trackCommandUsage('db', 'connection-string', true);
         if (json) {
           outputJson({ connectionURL: url });
         } else {
@@ -25,6 +27,7 @@ export function registerDbConnectionStringCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.connection-string', true);
       } catch (err) {
         await reportCliUsage('cli.db.connection-string', false);
+        await trackCommandUsage('db', 'connection-string', false, {}, err);
         handleError(err, json);
       }
     });

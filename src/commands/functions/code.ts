@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 interface FunctionDetails {
   id: string;
@@ -38,7 +39,10 @@ export function registerFunctionsCodeCommand(functionsCmd: Command): void {
           console.log('---');
           console.log(fn.code);
         }
+
+        await trackCommandUsage('functions', 'code', true);
       } catch (err) {
+        await trackCommandUsage('functions', 'code', false, {}, err);
         handleError(err, json);
       }
     });

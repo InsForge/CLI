@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerDbRpcCommand(dbCmd: Command): void {
   dbCmd
@@ -24,6 +25,8 @@ export function registerDbRpcCommand(dbCmd: Command): void {
 
         const result = await res.json() as unknown;
 
+        await trackCommandUsage('db', 'rpc', true);
+
         if (json) {
           outputJson(result);
         } else {
@@ -31,6 +34,8 @@ export function registerDbRpcCommand(dbCmd: Command): void {
         }
         await reportCliUsage('cli.db.rpc', true);
       } catch (err) {
+        await reportCliUsage('cli.db.rpc', false);
+        await trackCommandUsage('db', 'rpc', false, {}, err);
         handleError(err, json);
       }
     });

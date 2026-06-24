@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 interface StoredFile {
   key: string;
@@ -55,6 +56,10 @@ export function registerStorageListObjectsCommand(storageCmd: Command): void {
           return a.key.localeCompare(b.key);
         });
 
+        await trackCommandUsage('storage', 'list-objects', true, {
+          result_count: objects.length,
+        });
+
         if (json) {
           outputJson(raw);
         } else {
@@ -79,6 +84,7 @@ export function registerStorageListObjectsCommand(storageCmd: Command): void {
         await reportCliUsage('cli.storage.list-objects', true);
       } catch (err) {
         await reportCliUsage('cli.storage.list-objects', false);
+        await trackCommandUsage('storage', 'list-objects', false, {}, err);
         handleError(err, json);
       }
     });

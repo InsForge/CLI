@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { ListFunctionsResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerFunctionsCommands(functionsCmd: Command): void {
   functionsCmd
@@ -23,6 +24,10 @@ export function registerFunctionsCommands(functionsCmd: Command): void {
           : raw && typeof raw === 'object' && 'functions' in raw
             ? (raw as ListFunctionsResponse).functions ?? []
             : [];
+
+        await trackCommandUsage('functions', 'list', true, {
+          result_count: functions.length,
+        });
 
         if (json) {
           outputJson(raw);
@@ -44,6 +49,7 @@ export function registerFunctionsCommands(functionsCmd: Command): void {
         await reportCliUsage('cli.functions.list', true);
       } catch (err) {
         await reportCliUsage('cli.functions.list', false);
+        await trackCommandUsage('functions', 'list', false, {}, err);
         handleError(err, json);
       }
     });

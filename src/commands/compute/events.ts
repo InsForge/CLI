@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 // `compute events <id>` returns Fly machine lifecycle events (start/stop/exit/
 // restart) — not container stdout/stderr. The previous name `compute logs`
@@ -25,6 +26,10 @@ export function registerComputeEventsCommand(computeCmd: Command): void {
         );
         const events = await res.json() as { timestamp: number; message: string }[];
 
+        await trackCommandUsage('compute', 'events', true, {
+          result_count: Array.isArray(events) ? events.length : 0,
+        });
+
         if (json) {
           outputJson(events);
         } else {
@@ -41,6 +46,7 @@ export function registerComputeEventsCommand(computeCmd: Command): void {
         await reportCliUsage('cli.compute.events', true);
       } catch (err) {
         await reportCliUsage('cli.compute.events', false);
+        await trackCommandUsage('compute', 'events', false, {}, err);
         handleError(err, json);
       }
     });

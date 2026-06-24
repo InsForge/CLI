@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerRecordsCommands(recordsCmd: Command): void {
   recordsCmd
@@ -31,6 +32,10 @@ export function registerRecordsCommands(recordsCmd: Command): void {
         const data = await res.json() as { data?: Record<string, unknown>[] };
         const records = data.data ?? [];
 
+        await trackCommandUsage('records', 'list', true, {
+          result_count: records.length,
+        });
+
         if (json) {
           outputJson(data);
         } else {
@@ -51,6 +56,7 @@ export function registerRecordsCommands(recordsCmd: Command): void {
           console.log(`${records.length} record(s).`);
         }
       } catch (err) {
+        await trackCommandUsage('records', 'list', false, {}, err);
         handleError(err, json);
       }
     });

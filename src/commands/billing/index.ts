@@ -12,6 +12,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { resolveOrgId } from '../../lib/resolve-org.js';
 import { outputJson, outputTable, outputInfo } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 // Shown in help only. Not used to validate — the backend owns the plan enum,
 // so a hard-coded allowlist here could reject a newly added plan.
@@ -34,6 +35,8 @@ export function registerBillingCommands(billingCmd: Command): void {
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const sub = await getSubscriptionStatus(orgId, apiUrl);
 
+        await trackCommandUsage('billing', 'status', true);
+
         if (json) {
           outputJson(sub);
         } else {
@@ -48,6 +51,7 @@ export function registerBillingCommands(billingCmd: Command): void {
           );
         }
       } catch (err) {
+        await trackCommandUsage('billing', 'status', false, {}, err);
         handleError(err, json);
       }
     });
@@ -62,6 +66,8 @@ export function registerBillingCommands(billingCmd: Command): void {
         await requireAuth(apiUrl);
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const credits = await getCredits(orgId, apiUrl);
+
+        await trackCommandUsage('billing', 'credits', true);
 
         if (json) {
           outputJson(credits);
@@ -79,6 +85,7 @@ export function registerBillingCommands(billingCmd: Command): void {
           }
         }
       } catch (err) {
+        await trackCommandUsage('billing', 'credits', false, {}, err);
         handleError(err, json);
       }
     });
@@ -93,6 +100,8 @@ export function registerBillingCommands(billingCmd: Command): void {
         await requireAuth(apiUrl);
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const payments = await getPaymentHistory(orgId, apiUrl);
+
+        await trackCommandUsage('billing', 'history', true, { result_count: payments.length });
 
         if (json) {
           outputJson(payments);
@@ -111,6 +120,7 @@ export function registerBillingCommands(billingCmd: Command): void {
           );
         }
       } catch (err) {
+        await trackCommandUsage('billing', 'history', false, {}, err);
         handleError(err, json);
       }
     });
@@ -126,6 +136,8 @@ export function registerBillingCommands(billingCmd: Command): void {
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const cycles = await getBillingCycles(orgId, apiUrl);
 
+        await trackCommandUsage('billing', 'cycles', true);
+
         if (json) {
           outputJson(cycles);
         } else {
@@ -136,6 +148,7 @@ export function registerBillingCommands(billingCmd: Command): void {
           outputTable(['Cycle', 'Window'], rows);
         }
       } catch (err) {
+        await trackCommandUsage('billing', 'cycles', false, {}, err);
         handleError(err, json);
       }
     });
@@ -152,6 +165,8 @@ export function registerBillingCommands(billingCmd: Command): void {
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const session = await createCheckoutSession(orgId, plan, apiUrl);
 
+        await trackCommandUsage('billing', 'upgrade', true);
+
         if (json) {
           outputJson(session);
         } else {
@@ -160,6 +175,7 @@ export function registerBillingCommands(billingCmd: Command): void {
           await open(session.checkoutUrl).catch(() => { /* headless: URL already printed */ });
         }
       } catch (err) {
+        await trackCommandUsage('billing', 'upgrade', false, {}, err);
         handleError(err, json);
       }
     });
@@ -175,6 +191,8 @@ export function registerBillingCommands(billingCmd: Command): void {
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const session = await createPortalSession(orgId, apiUrl);
 
+        await trackCommandUsage('billing', 'manage', true);
+
         if (json) {
           outputJson(session);
         } else {
@@ -183,6 +201,7 @@ export function registerBillingCommands(billingCmd: Command): void {
           await open(session.portalUrl).catch(() => { /* headless: URL already printed */ });
         }
       } catch (err) {
+        await trackCommandUsage('billing', 'manage', false, {}, err);
         handleError(err, json);
       }
     });

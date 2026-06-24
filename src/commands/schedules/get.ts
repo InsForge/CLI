@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import type { GetScheduleResponse } from '../../types.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSchedulesGetCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -16,6 +17,8 @@ export function registerSchedulesGetCommand(schedulesCmd: Command): void {
 
         const res = await ossFetch(`/api/schedules/${encodeURIComponent(id)}`);
         const data = await res.json() as GetScheduleResponse;
+
+        await trackCommandUsage('schedules', 'get', true);
 
         if (json) {
           outputJson(data);
@@ -33,6 +36,7 @@ export function registerSchedulesGetCommand(schedulesCmd: Command): void {
           console.log('');
         }
       } catch (err) {
+        await trackCommandUsage('schedules', 'get', false, {}, err);
         handleError(err, json);
       }
     });

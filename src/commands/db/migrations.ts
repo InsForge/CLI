@@ -20,6 +20,7 @@ import {
 } from '../../lib/migrations.js';
 import { outputJson, outputSuccess, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import type {
   CreateMigrationRequest,
   CreateMigrationResponse,
@@ -111,6 +112,8 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
 
         const migrations = await fetchRemoteMigrations();
 
+        await trackCommandUsage('db', 'migrations list', true, { result_count: migrations.length });
+
         if (json) {
           outputJson({ migrations });
         } else if (migrations.length === 0) {
@@ -129,6 +132,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.migrations.list', true);
       } catch (err) {
         await reportCliUsage('cli.db.migrations.list', false);
+        await trackCommandUsage('db', 'migrations list', false, {}, err);
         handleError(err, json);
       }
     });
@@ -176,6 +180,8 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
           existingLocalVersions.add(migration.version);
         }
 
+        await trackCommandUsage('db', 'migrations fetch', true, { result_count: createdFiles.length });
+
         if (json) {
           outputJson({
             directory: migrationsDir,
@@ -194,6 +200,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.migrations.fetch', true);
       } catch (err) {
         await reportCliUsage('cli.db.migrations.fetch', false);
+        await trackCommandUsage('db', 'migrations fetch', false, {}, err);
         handleError(err, json);
       }
     });
@@ -228,6 +235,8 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
           throw error;
         }
 
+        await trackCommandUsage('db', 'migrations new', true);
+
         if (json) {
           outputJson({ filename, path: filePath, version: nextVersion });
         } else {
@@ -237,6 +246,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.migrations.new', true);
       } catch (err) {
         await reportCliUsage('cli.db.migrations.new', false);
+        await trackCommandUsage('db', 'migrations new', false, {}, err);
         handleError(err, json);
       }
     });
@@ -347,6 +357,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
               outputSuccess('No pending local migrations to apply.');
             }
 
+            await trackCommandUsage('db', 'migrations up', true, { result_count: 0 });
             await reportCliUsage('cli.db.migrations.up', true);
             return;
           }
@@ -401,6 +412,8 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
           }
         }
 
+        await trackCommandUsage('db', 'migrations up', true, { result_count: appliedMigrations.length });
+
         if (json) {
           outputJson({ appliedMigrations });
         } else {
@@ -413,6 +426,7 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.migrations.up', true);
       } catch (err) {
         await reportCliUsage('cli.db.migrations.up', false);
+        await trackCommandUsage('db', 'migrations up', false, {}, err);
         handleError(err, json);
       }
     });

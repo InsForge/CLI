@@ -5,6 +5,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerStorageS3KeysCommand(storageCmd: Command): void {
   const s3Cmd = storageCmd
@@ -19,6 +20,9 @@ export function registerStorageS3KeysCommand(storageCmd: Command): void {
       try {
         await requireAuth();
         const keys = await listS3AccessKeys();
+        await trackCommandUsage('storage', 's3-keys list', true, {
+          result_count: keys.length,
+        });
         if (json) {
           outputJson(keys);
         } else if (!keys.length) {
@@ -38,6 +42,7 @@ export function registerStorageS3KeysCommand(storageCmd: Command): void {
         await reportCliUsage('cli.storage.s3-keys.list', true);
       } catch (err) {
         await reportCliUsage('cli.storage.s3-keys.list', false);
+        await trackCommandUsage('storage', 's3-keys list', false, {}, err);
         handleError(err, json);
       }
     });
@@ -51,6 +56,7 @@ export function registerStorageS3KeysCommand(storageCmd: Command): void {
       try {
         await requireAuth();
         const key = await createS3AccessKey(opts.description);
+        await trackCommandUsage('storage', 's3-keys create', true);
         if (json) {
           outputJson(key);
         } else {
@@ -61,6 +67,7 @@ export function registerStorageS3KeysCommand(storageCmd: Command): void {
         await reportCliUsage('cli.storage.s3-keys.create', true);
       } catch (err) {
         await reportCliUsage('cli.storage.s3-keys.create', false);
+        await trackCommandUsage('storage', 's3-keys create', false, {}, err);
         handleError(err, json);
       }
     });
@@ -82,6 +89,7 @@ export function registerStorageS3KeysCommand(storageCmd: Command): void {
           }
         }
         await deleteS3AccessKey(id);
+        await trackCommandUsage('storage', 's3-keys delete', true);
         if (json) {
           outputJson({ deleted: true, id });
         } else {
@@ -90,6 +98,7 @@ export function registerStorageS3KeysCommand(storageCmd: Command): void {
         await reportCliUsage('cli.storage.s3-keys.delete', true);
       } catch (err) {
         await reportCliUsage('cli.storage.s3-keys.delete', false);
+        await trackCommandUsage('storage', 's3-keys delete', false, {}, err);
         handleError(err, json);
       }
     });

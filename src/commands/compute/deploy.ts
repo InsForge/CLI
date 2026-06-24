@@ -6,6 +6,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import { parseEnvFile } from '../../lib/env-file.js';
 import {
   ensureFlyctlAvailable,
@@ -146,6 +147,8 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           }
           const service = (await res.json()) as Record<string, unknown>;
 
+          await trackCommandUsage('compute', 'deploy', true);
+
           if (json) {
             outputJson(service);
           } else {
@@ -283,6 +286,8 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         );
         const service = (await finalRes.json()) as Record<string, unknown>;
 
+        await trackCommandUsage('compute', 'deploy', true);
+
         if (json) {
           outputJson(service);
         } else {
@@ -303,6 +308,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         await reportCliUsage('cli.compute.deploy', true);
       } catch (err) {
         await reportCliUsage('cli.compute.deploy', false);
+        await trackCommandUsage('compute', 'deploy', false, {}, err);
         handleError(err, json);
       }
     });

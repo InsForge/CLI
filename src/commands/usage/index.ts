@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { resolveOrgId } from '../../lib/resolve-org.js';
 import { outputJson, outputTable, outputInfo } from '../../lib/output.js';
+import { trackTopLevelUsage } from '../../lib/command-telemetry.js';
 
 /** Render a byte count as a human-readable size. */
 function formatBytes(n: number): string {
@@ -34,6 +35,8 @@ export function registerUsageCommand(program: Command): void {
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const usage = await getOrgUsage(orgId, apiUrl);
 
+        await trackTopLevelUsage('usage', true);
+
         if (json) {
           outputJson(usage);
           return;
@@ -59,6 +62,7 @@ export function registerUsageCommand(program: Command): void {
           );
         }
       } catch (err) {
+        await trackTopLevelUsage('usage', false, {}, err);
         handleError(err, json);
       }
     });

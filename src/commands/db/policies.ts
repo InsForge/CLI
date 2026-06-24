@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { DatabasePoliciesResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerDbPoliciesCommand(dbCmd: Command): void {
   dbCmd
@@ -20,6 +21,8 @@ export function registerDbPoliciesCommand(dbCmd: Command): void {
         const policies: DatabasePoliciesResponse['policies'] = Array.isArray(raw)
           ? raw
           : (raw as DatabasePoliciesResponse).policies ?? [];
+
+        await trackCommandUsage('db', 'policies', true, { result_count: policies.length });
 
         if (json) {
           outputJson(raw);
@@ -43,6 +46,7 @@ export function registerDbPoliciesCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.policies', true);
       } catch (err) {
         await reportCliUsage('cli.db.policies', false);
+        await trackCommandUsage('db', 'policies', false, {}, err);
         handleError(err, json);
       }
     });

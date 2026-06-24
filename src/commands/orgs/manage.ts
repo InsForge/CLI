@@ -13,6 +13,7 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { resolveOrgId } from '../../lib/resolve-org.js';
 import { outputJson, outputTable, outputSuccess, outputInfo } from '../../lib/output.js';
 import type { MemberRole } from '../../types.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 const ORG_TYPES = ['personal', 'team', 'company'];
 const MEMBER_ROLES: MemberRole[] = ['administrator', 'developer'];
@@ -37,12 +38,14 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
           throw new CLIError(`Invalid --type "${opts.type}". Valid types: ${ORG_TYPES.join(', ')}.`);
         }
         const org = await createOrganization({ name, type: opts.type }, apiUrl);
+        await trackCommandUsage('orgs', 'create', true);
         if (json) {
           outputJson(org);
         } else {
           outputSuccess(`Organization "${org.name}" created (${org.id}).`);
         }
       } catch (err) {
+        await trackCommandUsage('orgs', 'create', false, {}, err);
         handleError(err, json);
       }
     });
@@ -72,12 +75,14 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         }
 
         const org = await updateOrganization(orgId, body, apiUrl);
+        await trackCommandUsage('orgs', 'update', true);
         if (json) {
           outputJson(org);
         } else {
           outputSuccess(`Organization "${org.name}" updated.`);
         }
       } catch (err) {
+        await trackCommandUsage('orgs', 'update', false, {}, err);
         handleError(err, json);
       }
     });
@@ -94,6 +99,8 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         await requireAuth(apiUrl);
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const { members, invitations } = await listMembers(orgId, apiUrl);
+
+        await trackCommandUsage('orgs', 'members list', true, { result_count: members.length });
 
         if (json) {
           outputJson({ members, invitations });
@@ -116,6 +123,7 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
           );
         }
       } catch (err) {
+        await trackCommandUsage('orgs', 'members list', false, {}, err);
         handleError(err, json);
       }
     });
@@ -132,12 +140,14 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         const role = assertRole(opts.role);
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const invitation = await inviteMember(orgId, email, role, apiUrl);
+        await trackCommandUsage('orgs', 'members invite', true);
         if (json) {
           outputJson(invitation);
         } else {
           outputSuccess(`Invited ${email} as ${invitation.role}.`);
         }
       } catch (err) {
+        await trackCommandUsage('orgs', 'members invite', false, {}, err);
         handleError(err, json);
       }
     });
@@ -163,12 +173,14 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         }
 
         await removeMember(orgId, memberId, apiUrl);
+        await trackCommandUsage('orgs', 'members remove', true);
         if (json) {
           outputJson({ removed: true, member_id: memberId });
         } else {
           outputSuccess(`Member ${memberId} removed.`);
         }
       } catch (err) {
+        await trackCommandUsage('orgs', 'members remove', false, {}, err);
         handleError(err, json);
       }
     });
@@ -184,12 +196,14 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         const validRole = assertRole(role);
         const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
         const member = await updateMemberRole(orgId, memberId, validRole, apiUrl);
+        await trackCommandUsage('orgs', 'members role', true);
         if (json) {
           outputJson(member);
         } else {
           outputSuccess(`Member ${memberId} is now ${member.role}.`);
         }
       } catch (err) {
+        await trackCommandUsage('orgs', 'members role', false, {}, err);
         handleError(err, json);
       }
     });

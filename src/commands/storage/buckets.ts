@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { StorageBucketSchema } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerStorageBucketsCommand(storageCmd: Command): void {
   storageCmd
@@ -24,6 +25,10 @@ export function registerStorageBucketsCommand(storageCmd: Command): void {
             ? (raw as { buckets?: StorageBucketSchema[] }).buckets ?? []
             : [];
 
+        await trackCommandUsage('storage', 'buckets', true, {
+          result_count: buckets.length,
+        });
+
         if (json) {
           outputJson(raw);
         } else {
@@ -39,6 +44,7 @@ export function registerStorageBucketsCommand(storageCmd: Command): void {
         await reportCliUsage('cli.storage.buckets', true);
       } catch (err) {
         await reportCliUsage('cli.storage.buckets', false);
+        await trackCommandUsage('storage', 'buckets', false, {}, err);
         handleError(err, json);
       }
     });

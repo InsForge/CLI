@@ -3,6 +3,7 @@ import { ossFetch } from '../lib/api/oss.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
+import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 
 const VALID_SOURCES = ['insforge.logs', 'postgREST.logs', 'postgres.logs', 'function.logs', 'function-deploy.logs'] as const;
 const SOURCE_LOOKUP = new Map(VALID_SOURCES.map((s) => [s.toLowerCase(), s]));
@@ -37,6 +38,8 @@ export function registerLogsCommand(program: Command): void {
         const res = await ossFetch(getLogPath(resolved, limit));
         const data = await res.json();
 
+        await trackTopLevelUsage('logs', true);
+
         if (json) {
           outputJson(data);
         } else {
@@ -57,6 +60,7 @@ export function registerLogsCommand(program: Command): void {
           }
         }
       } catch (err) {
+        await trackTopLevelUsage('logs', false, {}, err);
         handleError(err, json);
       }
     });

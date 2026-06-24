@@ -4,6 +4,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSchedulesDeleteCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -28,12 +29,15 @@ export function registerSchedulesDeleteCommand(schedulesCmd: Command): void {
         });
         const data = await res.json() as { success: boolean; message: string };
 
+        await trackCommandUsage('schedules', 'delete', true);
+
         if (json) {
           outputJson(data);
         } else {
           outputSuccess(data.message ?? 'Schedule deleted.');
         }
       } catch (err) {
+        await trackCommandUsage('schedules', 'delete', false, {}, err);
         handleError(err, json);
       }
     });

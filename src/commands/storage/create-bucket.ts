@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerStorageCreateBucketCommand(storageCmd: Command): void {
   storageCmd
@@ -25,6 +26,8 @@ export function registerStorageCreateBucketCommand(storageCmd: Command): void {
 
         const data = await res.json();
 
+        await trackCommandUsage('storage', 'create-bucket', true);
+
         if (json) {
           outputJson(data);
         } else {
@@ -33,6 +36,7 @@ export function registerStorageCreateBucketCommand(storageCmd: Command): void {
         await reportCliUsage('cli.storage.create-bucket', true);
       } catch (err) {
         await reportCliUsage('cli.storage.create-bucket', false);
+        await trackCommandUsage('storage', 'create-bucket', false, {}, err);
         handleError(err, json);
       }
     });

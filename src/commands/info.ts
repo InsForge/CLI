@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { getCredentials, getGlobalConfig, getProjectConfig } from '../lib/config.js';
 import { handleError, getRootOpts } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
+import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 
 export function registerContextCommand(program: Command): void {
   program
@@ -13,6 +14,8 @@ export function registerContextCommand(program: Command): void {
         const creds = getCredentials();
         const globalConfig = getGlobalConfig();
         const projectConfig = getProjectConfig();
+
+        await trackTopLevelUsage('current', true);
 
         if (json) {
           outputJson({
@@ -53,6 +56,7 @@ export function registerContextCommand(program: Command): void {
 
         console.log('');
       } catch (err) {
+        await trackTopLevelUsage('current', false, {}, err);
         handleError(err, json);
       }
     });

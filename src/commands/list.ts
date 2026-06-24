@@ -3,6 +3,7 @@ import { listOrganizations, listProjects } from '../lib/api/platform.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts } from '../lib/errors.js';
 import { outputJson, outputTable } from '../lib/output.js';
+import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 
 export function registerListCommand(program: Command): void {
   program
@@ -13,6 +14,8 @@ export function registerListCommand(program: Command): void {
       try {
         await requireAuth(apiUrl);
         const orgs = await listOrganizations(apiUrl);
+
+        await trackTopLevelUsage('list', true, { result_count: orgs.length });
 
         if (orgs.length === 0) {
           if (json) {
@@ -70,6 +73,7 @@ export function registerListCommand(program: Command): void {
 
         outputTable(['Organization', 'Project', 'Region', 'Status', 'AppKey'], rows);
       } catch (err) {
+        await trackTopLevelUsage('list', false, {}, err);
         handleError(err, json);
       }
     });

@@ -4,6 +4,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerStorageDeleteBucketCommand(storageCmd: Command): void {
   storageCmd
@@ -29,12 +30,15 @@ export function registerStorageDeleteBucketCommand(storageCmd: Command): void {
 
         const data = await res.json();
 
+        await trackCommandUsage('storage', 'delete-bucket', true);
+
         if (json) {
           outputJson(data);
         } else {
           outputSuccess(`Bucket "${name}" deleted.`);
         }
       } catch (err) {
+        await trackCommandUsage('storage', 'delete-bucket', false, {}, err);
         handleError(err, json);
       }
     });

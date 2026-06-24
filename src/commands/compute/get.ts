@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerComputeGetCommand(computeCmd: Command): void {
   computeCmd
@@ -16,6 +17,8 @@ export function registerComputeGetCommand(computeCmd: Command): void {
 
         const res = await ossFetch(`/api/compute/services/${encodeURIComponent(id)}`);
         const service = await res.json() as Record<string, unknown>;
+
+        await trackCommandUsage('compute', 'get', true);
 
         if (json) {
           outputJson(service);
@@ -40,6 +43,7 @@ export function registerComputeGetCommand(computeCmd: Command): void {
         await reportCliUsage('cli.compute.get', true);
       } catch (err) {
         await reportCliUsage('cli.compute.get', false);
+        await trackCommandUsage('compute', 'get', false, {}, err);
         handleError(err, json);
       }
     });

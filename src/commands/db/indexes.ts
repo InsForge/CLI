@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { DatabaseIndexesResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerDbIndexesCommand(dbCmd: Command): void {
   dbCmd
@@ -20,6 +21,8 @@ export function registerDbIndexesCommand(dbCmd: Command): void {
         const indexes: DatabaseIndexesResponse['indexes'] = Array.isArray(raw)
           ? raw
           : (raw as DatabaseIndexesResponse).indexes ?? [];
+
+        await trackCommandUsage('db', 'indexes', true, { result_count: indexes.length });
 
         if (json) {
           outputJson(raw);
@@ -42,6 +45,7 @@ export function registerDbIndexesCommand(dbCmd: Command): void {
         await reportCliUsage('cli.db.indexes', true);
       } catch (err) {
         await reportCliUsage('cli.db.indexes', false);
+        await trackCommandUsage('db', 'indexes', false, {}, err);
         handleError(err, json);
       }
     });

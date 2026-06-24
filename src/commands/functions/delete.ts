@@ -6,6 +6,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import type { FunctionResponse } from '../../types.js';
 
 export function registerFunctionsDeleteCommand(functionsCmd: Command): void {
@@ -32,6 +33,8 @@ export function registerFunctionsDeleteCommand(functionsCmd: Command): void {
         });
         const result = await res.json() as FunctionResponse;
 
+        await trackCommandUsage('functions', 'delete', true);
+
         if (json) {
           outputJson(result);
         } else {
@@ -44,6 +47,7 @@ export function registerFunctionsDeleteCommand(functionsCmd: Command): void {
         await reportCliUsage('cli.functions.delete', true);
       } catch (err) {
         await reportCliUsage('cli.functions.delete', false);
+        await trackCommandUsage('functions', 'delete', false, {}, err);
         handleError(err, json);
       }
     });

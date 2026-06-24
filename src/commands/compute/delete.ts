@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerComputeDeleteCommand(computeCmd: Command): void {
   computeCmd
@@ -19,6 +20,8 @@ export function registerComputeDeleteCommand(computeCmd: Command): void {
         });
         const data = await res.json() as Record<string, unknown>;
 
+        await trackCommandUsage('compute', 'delete', true);
+
         if (json) {
           outputJson(data);
         } else {
@@ -27,6 +30,7 @@ export function registerComputeDeleteCommand(computeCmd: Command): void {
         await reportCliUsage('cli.compute.delete', true);
       } catch (err) {
         await reportCliUsage('cli.compute.delete', false);
+        await trackCommandUsage('compute', 'delete', false, {}, err);
         handleError(err, json);
       }
     });

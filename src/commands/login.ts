@@ -5,6 +5,7 @@ import { saveCredentials, getPlatformApiUrl } from '../lib/config.js';
 import { login as platformLogin } from '../lib/api/platform.js';
 import { performOAuthLogin } from '../lib/auth.js';
 import { handleError, getRootOpts, CLIError, formatFetchError } from '../lib/errors.js';
+import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 import type { StoredCredentials, User } from '../types.js';
 
 export function registerLoginCommand(program: Command): void {
@@ -25,10 +26,13 @@ export function registerLoginCommand(program: Command): void {
         } else {
           await loginWithOAuth(json, apiUrl);
         }
+
+        await trackTopLevelUsage('login', true);
       } catch (err) {
         if (err instanceof Error && err.message.includes('cancelled')) {
           process.exit(0);
         }
+        await trackTopLevelUsage('login', false, {}, err);
         handleError(err, json);
       }
     });

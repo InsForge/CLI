@@ -5,6 +5,7 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import type { CreateScheduleResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSchedulesCreateCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -52,6 +53,8 @@ export function registerSchedulesCreateCommand(schedulesCmd: Command): void {
         });
         const data = await res.json() as CreateScheduleResponse;
 
+        await trackCommandUsage('schedules', 'create', true);
+
         if (json) {
           outputJson(data);
         } else {
@@ -60,6 +63,7 @@ export function registerSchedulesCreateCommand(schedulesCmd: Command): void {
         await reportCliUsage('cli.schedules.create', true);
       } catch (err) {
         await reportCliUsage('cli.schedules.create', false);
+        await trackCommandUsage('schedules', 'create', false, {}, err);
         handleError(err, json);
       }
     });

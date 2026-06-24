@@ -3,6 +3,7 @@ import { getProfile } from '../lib/api/platform.js';
 import { handleError, getRootOpts } from '../lib/errors.js';
 import { outputJson, outputInfo } from '../lib/output.js';
 import { requireAuth } from '../lib/credentials.js';
+import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 
 export function registerWhoamiCommand(program: Command): void {
   program
@@ -14,6 +15,8 @@ export function registerWhoamiCommand(program: Command): void {
         await requireAuth(apiUrl);
         const profile = await getProfile(apiUrl);
 
+        await trackTopLevelUsage('whoami', true);
+
         if (json) {
           outputJson(profile);
         } else {
@@ -22,6 +25,7 @@ export function registerWhoamiCommand(program: Command): void {
           if (profile.id) outputInfo(`ID: ${profile.id}`);
         }
       } catch (err) {
+        await trackTopLevelUsage('whoami', false, {}, err);
         handleError(err, json);
       }
     });

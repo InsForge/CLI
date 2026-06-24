@@ -5,6 +5,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerStorageDownloadCommand(storageCmd: Command): void {
   storageCmd
@@ -38,12 +39,15 @@ export function registerStorageDownloadCommand(storageCmd: Command): void {
         const outputPath = opts.output ?? join(process.cwd(), basename(objectKey));
         writeFileSync(outputPath, buffer);
 
+        await trackCommandUsage('storage', 'download', true);
+
         if (json) {
           outputJson({ success: true, path: outputPath, size: buffer.length });
         } else {
           outputSuccess(`Downloaded "${objectKey}" to ${outputPath} (${buffer.length} bytes).`);
         }
       } catch (err) {
+        await trackCommandUsage('storage', 'download', false, {}, err);
         handleError(err, json);
       }
     });

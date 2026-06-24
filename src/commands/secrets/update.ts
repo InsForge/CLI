@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import type { UpdateSecretResponse } from '../../types.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSecretsUpdateCommand(secretsCmd: Command): void {
   secretsCmd
@@ -34,12 +35,15 @@ export function registerSecretsUpdateCommand(secretsCmd: Command): void {
         });
         const data = await res.json() as UpdateSecretResponse;
 
+        await trackCommandUsage('secrets', 'update', true);
+
         if (json) {
           outputJson(data);
         } else {
           outputSuccess(data.message ?? `Secret ${key} updated.`);
         }
       } catch (err) {
+        await trackCommandUsage('secrets', 'update', false, {}, err);
         handleError(err, json);
       }
     });

@@ -5,6 +5,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import type { FunctionResponse } from '../../types.js';
 
 export function resolveDeployFilePath(opts: { file?: string }): string {
@@ -61,6 +62,10 @@ export function registerFunctionsDeployCommand(functionsCmd: Command): void {
 
         const deployFailed = result.deployment?.status === 'failed';
 
+        if (!deployFailed) {
+          await trackCommandUsage('functions', 'deploy', true);
+        }
+
         if (json) {
           outputJson(result);
         } else {
@@ -85,6 +90,7 @@ export function registerFunctionsDeployCommand(functionsCmd: Command): void {
         await reportCliUsage('cli.functions.deploy', true);
       } catch (err) {
         await reportCliUsage('cli.functions.deploy', false);
+        await trackCommandUsage('functions', 'deploy', false, {}, err);
         handleError(err, json);
       }
     });

@@ -6,6 +6,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { mimeTypeFromName } from '../../lib/mime.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 /**
  * Resolve the content type for an upload: an explicit (non-empty) `--content-type`
@@ -68,12 +69,15 @@ export function registerStorageUploadCommand(storageCmd: Command): void {
 
         const data = await res.json();
 
+        await trackCommandUsage('storage', 'upload', true);
+
         if (json) {
           outputJson(data);
         } else {
           outputSuccess(`Uploaded "${basename(file)}" to bucket "${bucketName}".`);
         }
       } catch (err) {
+        await trackCommandUsage('storage', 'upload', false, {}, err);
         handleError(err, json);
       }
     });

@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerDbCommands(dbCmd: Command): void {
   dbCmd
@@ -16,6 +17,8 @@ export function registerDbCommands(dbCmd: Command): void {
         await requireAuth();
 
         const { rows, raw } = await runRawSql(sql, !!opts.unrestricted);
+
+        await trackCommandUsage('db', 'query', true, { result_count: rows.length });
 
         if (json) {
           outputJson(raw);
@@ -37,6 +40,7 @@ export function registerDbCommands(dbCmd: Command): void {
         await reportCliUsage('cli.db.query', true);
       } catch (err) {
         await reportCliUsage('cli.db.query', false);
+        await trackCommandUsage('db', 'query', false, {}, err);
         handleError(err, json);
       }
     });

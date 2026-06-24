@@ -5,6 +5,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import type { DeleteSecretResponse } from '../../types.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSecretsDeleteCommand(secretsCmd: Command): void {
   secretsCmd
@@ -29,12 +30,15 @@ export function registerSecretsDeleteCommand(secretsCmd: Command): void {
         });
         const data = await res.json() as DeleteSecretResponse;
 
+        await trackCommandUsage('secrets', 'delete', true);
+
         if (json) {
           outputJson(data);
         } else {
           outputSuccess(data.message ?? `Secret ${key} deleted.`);
         }
       } catch (err) {
+        await trackCommandUsage('secrets', 'delete', false, {}, err);
         handleError(err, json);
       }
     });

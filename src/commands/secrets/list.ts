@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { ListSecretsResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSecretsListCommand(secretsCmd: Command): void {
   secretsCmd
@@ -23,6 +24,11 @@ export function registerSecretsListCommand(secretsCmd: Command): void {
         if (!opts.all) {
           secrets = secrets.filter((s) => s.isActive !== false);
         }
+
+        await trackCommandUsage('secrets', 'list', true, {
+          result_count: secrets.length,
+          all: !!opts.all,
+        });
 
         if (json) {
           outputJson(opts.all ? data : { secrets });
@@ -51,6 +57,7 @@ export function registerSecretsListCommand(secretsCmd: Command): void {
         await reportCliUsage('cli.secrets.list', true);
       } catch (err) {
         await reportCliUsage('cli.secrets.list', false);
+        await trackCommandUsage('secrets', 'list', false, {}, err);
         handleError(err, json);
       }
     });

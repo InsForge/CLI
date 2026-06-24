@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerComputeStartCommand(computeCmd: Command): void {
   computeCmd
@@ -19,6 +20,8 @@ export function registerComputeStartCommand(computeCmd: Command): void {
         });
         const service = await res.json() as Record<string, unknown>;
 
+        await trackCommandUsage('compute', 'start', true);
+
         if (json) {
           outputJson(service);
         } else {
@@ -30,6 +33,7 @@ export function registerComputeStartCommand(computeCmd: Command): void {
         await reportCliUsage('cli.compute.start', true);
       } catch (err) {
         await reportCliUsage('cli.compute.start', false);
+        await trackCommandUsage('compute', 'start', false, {}, err);
         handleError(err, json);
       }
     });

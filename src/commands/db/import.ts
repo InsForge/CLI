@@ -5,6 +5,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerDbImportCommand(dbCmd: Command): void {
   dbCmd
@@ -42,12 +43,15 @@ export function registerDbImportCommand(dbCmd: Command): void {
 
         const data = await res.json() as { filename: string; fileSize: number; tables: string[]; rowsImported: number };
 
+        await trackCommandUsage('db', 'import', true, { result_count: data.rowsImported });
+
         if (json) {
           outputJson(data);
         } else {
           outputSuccess(`Imported ${data.filename} (${data.tables.length} tables, ${data.rowsImported} rows)`);
         }
       } catch (err) {
+        await trackCommandUsage('db', 'import', false, {}, err);
         handleError(err, json);
       }
     });

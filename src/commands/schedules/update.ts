@@ -3,6 +3,7 @@ import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSchedulesUpdateCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -55,12 +56,15 @@ export function registerSchedulesUpdateCommand(schedulesCmd: Command): void {
         });
         const data = await res.json() as { success: boolean; message: string };
 
+        await trackCommandUsage('schedules', 'update', true);
+
         if (json) {
           outputJson(data);
         } else {
           outputSuccess(data.message ?? 'Schedule updated.');
         }
       } catch (err) {
+        await trackCommandUsage('schedules', 'update', false, {}, err);
         handleError(err, json);
       }
     });

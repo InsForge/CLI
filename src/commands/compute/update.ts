@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 const ENV_KEY_REGEX = /^[A-Z_][A-Z0-9_]*$/;
 
@@ -127,6 +128,8 @@ export function registerComputeUpdateCommand(computeCmd: Command): void {
         });
         const service = await res.json() as Record<string, unknown>;
 
+        await trackCommandUsage('compute', 'update', true);
+
         if (json) {
           outputJson(service);
         } else {
@@ -137,6 +140,7 @@ export function registerComputeUpdateCommand(computeCmd: Command): void {
         await reportCliUsage('cli.compute.update', true);
       } catch (err) {
         await reportCliUsage('cli.compute.update', false);
+        await trackCommandUsage('compute', 'update', false, {}, err);
         handleError(err, json);
       }
     });

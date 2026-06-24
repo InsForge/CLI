@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { ListSchedulesResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSchedulesListCommand(schedulesCmd: Command): void {
   schedulesCmd
@@ -18,6 +19,10 @@ export function registerSchedulesListCommand(schedulesCmd: Command): void {
         const res = await ossFetch('/api/schedules');
         const data = await res.json();
         const schedules: ListSchedulesResponse = data as ListSchedulesResponse;
+
+        await trackCommandUsage('schedules', 'list', true, {
+          result_count: schedules.length,
+        });
 
         if (json) {
           outputJson(schedules);
@@ -42,6 +47,7 @@ export function registerSchedulesListCommand(schedulesCmd: Command): void {
         await reportCliUsage('cli.schedules.list', true);
       } catch (err) {
         await reportCliUsage('cli.schedules.list', false);
+        await trackCommandUsage('schedules', 'list', false, {}, err);
         handleError(err, json);
       }
     });

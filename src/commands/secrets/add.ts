@@ -5,6 +5,7 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import type { CreateSecretResponse } from '../../types.js';
 import { reportCliUsage } from '../../lib/skills.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerSecretsAddCommand(secretsCmd: Command): void {
   secretsCmd
@@ -27,6 +28,8 @@ export function registerSecretsAddCommand(secretsCmd: Command): void {
         });
         const data = await res.json() as CreateSecretResponse;
 
+        await trackCommandUsage('secrets', 'add', true);
+
         if (json) {
           outputJson(data);
         } else {
@@ -35,6 +38,7 @@ export function registerSecretsAddCommand(secretsCmd: Command): void {
         await reportCliUsage('cli.secrets.add', true);
       } catch (err) {
         await reportCliUsage('cli.secrets.add', false);
+        await trackCommandUsage('secrets', 'add', false, {}, err);
         handleError(err, json);
       }
     });

@@ -4,6 +4,7 @@ import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts } from '../lib/errors.js';
 import { outputJson, outputTable } from '../lib/output.js';
 import { reportCliUsage } from '../lib/skills.js';
+import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 
 const FEATURES = ['db', 'storage', 'functions', 'auth', 'ai', 'realtime'] as const;
 const LANGUAGES = ['typescript', 'swift', 'kotlin', 'rest-api'] as const;
@@ -31,12 +32,14 @@ Examples:
         // No args → list all docs
         if (!feature) {
           await listDocs(json);
+          await trackTopLevelUsage('docs', true);
           return;
         }
 
         // Single arg → legacy doc type (e.g. "instructions")
         if (!language) {
           await fetchDoc(`/api/docs/${encodeURIComponent(feature)}`, feature, json);
+          await trackTopLevelUsage('docs', true);
           return;
         }
 
@@ -46,7 +49,9 @@ Examples:
           `${feature}/${language}`,
           json,
         );
+        await trackTopLevelUsage('docs', true);
       } catch (err) {
+        await trackTopLevelUsage('docs', false, {}, err);
         handleError(err, json);
       }
     });

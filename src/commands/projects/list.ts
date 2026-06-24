@@ -5,6 +5,7 @@ import { getGlobalConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerProjectsCommands(projectsCmd: Command): void {
   projectsCmd
@@ -45,6 +46,8 @@ export function registerProjectsCommands(projectsCmd: Command): void {
 
         const projects = await listProjects(orgId, apiUrl);
 
+        await trackCommandUsage('projects', 'list', true, { result_count: projects.length });
+
         if (json) {
           outputJson(projects);
         } else {
@@ -58,6 +61,7 @@ export function registerProjectsCommands(projectsCmd: Command): void {
           );
         }
       } catch (err) {
+        await trackCommandUsage('projects', 'list', false, {}, err);
         handleError(err, json);
       }
     });

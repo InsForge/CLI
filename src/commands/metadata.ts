@@ -5,6 +5,7 @@ import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts } from '../lib/errors.js';
 import { outputJson, outputTable } from '../lib/output.js';
 import { reportCliUsage } from '../lib/skills.js';
+import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 
 export function registerMetadataCommand(program: Command): void {
   program
@@ -17,6 +18,8 @@ export function registerMetadataCommand(program: Command): void {
 
         const res = await ossFetch('/api/metadata');
         const data = await res.json() as AppMetadataSchema;
+
+        await trackTopLevelUsage('metadata', true);
 
         if (json) {
           outputJson(data);
@@ -98,6 +101,7 @@ export function registerMetadataCommand(program: Command): void {
         await reportCliUsage('cli.metadata', true);
       } catch (err) {
         await reportCliUsage('cli.metadata', false);
+        await trackTopLevelUsage('metadata', false, {}, err);
         handleError(err, json);
       }
     });

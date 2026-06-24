@@ -3,6 +3,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, ProjectNotLinkedError, CLIError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
   functionsCmd
@@ -41,6 +42,10 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
         const contentType = res.headers.get('content-type') ?? '';
         const status = res.status;
 
+        if (status < 400) {
+          await trackCommandUsage('functions', 'invoke', true);
+        }
+
         if (contentType.includes('application/json')) {
           const data = await res.json();
           if (json) {
@@ -58,6 +63,7 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
           throw new CLIError(`HTTP ${status}`, 1, 'HTTP_ERROR');
         }
       } catch (err) {
+        await trackCommandUsage('functions', 'invoke', false, {}, err);
         handleError(err, json);
       }
     });

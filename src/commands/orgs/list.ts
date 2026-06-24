@@ -3,6 +3,7 @@ import { listOrganizations } from '../../lib/api/platform.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
+import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 export function registerOrgsCommands(orgsCmd: Command): void {
   orgsCmd
@@ -13,6 +14,8 @@ export function registerOrgsCommands(orgsCmd: Command): void {
       try {
         await requireAuth(apiUrl);
         const orgs = await listOrganizations(apiUrl);
+
+        await trackCommandUsage('orgs', 'list', true, { result_count: orgs.length });
 
         if (json) {
           outputJson(orgs);
@@ -31,6 +34,7 @@ export function registerOrgsCommands(orgsCmd: Command): void {
           );
         }
       } catch (err) {
+        await trackCommandUsage('orgs', 'list', false, {}, err);
         handleError(err, json);
       }
     });
