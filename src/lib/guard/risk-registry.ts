@@ -264,6 +264,15 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     risk: 'Live traffic is interrupted during the restart. Roll-back means restarting again.',
   }),
 
+  'projects transfer': (ctx) => ({
+    severity: 'high',
+    kind: 'project.transfer',
+    title: 'Transfer a project to another organization',
+    whatHappens: `Moves the project to organization "${ctx.args[0] ?? '?'}".`,
+    blastRadius: 'Billing, membership, and access all move to the target org.',
+    risk: 'Members of the current org may lose access. Verify the target org id.',
+  }),
+
   'projects upgrade-instance': (ctx) => ({
     severity: 'high',
     kind: 'project.upgrade_instance',

@@ -4,6 +4,7 @@ import {
   getProject,
   updateProject,
   deleteProject,
+  transferProject,
   restoreProject,
   upgradeInstance,
   restartProjectVersion,
@@ -142,6 +143,43 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
           outputJson({ deleted: true, project_id: projectId });
         } else {
           outputSuccess(`Project ${projectId} deleted.`);
+        }
+      } catch (err) {
+        handleError(err, json);
+      } finally {
+        await shutdownAnalytics();
+      }
+    });
+
+  projectsCmd
+    .command('transfer <targetOrgId>')
+    .description('Transfer the project to another organization')
+    .option('--project <id>', 'Project ID (defaults to the linked project)')
+    .action(async (targetOrgId: string, opts, cmd) => {
+      const { json, apiUrl, yes } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const projectId = resolveProjectId(opts);
+
+        if (!yes && !json) {
+          const project = await getProject(projectId, apiUrl).catch(() => null);
+          const label = project ? `"${project.name}"` : projectId;
+          const confirmed = await clack.confirm({
+            message: `Transfer project ${label} to organization ${targetOrgId}? Billing and access move to the target org.`,
+          });
+          if (clack.isCancel(confirmed) || !confirmed) {
+            outputInfo('Cancelled.');
+            return;
+          }
+        }
+
+        const project = await transferProject(projectId, targetOrgId, apiUrl);
+        captureEvent(projectId, 'cli_project_transfer', { target_org_id: targetOrgId });
+
+        if (json) {
+          outputJson(project);
+        } else {
+          outputSuccess(`Project "${project.name}" transferred to org ${targetOrgId}.`);
         }
       } catch (err) {
         handleError(err, json);

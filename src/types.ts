@@ -257,6 +257,44 @@ export interface SubscriptionStatus {
   stripeSubscriptionId?: string;
 }
 
+export interface PaymentRecord {
+  stripe_invoice_id?: string;
+  amount_cents: number;
+  amount_display: string;
+  currency: string;
+  status: string;
+  description: string | null;
+  invoice_pdf_url: string | null;
+  created_at: string;
+}
+
+export interface BillingCycles {
+  current: { start_date: string; end_date: string };
+  previous?: { start_date: string; end_date: string };
+}
+
+export interface CheckoutSession {
+  checkoutUrl: string;
+  sessionId: string;
+}
+
+export interface PortalSession {
+  portalUrl: string;
+}
+
+export interface RedeemResult {
+  success: boolean;
+  message?: string;
+  creditAmountCents: number;
+  creditBalanceCents: number;
+}
+
+export interface ReferralLink {
+  code: string;
+  url: string;
+  redemptionCount: number;
+}
+
 export interface CreditBalance {
   creditBalanceCents: number;
   creditBalanceFormatted: string;

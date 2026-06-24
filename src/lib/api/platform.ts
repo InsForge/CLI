@@ -4,10 +4,16 @@ import { refreshAccessToken } from '../credentials.js';
 import type {
   ApiKeyResponse,
   Backup,
+  BillingCycles,
   Branch,
   BranchMode,
+  CheckoutSession,
   CreditBalance,
   DiffResult,
+  PaymentRecord,
+  PortalSession,
+  RedeemResult,
+  ReferralLink,
   LatestBackup,
   LatestVersionResponse,
   LoginResponse,
@@ -316,6 +322,19 @@ export async function deleteProject(projectId: string, apiUrl?: string): Promise
   await platformFetch(`/projects/v1/${projectId}`, { method: 'DELETE' }, apiUrl);
 }
 
+export async function transferProject(
+  projectId: string,
+  targetOrganizationId: string,
+  apiUrl?: string,
+): Promise<Project> {
+  const res = await platformFetch(`/projects/v1/${projectId}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify({ targetOrganizationId }),
+  }, apiUrl);
+  const data = await res.json() as { project?: Project };
+  return data.project ?? (data as unknown as Project);
+}
+
 export async function restoreProject(projectId: string, apiUrl?: string): Promise<Project> {
   const res = await platformFetch(
     `/projects/v1/${projectId}/restore`,
@@ -387,6 +406,57 @@ export async function getSubscriptionStatus(orgId: string, apiUrl?: string): Pro
 export async function getCredits(orgId: string, apiUrl?: string): Promise<CreditBalance> {
   const res = await platformFetch(`/billing/v1/${orgId}/credits`, {}, apiUrl);
   return await res.json() as CreditBalance;
+}
+
+export async function getPaymentHistory(orgId: string, apiUrl?: string): Promise<PaymentRecord[]> {
+  const res = await platformFetch(`/organizations/v1/${orgId}/payment-history`, {}, apiUrl);
+  const data = await res.json() as { payments?: PaymentRecord[] };
+  return data.payments ?? [];
+}
+
+export async function getBillingCycles(orgId: string, apiUrl?: string): Promise<BillingCycles> {
+  const res = await platformFetch(`/organizations/v1/${orgId}/billing-cycles`, {}, apiUrl);
+  return await res.json() as BillingCycles;
+}
+
+/**
+ * Create a Stripe Checkout session to upgrade an existing org to `plan`.
+ * Returns a hosted checkout URL the caller opens in a browser to complete
+ * payment. Requires the caller to be an org administrator.
+ */
+export async function createCheckoutSession(
+  orgId: string,
+  plan: string,
+  apiUrl?: string,
+): Promise<CheckoutSession> {
+  const res = await platformFetch('/billing/v1/stripe/checkout-session', {
+    method: 'POST',
+    body: JSON.stringify({ organizationId: orgId, plan }),
+  }, apiUrl);
+  return await res.json() as CheckoutSession;
+}
+
+/** Create a Stripe customer-portal session (manage subscription / payment method). */
+export async function createPortalSession(orgId: string, apiUrl?: string): Promise<PortalSession> {
+  const res = await platformFetch('/billing/v1/stripe/portal-session', {
+    method: 'POST',
+    body: JSON.stringify({ organizationId: orgId }),
+  }, apiUrl);
+  return await res.json() as PortalSession;
+}
+
+export async function redeemPromo(orgId: string, code: string, apiUrl?: string): Promise<RedeemResult> {
+  const res = await platformFetch('/billing/v1/promo/redeem', {
+    method: 'POST',
+    body: JSON.stringify({ organizationId: orgId, code }),
+  }, apiUrl);
+  return await res.json() as RedeemResult;
+}
+
+/** Generate (or fetch) the org's referral link. Administrator only. */
+export async function getReferralLink(orgId: string, apiUrl?: string): Promise<ReferralLink> {
+  const res = await platformFetch(`/billing/v1/${orgId}/referral-link`, { method: 'POST' }, apiUrl);
+  return await res.json() as ReferralLink;
 }
 
 export async function getOrgUsage(orgId: string, apiUrl?: string): Promise<OrgUsage> {

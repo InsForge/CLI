@@ -1,9 +1,21 @@
 import type { Command } from 'commander';
-import { getSubscriptionStatus, getCredits } from '../../lib/api/platform.js';
+import open from 'open';
+import {
+  getSubscriptionStatus,
+  getCredits,
+  getPaymentHistory,
+  getBillingCycles,
+  createCheckoutSession,
+  createPortalSession,
+  redeemPromo,
+  getReferralLink,
+} from '../../lib/api/platform.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { resolveOrgId } from '../../lib/resolve-org.js';
-import { outputJson, outputTable, outputInfo } from '../../lib/output.js';
+import { outputJson, outputTable, outputInfo, outputSuccess } from '../../lib/output.js';
+
+const BILLING_PLANS = ['free', 'starter', 'pro', 'team', 'enterprise'];
 
 export function registerBillingCommands(billingCmd: Command): void {
   billingCmd
@@ -60,6 +72,158 @@ export function registerBillingCommands(billingCmd: Command): void {
               ]),
             );
           }
+        }
+      } catch (err) {
+        handleError(err, json);
+      }
+    });
+
+  billingCmd
+    .command('history')
+    .description('Show payment / invoice history')
+    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
+    .action(async (opts, cmd) => {
+      const { json, apiUrl } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
+        const payments = await getPaymentHistory(orgId, apiUrl);
+
+        if (json) {
+          outputJson(payments);
+        } else if (!payments.length) {
+          outputInfo('No payments found.');
+        } else {
+          outputTable(
+            ['Date', 'Amount', 'Currency', 'Status', 'Description'],
+            payments.map((p) => [
+              new Date(p.created_at).toLocaleDateString(),
+              p.amount_display,
+              (p.currency ?? '').toUpperCase(),
+              p.status,
+              p.description ?? '-',
+            ]),
+          );
+        }
+      } catch (err) {
+        handleError(err, json);
+      }
+    });
+
+  billingCmd
+    .command('cycles')
+    .description('Show the current and previous billing cycle windows')
+    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
+    .action(async (opts, cmd) => {
+      const { json, apiUrl } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
+        const cycles = await getBillingCycles(orgId, apiUrl);
+
+        if (json) {
+          outputJson(cycles);
+        } else {
+          const fmt = (d: string): string => new Date(d).toLocaleDateString();
+          const rows = [['current', `${fmt(cycles.current.start_date)} → ${fmt(cycles.current.end_date)}`]];
+          if (cycles.previous) {
+            rows.push(['previous', `${fmt(cycles.previous.start_date)} → ${fmt(cycles.previous.end_date)}`]);
+          }
+          outputTable(['Cycle', 'Window'], rows);
+        }
+      } catch (err) {
+        handleError(err, json);
+      }
+    });
+
+  billingCmd
+    .command('upgrade <plan>')
+    .description(`Start a checkout to change the plan (${BILLING_PLANS.join(' | ')})`)
+    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
+    .action(async (plan: string, opts, cmd) => {
+      const { json, apiUrl } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        if (!BILLING_PLANS.includes(plan)) {
+          throw new CLIError(`Invalid plan "${plan}". Valid plans: ${BILLING_PLANS.join(', ')}.`);
+        }
+        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
+        const session = await createCheckoutSession(orgId, plan, apiUrl);
+
+        if (json) {
+          outputJson(session);
+        } else {
+          outputInfo(`Complete the upgrade to "${plan}" in your browser:`);
+          outputInfo(session.checkoutUrl);
+          await open(session.checkoutUrl).catch(() => { /* headless: URL already printed */ });
+        }
+      } catch (err) {
+        handleError(err, json);
+      }
+    });
+
+  billingCmd
+    .command('manage')
+    .description('Open the Stripe customer portal (manage subscription / payment method)')
+    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
+    .action(async (opts, cmd) => {
+      const { json, apiUrl } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
+        const session = await createPortalSession(orgId, apiUrl);
+
+        if (json) {
+          outputJson(session);
+        } else {
+          outputInfo('Manage billing in your browser:');
+          outputInfo(session.portalUrl);
+          await open(session.portalUrl).catch(() => { /* headless: URL already printed */ });
+        }
+      } catch (err) {
+        handleError(err, json);
+      }
+    });
+
+  billingCmd
+    .command('redeem <code>')
+    .description('Redeem a promo code for account credit')
+    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
+    .action(async (code: string, opts, cmd) => {
+      const { json, apiUrl } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
+        const result = await redeemPromo(orgId, code, apiUrl);
+
+        if (json) {
+          outputJson(result);
+        } else {
+          outputSuccess(
+            `Redeemed ${(result.creditAmountCents / 100).toFixed(2)} in credit. New balance: ${(result.creditBalanceCents / 100).toFixed(2)}.`,
+          );
+        }
+      } catch (err) {
+        handleError(err, json);
+      }
+    });
+
+  billingCmd
+    .command('referral')
+    .description('Show your organization referral link (administrator only)')
+    .option('--org-id <id>', 'Organization ID (defaults to linked project / default org)')
+    .action(async (opts, cmd) => {
+      const { json, apiUrl } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const orgId = await resolveOrgId(opts.orgId, json, apiUrl);
+        const referral = await getReferralLink(orgId, apiUrl);
+
+        if (json) {
+          outputJson(referral);
+        } else {
+          outputInfo(`Referral link: ${referral.url}`);
+          outputInfo(`Redemptions:   ${referral.redemptionCount}`);
         }
       } catch (err) {
         handleError(err, json);
