@@ -51,6 +51,8 @@ import { registerDeploymentsListCommand } from './commands/deployments/list.js';
 import { registerDeploymentsStatusCommand } from './commands/deployments/status.js';
 import { registerDeploymentsCancelCommand } from './commands/deployments/cancel.js';
 import { registerDeploymentsEnvVarsCommand } from './commands/deployments/env-vars.js';
+import { registerDeploymentsMetadataCommand } from './commands/deployments/metadata.js';
+import { registerDeploymentsSlugCommand } from './commands/deployments/slug.js';
 
 import { registerDocsCommand } from './commands/docs.js';
 import { registerSecretsListCommand } from './commands/secrets/list.js';
@@ -191,9 +193,8 @@ registerDeploymentsListCommand(deploymentsCmd);
 registerDeploymentsStatusCommand(deploymentsCmd);
 registerDeploymentsCancelCommand(deploymentsCmd);
 registerDeploymentsEnvVarsCommand(deploymentsCmd);
-// registerDeploymentsMetadataCommand(deploymentsCmd);
-// slug command doesn't work yet.
-// registerDeploymentsSlugCommand(deploymentsCmd);
+registerDeploymentsMetadataCommand(deploymentsCmd);
+registerDeploymentsSlugCommand(deploymentsCmd);
 
 // Secrets commands
 const secretsCmd = program.command('secrets').description('Manage secrets');
