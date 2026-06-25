@@ -2,8 +2,29 @@ import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
-import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
+import { CLIError, handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { trackDeploymentUsage } from './utils.js';
+
+interface DeploymentMetadataSlice {
+  customSlug?: string | null;
+}
+
+interface MetadataResponse {
+  deployments?: DeploymentMetadataSlice | null;
+}
+
+function getSupportedDeploymentsSlice(raw: MetadataResponse): DeploymentMetadataSlice {
+  const deployments = raw.deployments;
+  if (!deployments || typeof deployments !== 'object') {
+    throw new CLIError(
+      'Deployment slug management is not supported by this backend. Upgrade the project or use a cloud deployment that exposes /api/metadata.deployments.',
+      1,
+      'DEPLOYMENT_SLUG_UNSUPPORTED',
+    );
+  }
+  return deployments;
+}
 
 export function registerDeploymentsSlugCommand(deploymentsCmd: Command): void {
   deploymentsCmd
@@ -17,20 +38,21 @@ export function registerDeploymentsSlugCommand(deploymentsCmd: Command): void {
         if (!getProjectConfig()) throw new ProjectNotLinkedError();
 
         const slugValue = opts.remove ? null : (slug ?? null);
+        const metadataRes = await ossFetch('/api/metadata');
+        const metadata = (await metadataRes.json()) as MetadataResponse;
 
         if (!opts.remove && !slug) {
-          // No slug provided and not removing — show current metadata instead
-          const res = await ossFetch('/api/deployments/metadata');
-          const d = await res.json() as Record<string, unknown>;
+          const currentSlug = metadata.deployments?.customSlug ?? null;
           if (json) {
-            outputJson(d);
+            outputJson({ slug: currentSlug });
           } else {
-            console.log(`Current slug: ${d.slug ?? '(none)'}`);
-            if (d.domain) console.log(`Domain: ${d.domain}`);
+            console.log(`Current slug: ${currentSlug ?? '(none)'}`);
           }
+          await trackDeploymentUsage('slug', true, { action: 'show' });
           return;
         }
 
+        getSupportedDeploymentsSlice(metadata);
         const res = await ossFetch('/api/deployments/slug', {
           method: 'PUT',
           body: JSON.stringify({ slug: slugValue }),
@@ -47,7 +69,11 @@ export function registerDeploymentsSlugCommand(deploymentsCmd: Command): void {
             outputSuccess('Custom slug removed.');
           }
         }
+        await trackDeploymentUsage('slug', true, { action: opts.remove ? 'remove' : 'set' });
       } catch (err) {
+        await trackDeploymentUsage('slug', false, {
+          action: opts.remove ? 'remove' : slug ? 'set' : 'show',
+        });
         handleError(err, json);
       }
     });
