@@ -14,6 +14,7 @@ export function registerDeploymentsMetadataCommand(deploymentsCmd: Command): voi
     .action(async (_opts, cmd) => {
       const { json } = getRootOpts(cmd);
       let success = false;
+      let commandFailed = false;
       let commandError: unknown;
       try {
         await requireAuth();
@@ -36,6 +37,7 @@ export function registerDeploymentsMetadataCommand(deploymentsCmd: Command): voi
         }
         success = true;
       } catch (err) {
+        commandFailed = true;
         commandError = err;
       } finally {
         try {
@@ -44,6 +46,6 @@ export function registerDeploymentsMetadataCommand(deploymentsCmd: Command): voi
           // Telemetry should never affect command behavior.
         }
       }
-      if (commandError) handleError(commandError, json);
+      if (commandFailed) handleError(commandError, json);
     });
 }
