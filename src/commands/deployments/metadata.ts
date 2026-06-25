@@ -5,6 +5,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import type { DeploymentMetadataResponse } from '../../types.js';
+import { trackDeploymentUsage } from './utils.js';
 
 export function registerDeploymentsMetadataCommand(deploymentsCmd: Command): void {
   deploymentsCmd
@@ -31,7 +32,9 @@ export function registerDeploymentsMetadataCommand(deploymentsCmd: Command): voi
             ],
           );
         }
+        await trackDeploymentUsage('metadata', true);
       } catch (err) {
+        await trackDeploymentUsage('metadata', false);
         handleError(err, json);
       }
     });
