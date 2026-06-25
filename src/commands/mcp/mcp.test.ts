@@ -99,4 +99,64 @@ describe('mcp commands', () => {
     expect(cursor.mcpServers.insforge).toBeUndefined();
     expect(claude.mcpServers.insforge).toBeUndefined();
   });
+
+  it('connect with explicit --api-key and --api-base-url works without linked project', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    vi.mocked(getProjectConfig).mockReturnValueOnce(null);
+
+    await run([
+      'connect',
+      'cursor',
+      '--api-key',
+      'ik_custom_key',
+      '--api-base-url',
+      'https://custom.insforge.app',
+      '--json',
+    ]);
+
+    const config = JSON.parse(readFileSync(join(cwd, '.cursor/mcp.json'), 'utf-8'));
+    expect(config.mcpServers.insforge.url).toBe('https://custom.insforge.app/api/usage/mcp');
+    expect(config.mcpServers.insforge.headers.Authorization).toBe('Bearer ik_custom_key');
+
+    const { updateMcpConnectionStatus } = await import('../../lib/api/oss.js');
+    expect(updateMcpConnectionStatus).toHaveBeenCalledWith('connected', {
+      apiKey: 'ik_custom_key',
+      apiBaseUrl: 'https://custom.insforge.app',
+    });
+  });
+
+  it('disconnect with explicit --api-key and --api-base-url works without linked project', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    vi.mocked(getProjectConfig).mockReturnValueOnce(null);
+
+    await run([
+      'connect',
+      'cursor',
+      '--api-key',
+      'ik_custom_key',
+      '--api-base-url',
+      'https://custom.insforge.app',
+      '--json',
+    ]);
+
+    vi.mocked(getProjectConfig).mockReturnValueOnce(null);
+    await run([
+      'disconnect',
+      'cursor',
+      '--api-key',
+      'ik_custom_key',
+      '--api-base-url',
+      'https://custom.insforge.app',
+      '--json',
+    ]);
+
+    const config = JSON.parse(readFileSync(join(cwd, '.cursor/mcp.json'), 'utf-8'));
+    expect(config.mcpServers.insforge).toBeUndefined();
+
+    const { updateMcpConnectionStatus } = await import('../../lib/api/oss.js');
+    expect(updateMcpConnectionStatus).toHaveBeenLastCalledWith('disconnected', {
+      apiKey: 'ik_custom_key',
+      apiBaseUrl: 'https://custom.insforge.app',
+    });
+  });
 });

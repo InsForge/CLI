@@ -59,7 +59,11 @@ export function displayMcpConfigPath(path: string, cwd = process.cwd()): string 
   return rel;
 }
 
-export function connectMcpProvider(provider: McpProvider, project: ProjectConfig, cwd = process.cwd()): McpConfigUpdateResult {
+export function connectMcpProvider(
+  provider: McpProvider,
+  project: ProjectConfig | { apiKey: string; apiBaseUrl: string },
+  cwd = process.cwd()
+): McpConfigUpdateResult {
   const path = getMcpConfigPath(provider, cwd);
   const config = readMcpJson(path);
   const existingServers = isObject(config.mcpServers) ? config.mcpServers : {};
@@ -101,13 +105,15 @@ export function disconnectMcpProvider(provider: McpProvider, cwd = process.cwd()
   };
 }
 
-function buildMcpServerConfig(project: ProjectConfig): JsonObject {
+function buildMcpServerConfig(config: ProjectConfig | { apiKey: string; apiBaseUrl: string }): JsonObject {
+  const host = 'oss_host' in config ? config.oss_host : config.apiBaseUrl;
+  const key = 'api_key' in config ? config.api_key : config.apiKey;
   return {
     type: 'http',
-    url: `${project.oss_host.replace(/\/$/, '')}/api/usage/mcp`,
+    url: `${host.replace(/\/$/, '')}/api/usage/mcp`,
     headers: {
-      Authorization: `Bearer ${project.api_key}`,
-      'x-api-key': project.api_key,
+      Authorization: `Bearer ${key}`,
+      'x-api-key': key,
     },
   };
 }

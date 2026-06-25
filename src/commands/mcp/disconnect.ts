@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
 import { updateMcpConnectionStatus } from '../../lib/api/oss.js';
 import { getProjectConfig } from '../../lib/config.js';
-import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
+import { handleError, getRootOpts, ProjectNotLinkedError, CLIError } from '../../lib/errors.js';
 import { MCP_PROVIDERS, disconnectMcpProvider, displayMcpConfigPath, parseMcpProvider } from '../../lib/mcp-config.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
@@ -12,24 +12,44 @@ export function registerMcpDisconnectCommand(program: Command): void {
   program
     .command('disconnect [provider]')
     .description('Disconnect an MCP provider from the linked InsForge project')
-    .action(async (providerArg: string | undefined, _opts, cmd) => {
+    .option('--api-key <apiKey>', 'API key for InsForge MCP')
+    .option('--api-base-url <apiBaseUrl>', 'Base URL of the InsForge backend')
+    .action(async (providerArg: string | undefined, options: { apiKey?: string; apiBaseUrl?: string }, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
-        const project = getProjectConfig();
-        if (!project) throw new ProjectNotLinkedError();
+        const { apiKey, apiBaseUrl } = options;
+        let projectId: string | undefined;
+        let projectConfig: ReturnType<typeof getProjectConfig> = null;
+
+        if (apiKey || apiBaseUrl) {
+          if (!apiKey || !apiBaseUrl) {
+            throw new CLIError('Both --api-key and --api-base-url must be provided if not using a linked project.');
+          }
+        } else {
+          projectConfig = getProjectConfig();
+          if (!projectConfig) throw new ProjectNotLinkedError();
+          projectId = projectConfig.project_id;
+        }
 
         const providers = providerArg ? [parseMcpProvider(providerArg)] : MCP_PROVIDERS;
         const results = providers.map((provider) => disconnectMcpProvider(provider));
-        await updateMcpConnectionStatus('disconnected');
+        if (apiKey && apiBaseUrl) {
+          await updateMcpConnectionStatus('disconnected', { apiKey, apiBaseUrl });
+        } else {
+          await updateMcpConnectionStatus('disconnected');
+        }
         const changed = results.some((result) => result.changed);
-        captureEvent(project.project_id, 'cli_mcp_disconnect', {
-          provider: providerArg ? results[0].provider : 'all',
-          project_id: project.project_id,
-          project_name: project.project_name,
-          org_id: project.org_id,
-          region: project.region,
-          changed,
-        });
+
+        if (projectId && projectConfig) {
+          captureEvent(projectConfig.project_id, 'cli_mcp_disconnect', {
+            provider: providerArg ? results[0].provider : 'all',
+            project_id: projectConfig.project_id,
+            project_name: projectConfig.project_name,
+            org_id: projectConfig.org_id,
+            region: projectConfig.region,
+            changed,
+          });
+        }
         await reportCliUsage('cli.mcp.disconnect', true);
 
         if (json) {
