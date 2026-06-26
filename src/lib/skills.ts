@@ -80,8 +80,9 @@ const AGENT_FLAGS =
 // --auth <provider>`. Each is its own marketplace/skill repo — they
 // complement (not duplicate) `insforge-integrations`, which covers the
 // InsForge bridge side of each provider.
-const PROVIDER_SKILLS: Record<string, { repo: string; label: string }> = {
+export const PROVIDER_SKILLS: Record<string, { repo: string; label: string }> = {
   'better-auth': { repo: 'better-auth/skills', label: 'Better Auth skills' },
+  apify: { repo: 'apify/agent-skills', label: 'Apify skills' },
 };
 
 export async function installSkills(json: boolean, authProvider?: string): Promise<void> {
@@ -119,21 +120,8 @@ export async function installSkills(json: boolean, authProvider?: string): Promi
   // Complements `insforge-integrations` rather than replacing it — that one
   // covers the InsForge bridge side; this one covers the provider's own
   // patterns (BA scaffolding, email/password, 2FA, organizations, etc.).
-  const providerEntry = authProvider ? PROVIDER_SKILLS[authProvider] : undefined;
-  if (providerEntry) {
-    try {
-      if (!json) clack.log.info(`Installing ${providerEntry.label} (global)...`);
-      await execAsync(`npx skills add ${providerEntry.repo} -g -y ${AGENT_FLAGS}`, {
-        cwd: process.cwd(),
-        timeout: SKILL_INSTALL_TIMEOUT_MS,
-      });
-      if (!json) clack.log.success(`${providerEntry.label} installed.`);
-    } catch (err) {
-      if (!json) {
-        clack.log.warn(`Could not install ${providerEntry.label}: ${describeExecError(err)}`);
-        clack.log.info(`Run \`npx skills add ${providerEntry.repo}\` once resolved to see the full output.`);
-      }
-    }
+  if (authProvider) {
+    await installProviderSkillPack(json, authProvider);
   }
 
   try {
@@ -150,6 +138,37 @@ export async function installSkills(json: boolean, authProvider?: string): Promi
     writeLocalAgentsMd(json);
   } catch {
     // non-critical, silently ignore
+  }
+}
+
+/**
+ * Install ONLY a single provider's upstream skill pack (e.g. `apify`), without
+ * reinstalling the main InsForge skills or find-skills. Use when wiring a
+ * connector after the project already has the InsForge skills — avoids
+ * clobbering them and is much faster. Also the single source of truth for the
+ * provider-pack install used by `installSkills`.
+ *
+ * Returns `true` if the pack installed, `false` if the install failed (logged
+ * as a warning in non-json mode) or the provider key is unknown — so callers
+ * can adjust their success messaging instead of claiming skills are ready.
+ */
+export async function installProviderSkillPack(json: boolean, providerKey: string): Promise<boolean> {
+  const entry = PROVIDER_SKILLS[providerKey];
+  if (!entry) return false;
+  try {
+    if (!json) clack.log.info(`Installing ${entry.label} (global)...`);
+    await execAsync(`npx skills add ${entry.repo} -g -y ${AGENT_FLAGS}`, {
+      cwd: process.cwd(),
+      timeout: SKILL_INSTALL_TIMEOUT_MS,
+    });
+    if (!json) clack.log.success(`${entry.label} installed.`);
+    return true;
+  } catch (err) {
+    if (!json) {
+      clack.log.warn(`Could not install ${entry.label}: ${describeExecError(err)}`);
+      clack.log.info(`Run \`npx skills add ${entry.repo}\` once resolved to see the full output.`);
+    }
+    return false;
   }
 }
 

@@ -84,6 +84,7 @@ import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
 import { registerPaymentsCommands } from './commands/payments/index.js';
 import { registerPosthogSetupCommand } from './commands/posthog/setup.js';
+import { registerDatasourceCommands } from './commands/datasource/index.js';
 import { registerConfigCommand } from './commands/config/index.js';
 import { registerAiCommands } from './commands/ai/index.js';
 import { registerDomainsCommands } from './commands/domains/index.js';
@@ -244,6 +245,10 @@ registerComputeEventsCommand(computeCmd);
 // PostHog commands
 const posthogCmd = program.command('posthog').description('Manage PostHog product analytics integration');
 registerPosthogSetupCommand(posthogCmd);
+
+// Data source commands (Apify first; provider as subcommand, like payments)
+const datasourceCmd = program.command('datasource').description('Manage data-source integrations');
+registerDatasourceCommands(datasourceCmd);
 
 // AI commands
 const aiCmd = program.command('ai').description('Manage AI model gateway setup');

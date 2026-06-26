@@ -1,5 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { describeExecError, reportCliUsage } from './skills.js';
+import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest';
+import { describeExecError, reportCliUsage, PROVIDER_SKILLS } from './skills.js';
+
+test('apify provider installs apify/agent-skills', () => {
+  expect(PROVIDER_SKILLS.apify).toEqual({ repo: 'apify/agent-skills', label: 'Apify skills' });
+});
 
 function execError(opts: {
   killed?: boolean;
