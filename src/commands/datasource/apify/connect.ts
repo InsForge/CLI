@@ -18,6 +18,7 @@ import {
 } from '../../../lib/api/apify.js';
 import { outputJson, outputSuccess } from '../../../lib/output.js';
 import { trackGroupCommand, shutdownAnalytics } from '../../../lib/analytics.js';
+import { runApifyAuthBridge } from '../../../lib/apify-bridge.js';
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
@@ -97,6 +98,19 @@ async function runConnect(opts: RunConnectOpts): Promise<ConnectResult> {
     token,
     opts,
   );
+
+  // Auth bridge: log in the local Apify CLI + install skills so the agent is
+  // immediately usable — no manual `apify login` browser flow required.
+  // Gracefully degraded: a failure here never blocks the connect result.
+  try {
+    await runApifyAuthBridge(opts.json);
+  } catch {
+    if (!opts.json) {
+      clack.log.warn(
+        'Connected, but auto-login/skills install failed. Run `insforge datasource apify login` to finish.',
+      );
+    }
+  }
 
   if (!opts.json) {
     const details = [
