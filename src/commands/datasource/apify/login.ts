@@ -25,10 +25,17 @@ export function registerApifyLoginCommand(program: Command): void {
       const { json } = getRootOpts(cmd);
       try {
         if (!json) clack.log.info('Setting up Apify for your agent (token login + skills)...');
-        await runApifyAuthBridge(json);
+        const { skillsInstalled } = await runApifyAuthBridge(json);
         if (!json) {
-          clack.log.success('Apify CLI authenticated and agent skills installed.');
-          clack.log.info('Tell your coding agent what to scrape.');
+          if (skillsInstalled) {
+            clack.log.success('Apify CLI authenticated and agent skills installed.');
+            clack.log.info('Tell your coding agent what to scrape.');
+          } else {
+            clack.log.success('Apify CLI authenticated.');
+            clack.log.warn(
+              'Agent skills did not install. Re-run `insforge datasource apify login`, or install manually with `npx skills add apify/agent-skills`.',
+            );
+          }
         }
       } catch (err) {
         handleError(err, json);
