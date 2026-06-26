@@ -17,13 +17,15 @@ export async function fetchApifyAccessToken(): Promise<string> {
   try {
     res = await ossFetch('/api/datasources/apify/token');
   } catch (err) {
-    if (err instanceof CLIError && err.statusCode === 404) {
-      // A 404 here means either no Apify connection for this project, or the
-      // backend has no /datasources/apify route at all (older or self-hosted
-      // backends, where the data source is unsupported). Mention both so the
-      // user is not sent to `connect` on a backend that can never connect.
+    // Only remap the backend's explicit "no connection" signal (resource-level
+    // 404 with `error: 'not_connected'`) to the connect remediation. A bare
+    // route-level 404 means the backend has no /datasources route at all
+    // (older/self-hosted, data source unsupported) — ossFetch already rewrites
+    // that to a "not available on this backend" message, so let it propagate
+    // rather than wrongly telling the user to run `connect`.
+    if (err instanceof CLIError && err.statusCode === 404 && err.code === 'not_connected') {
       throw new CLIError(
-        'Apify is not connected, or this backend does not have the Apify data source enabled (it is cloud-only). Run `insforge datasource apify connect` to connect.',
+        'Apify is not connected. Run `insforge datasource apify connect` first.',
         1,
         'APIFY_NOT_CONNECTED',
         404,

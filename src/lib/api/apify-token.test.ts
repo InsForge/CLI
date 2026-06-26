@@ -20,12 +20,27 @@ describe('fetchApifyAccessToken', () => {
     await expect(fetchApifyAccessToken()).resolves.toBe('integration_api_token_x');
   });
 
-  it('throws a clear error when not connected (404)', async () => {
-    const err404 = new CLIError('Not found', 1, 'NOT_FOUND', 404);
-    vi.spyOn(oss, 'ossFetch').mockRejectedValue(err404);
+  it('remaps the resource-level not_connected 404 to a connect remediation', async () => {
+    const notConnected = new CLIError('Not connected', 1, 'not_connected', 404);
+    vi.spyOn(oss, 'ossFetch').mockRejectedValue(notConnected);
 
     const { fetchApifyAccessToken } = await import('./apify-token.js');
-    await expect(fetchApifyAccessToken()).rejects.toThrow(/not connected|connect/i);
+    await expect(fetchApifyAccessToken()).rejects.toThrow(/not connected.*connect/is);
+  });
+
+  it('propagates a route-level 404 unchanged (data source unsupported, not "run connect")', async () => {
+    // ossFetch rewrites a bare route-level 404 to a "not available on this
+    // backend" message; we must not clobber it with "run connect".
+    const routeMiss = new CLIError(
+      'Data source integrations are not available on this backend.',
+      1,
+      'NOT_FOUND',
+      404,
+    );
+    vi.spyOn(oss, 'ossFetch').mockRejectedValue(routeMiss);
+
+    const { fetchApifyAccessToken } = await import('./apify-token.js');
+    await expect(fetchApifyAccessToken()).rejects.toThrow(/not available on this backend/i);
   });
 
   it('propagates other errors unchanged', async () => {
