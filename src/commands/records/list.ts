@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
+import { schemaProfileHeaders } from './profile.js';
 
 export function registerRecordsCommands(recordsCmd: Command): void {
   recordsCmd
@@ -14,6 +15,7 @@ export function registerRecordsCommands(recordsCmd: Command): void {
     .option('--order <order>', 'Order by (e.g. "created_at.desc")')
     .option('--limit <n>', 'Limit number of records', parseInt)
     .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('--schema <name>', 'Schema to target (default: public)')
     .action(async (table: string, opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
@@ -28,7 +30,7 @@ export function registerRecordsCommands(recordsCmd: Command): void {
 
         const query = params.toString();
         const path = `/api/database/records/${encodeURIComponent(table)}${query ? `?${query}` : ''}`;
-        const res = await ossFetch(path);
+        const res = await ossFetch(path, { headers: schemaProfileHeaders('read', opts.schema) });
         const data = await res.json() as { data?: Record<string, unknown>[] };
         const records = data.data ?? [];
 
