@@ -4,7 +4,7 @@ import { handleError, getRootOpts } from '../../../lib/errors.js';
 import { runApifyAuthBridge } from '../../../lib/apify-bridge.js';
 
 /**
- * `insforge datasource apify login`
+ * `insforge webscraper apify login`
  *
  * Auth bridge: fetches the InsForge-managed Apify token, ensures the Apify CLI
  * is installed, runs `apify login --token <token>` (headless, no browser), and
@@ -33,7 +33,7 @@ export function registerApifyLoginCommand(program: Command): void {
           } else {
             clack.log.success('Apify CLI authenticated.');
             clack.log.warn(
-              'Agent skills did not install. Re-run `insforge datasource apify login`, or install manually with `npx skills add apify/agent-skills`.',
+              'Agent skills did not install. Re-run `insforge webscraper apify login`, or install manually with `npx skills add apify/agent-skills`.',
             );
           }
         }

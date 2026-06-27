@@ -85,7 +85,7 @@ async function isApifyLoggedIn(token: string): Promise<boolean> {
 }
 
 /**
- * Auth bridge shared by `datasource apify connect` and `datasource apify
+ * Auth bridge shared by `webscraper apify connect` and `webscraper apify
  * login`:
  *
  * 1. fetch the InsForge-managed Apify access token,
@@ -111,7 +111,7 @@ export async function runApifyAuthBridge(json: boolean): Promise<{ skillsInstall
   // broken arg parsing). The trusted source (InsForge) should never emit one.
   if (!/^[A-Za-z0-9_-]+$/.test(token)) {
     throw new Error(
-      'Unexpected Apify token format; refusing to pass it to the shell. Re-run `insforge datasource apify connect`.',
+      'Unexpected Apify token format; refusing to pass it to the shell. Re-run `insforge webscraper apify connect`.',
     );
   }
 
@@ -128,7 +128,7 @@ export async function runApifyAuthBridge(json: boolean): Promise<{ skillsInstall
     // fall through to verification
   }
   if (!(await isApifyLoggedIn(token))) {
-    throw new Error('Apify login did not take effect. Re-run `insforge datasource apify login`.');
+    throw new Error('Apify login did not take effect. Re-run `insforge webscraper apify login`.');
   }
 
   process.env.APIFY_TOKEN = token;

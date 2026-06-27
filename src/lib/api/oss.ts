@@ -209,8 +209,8 @@ export async function ossFetch(
       message = 'Agent memory is not available on this backend.\nSelf-hosted: upgrade your InsForge instance to a version with the memory feature. Cloud: contact your InsForge admin to enable agent memory.';
     }
 
-    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/datasources')) {
-      message = 'Data source integrations are not available on this backend.\nThe Apify data source is cloud-only. Self-hosted: this feature is not supported. Cloud: contact your InsForge admin to enable it.';
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/webscraper')) {
+      message = 'The web scraper is not available on this backend.\nThe Apify web scraper is cloud-only. Self-hosted: this feature is not supported. Cloud: contact your InsForge admin to enable it.';
     }
 
     throw new CLIError(message, 1, err.error, res.status);

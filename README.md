@@ -1005,25 +1005,25 @@ npx @insforge/cli diagnose metrics --range 6h
 
 ---
 
-### Data Sources — `npx @insforge/cli datasource`
+### Web Scraper — `npx @insforge/cli webscraper`
 
-Connect external data-source integrations to the linked InsForge project. Provider-specific commands live under `datasource <provider>` (Apify is the first provider). These commands are intended for developers and agents who want to scrape or pull external data into a project: connect the account once, then let the local agent run the provider's tools using an InsForge-managed token. Runtime data calls should fetch a fresh token from InsForge rather than embedding a personal key.
+Connect a web scraper provider to the linked InsForge project. Provider-specific commands live under `webscraper <provider>` (Apify is the first provider). These commands are intended for developers and agents who want to scrape or pull external data into a project: connect the account once, then let the local agent run the provider's tools using an InsForge-managed token. Runtime data calls should fetch a fresh token from InsForge rather than embedding a personal key.
 
-#### `npx @insforge/cli datasource apify connect`
+#### `npx @insforge/cli webscraper apify connect`
 
 Connect your Apify account to your InsForge project via OAuth, then automatically run the auth bridge (token login + agent skills) so the local agent is immediately usable.
 
 ```bash
-npx @insforge/cli datasource apify connect
-npx @insforge/cli datasource apify connect --skip-browser   # only print the OAuth URL, do not auto-open the browser
+npx @insforge/cli webscraper apify connect
+npx @insforge/cli webscraper apify connect --skip-browser   # only print the OAuth URL, do not auto-open the browser
 ```
 
-#### `npx @insforge/cli datasource apify login`
+#### `npx @insforge/cli webscraper apify login`
 
 Authenticate the local Apify CLI/agent using your InsForge-managed token (no browser). Re-run this on any Apify `401`/"not logged in" error; InsForge re-fetches a fresh token. Never use the plain `apify login` browser flow.
 
 ```bash
-npx @insforge/cli datasource apify login
+npx @insforge/cli webscraper apify login
 ```
 
 ---
