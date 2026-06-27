@@ -4,12 +4,14 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
+import { schemaProfileHeaders } from './profile.js';
 
 export function registerRecordsDeleteCommand(recordsCmd: Command): void {
   recordsCmd
     .command('delete <table>')
     .description('Delete records from a table matching a filter')
     .option('--filter <filter>', 'Filter expression (e.g. "id=eq.123")')
+    .option('--schema <name>', 'Schema to target (default: public)')
     .action(async (table: string, opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
@@ -25,7 +27,7 @@ export function registerRecordsDeleteCommand(recordsCmd: Command): void {
 
         const res = await ossFetch(
           `/api/database/records/${encodeURIComponent(table)}?${params}`,
-          { method: 'DELETE' },
+          { method: 'DELETE', headers: schemaProfileHeaders('write', opts.schema) },
         );
 
         const data = await res.json() as { data?: unknown[] };

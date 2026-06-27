@@ -4,12 +4,14 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
+import { schemaProfileHeaders } from './profile.js';
 
 export function registerRecordsCreateCommand(recordsCmd: Command): void {
   recordsCmd
     .command('create <table>')
     .description('Create record(s) in a table')
     .option('--data <json>', 'JSON data to insert (object or array of objects)')
+    .option('--schema <name>', 'Schema to target (default: public)')
     .action(async (table: string, opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
@@ -32,6 +34,7 @@ export function registerRecordsCreateCommand(recordsCmd: Command): void {
           {
             method: 'POST',
             body: JSON.stringify(records),
+            headers: schemaProfileHeaders('write', opts.schema),
           },
         );
 
