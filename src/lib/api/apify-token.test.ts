@@ -32,7 +32,7 @@ describe('fetchApifyAccessToken', () => {
     // ossFetch rewrites a bare route-level 404 to a "not available on this
     // backend" message; we must not clobber it with "run connect".
     const routeMiss = new CLIError(
-      'Data source integrations are not available on this backend.',
+      'The web scraper is not available on this backend.',
       1,
       'NOT_FOUND',
       404,

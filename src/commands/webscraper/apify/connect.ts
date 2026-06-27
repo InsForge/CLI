@@ -109,13 +109,13 @@ async function runConnect(opts: RunConnectOpts): Promise<ConnectResult> {
     const { skillsInstalled } = await runApifyAuthBridge(opts.json);
     if (!opts.json && !skillsInstalled) {
       clack.log.warn(
-        'Agent skills did not install. Re-run `insforge datasource apify login`, or install manually with `npx skills add apify/agent-skills`.',
+        'Agent skills did not install. Re-run `insforge webscraper apify login`, or install manually with `npx skills add apify/agent-skills`.',
       );
     }
   } catch {
     if (!opts.json) {
       clack.log.warn(
-        'Connected, but auto-login/skills install failed. Run `insforge datasource apify login` to finish.',
+        'Connected, but auto-login/skills install failed. Run `insforge webscraper apify login` to finish.',
       );
     }
   }

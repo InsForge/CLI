@@ -172,7 +172,7 @@ export async function pollApifyConnection(
     const elapsed = Date.now() - start;
     if (elapsed >= opts.timeoutMs) {
       throw new CLIError(
-        'Timed out waiting for Apify connection. Re-run `insforge datasource apify connect` after authorizing.',
+        'Timed out waiting for Apify connection. Re-run `insforge webscraper apify connect` after authorizing.',
       );
     }
     opts.onTick?.(elapsed);
