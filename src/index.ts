@@ -90,6 +90,7 @@ import { registerAiCommands } from './commands/ai/index.js';
 import { registerDomainsCommands } from './commands/domains/index.js';
 import { registerMemoryCommands } from './commands/memory/index.js';
 import { guardHook } from './lib/guard/index.js';
+import { playForgerAnimation } from './lib/forger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')) as { version: string };
@@ -113,6 +114,7 @@ program
 // Global options
 program
   .option('--json', 'Output in JSON format')
+  .option('--forger', 'Play the Forger animation and return to the interactive menu')
   .option('--api-url <url>', 'Override Platform API URL')
   .option('-y, --yes', 'Skip confirmation prompts')
   .option('--reason <text>', 'Agent: what the operation does and why (intent) — shown to the human approver for destructive operations')
@@ -272,7 +274,10 @@ registerSchedulesLogsCommand(schedulesCmd);
 // Config commands
 registerConfigCommand(program);
 
-if (process.argv.length <= 2 && process.stdout.isTTY) {
+if (process.argv.length === 3 && process.argv[2] === '--forger' && process.stdout.isTTY) {
+  await playForgerAnimation();
+  await showInteractiveMenu();
+} else if (process.argv.length <= 2 && process.stdout.isTTY) {
   await showInteractiveMenu();
 } else {
   await program.parseAsync();
