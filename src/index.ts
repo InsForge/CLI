@@ -104,6 +104,7 @@ const INSFORGE_LOGO = `
 `;
 
 const program = new Command();
+let didPlayForgerAnimation = false;
 
 program
   .name('insforge')
@@ -120,6 +121,17 @@ program
   .option('--impact <text>', 'Agent: implications — who/what is affected, data loss, reversibility — shown on the approval page')
   .option('--recommendation <text>', 'Agent: your recommendation to the human approver')
   .option('--flag-destructive [reason]', 'Agent: flag this op as destructive for human approval even if InsForge\'s rules consider it safe (escalate-only — cannot downgrade the verdict)');
+
+program.hook('preAction', async (_thisCommand, actionCommand) => {
+  if (!process.stdout.isTTY || didPlayForgerAnimation) return;
+
+  const opts = actionCommand.optsWithGlobals() as { forger?: boolean };
+  if (!opts.forger) return;
+
+  didPlayForgerAnimation = true;
+  const { playForgerAnimation } = await import('./lib/forger.js');
+  await playForgerAnimation();
+});
 
 // Human-in-the-loop guard: a dispatch-pipeline stage that stops dangerous
 // operations for human approval. Lives in the CLI so it protects every caller
@@ -273,13 +285,18 @@ registerSchedulesLogsCommand(schedulesCmd);
 // Config commands
 registerConfigCommand(program);
 
-if (process.argv.length === 3 && process.argv[2] === '--forger') {
-  if (process.stdout.isTTY) {
+program.parseOptions(process.argv);
+const cliArgs = process.argv.slice(2);
+const isForgerOnlyInvocation = cliArgs.length > 0 && cliArgs.every((arg) => arg === '--forger');
+const isTopLevelInvocation = cliArgs.length === 0 || isForgerOnlyInvocation;
+const topLevelOpts = program.opts() as { forger?: boolean };
+
+if (isTopLevelInvocation && process.stdout.isTTY) {
+  if (topLevelOpts.forger) {
+    didPlayForgerAnimation = true;
     const { playForgerAnimation } = await import('./lib/forger.js');
     await playForgerAnimation();
-    await showInteractiveMenu();
   }
-} else if (process.argv.length <= 2 && process.stdout.isTTY) {
   await showInteractiveMenu();
 } else {
   await program.parseAsync();
