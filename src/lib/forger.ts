@@ -99,6 +99,23 @@ export async function playForgerAnimation(): Promise<void> {
     delayMs: frame.duration ?? fallbackDuration,
   }));
 
+  let didCleanup = false;
+  const cleanupTerminal = (): void => {
+    if (didCleanup) return;
+    didCleanup = true;
+    process.stdout.write(RESET + SHOW_CURSOR + ALT_SCREEN_OFF);
+  };
+  const onSigint = (): void => {
+    cleanupTerminal();
+    process.exit(130);
+  };
+  const onSigterm = (): void => {
+    cleanupTerminal();
+    process.exit(143);
+  };
+
+  process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
   process.stdout.write(ALT_SCREEN_ON + HIDE_CURSOR + CLEAR_SCREEN + CURSOR_HOME);
   try {
     for (const frame of renderedFrames) {
@@ -107,6 +124,8 @@ export async function playForgerAnimation(): Promise<void> {
       await sleep(Math.max(frame.delayMs, 0));
     }
   } finally {
-    process.stdout.write(RESET + SHOW_CURSOR + ALT_SCREEN_OFF);
+    process.off('SIGINT', onSigint);
+    process.off('SIGTERM', onSigterm);
+    cleanupTerminal();
   }
 }
