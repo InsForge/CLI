@@ -1,4 +1,4 @@
-import forgerData from '../assets/forger.json';
+import { readFileSync } from 'node:fs';
 
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
@@ -7,6 +7,7 @@ const ALT_SCREEN_OFF = '\x1b[?1049l';
 const CURSOR_HOME = '\x1b[H';
 const CLEAR_SCREEN = '\x1b[2J';
 const RESET = '\x1b[0m';
+const FORGER_ASSET_URL = new URL('./assets/forger.json', import.meta.url);
 
 type Frame = {
   duration?: number;
@@ -87,7 +88,7 @@ function buildFrameLines(
 export async function playForgerAnimation(): Promise<void> {
   if (!process.stdout.isTTY) return;
 
-  const animation = forgerData as AnimationFile;
+  const animation = JSON.parse(readFileSync(FORGER_ASSET_URL, 'utf-8')) as AnimationFile;
   const width = animation.canvas.width;
   const height = animation.canvas.height;
   const fallbackDuration = 1000 / (animation.animation?.frameRate ?? 30);
