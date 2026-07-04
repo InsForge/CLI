@@ -125,6 +125,16 @@ program
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
   if (!process.stdout.isTTY || didPlayForgerAnimation) return;
+  if (actionCommand !== program) return;
+
+  const opts = actionCommand.optsWithGlobals() as { forger?: boolean };
+  if (!opts.forger) return;
+
+  didPlayForgerAnimation = true;
+  const { playForgerAnimation } = await import('./lib/forger.js');
+  await playForgerAnimation();
+});
+  if (!process.stdout.isTTY || didPlayForgerAnimation) return;
 
   const opts = actionCommand.optsWithGlobals() as { forger?: boolean };
   if (!opts.forger) return;
