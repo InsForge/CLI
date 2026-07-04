@@ -130,8 +130,12 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
   if (!opts.forger) return;
 
   didPlayForgerAnimation = true;
-  const { playForgerAnimation } = await import('./lib/forger.js');
-  await playForgerAnimation();
+  try {
+    const { playForgerAnimation } = await import('./lib/forger.js');
+    await playForgerAnimation();
+  } catch (err) {
+    console.error('Failed to play forger animation:', err);
+  }
 });
 
 // Human-in-the-loop guard: a dispatch-pipeline stage that stops dangerous
