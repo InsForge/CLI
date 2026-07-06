@@ -14,12 +14,15 @@ export function registerLoginCommand(program: Command): void {
     .description('Authenticate with InsForge platform')
     .option('--email', 'Login with email and password instead of browser')
     .option('--client-id <id>', 'OAuth client ID (defaults to insforge-cli)')
-    .option('--user-api-key <key>', 'Authenticate with a uak_ personal access token')
+    .option('--api-key <key>', 'Authenticate directly with a uak_ user API key (no exchange)')
+    .option('--user-api-key <key>', 'Authenticate with a uak_ personal access token (exchanged for a session)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
 
       try {
-        if (opts.userApiKey) {
+        if (opts.apiKey) {
+          await loginWithApiKeyDirect(opts.apiKey, json, apiUrl);
+        } else if (opts.userApiKey) {
           await loginWithUserApiKey(opts.userApiKey, json, apiUrl);
         } else if (opts.email) {
           await loginWithEmail(json, apiUrl);
@@ -153,6 +156,82 @@ async function loginWithUserApiKey(
   } else {
     console.log(JSON.stringify({ success: true, user }));
   }
+}
+
+/**
+ * Direct API-key login: store the uak_ key itself as the credential and use it
+ * as the Bearer token on every request — no exchange, no JWT, no refresh. We
+ * still fetch the profile once (authenticating with the key directly) to
+ * validate it and persist identity.
+ */
+async function loginWithApiKeyDirect(
+  key: string,
+  json: boolean,
+  apiUrl?: string,
+): Promise<void> {
+  if (!json) {
+    clack.intro('InsForge CLI');
+  }
+
+  if (!key.startsWith('uak_')) {
+    throw new CLIError('Invalid API key — must start with "uak_".');
+  }
+
+  const s = !json ? clack.spinner() : null;
+  s?.start('Verifying API key...');
+
+  let user: User;
+  try {
+    user = await fetchProfileWithApiKey(key, apiUrl);
+  } catch (err) {
+    s?.stop('API key verification failed');
+    throw err instanceof CLIError
+      ? err
+      : new CLIError(err instanceof Error ? err.message : String(err));
+  }
+
+  // Store the uak_ as the direct bearer credential. access_token/refresh_token
+  // stay empty so getAccessToken() serves user_api_key and refresh logic treats
+  // this as a non-refreshable direct login.
+  saveCredentials({
+    access_token: '',
+    refresh_token: '',
+    user_api_key: key,
+    user,
+  });
+
+  if (!json) {
+    s?.stop(`Authenticated as ${user.email}`);
+    clack.outro('Done');
+  } else {
+    console.log(JSON.stringify({ success: true, user }));
+  }
+}
+
+/** Fetch the user profile authenticating with a uak_ key directly as Bearer. */
+async function fetchProfileWithApiKey(apiKey: string, apiUrl?: string): Promise<User> {
+  const baseUrl = getPlatformApiUrl(apiUrl);
+  const url = `${baseUrl}/auth/v1/profile`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+  } catch (err) {
+    throw new CLIError(formatFetchError(err, url));
+  }
+  if (!res.ok) {
+    throw new CLIError(`API key is invalid or revoked: HTTP ${res.status}`);
+  }
+
+  const profile = (await res.json().catch(() => null)) as { user?: User } | User | null;
+  const user =
+    profile && typeof profile === 'object' && 'user' in profile
+      ? (profile as { user?: User }).user
+      : ((profile as User | null) ?? undefined);
+  if (!user) {
+    throw new CLIError('Profile response was empty');
+  }
+  return user;
 }
 
 /**

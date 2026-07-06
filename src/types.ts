@@ -77,10 +77,17 @@ export interface StoredCredentials {
   access_token: string;
   /**
    * Either an OAuth refresh token (opaque string) or a user API key
-   * prefixed `uak_` (for PAT-based CLI logins). The `uak_` prefix is the
+   * prefixed `uak_` (for exchange-based PAT logins). The `uak_` prefix is the
    * discriminator — see `isPatLogin()` in `lib/credentials.ts`.
    */
   refresh_token: string;
+  /**
+   * A user API key (`uak_`) used DIRECTLY as the Bearer token — no exchange,
+   * no refresh (set by `login --api-key`). When present it takes priority over
+   * `access_token`; a 401 means the key was revoked/expired (re-login needed).
+   * Its presence is the discriminator — see `isDirectApiKeyLogin()`.
+   */
+  user_api_key?: string;
   user: User;
 }
 

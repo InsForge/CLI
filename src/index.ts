@@ -283,7 +283,8 @@ async function showInteractiveMenu(): Promise<void> {
   let isLinked = false;
 
   try {
-    isLoggedIn = !!getCredentials()?.access_token;
+    const creds = getCredentials();
+    isLoggedIn = !!(creds?.user_api_key || creds?.access_token);
   } catch { /* corrupted credentials file */ }
 
   try {

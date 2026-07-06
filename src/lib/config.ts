@@ -130,7 +130,13 @@ export function getFrontendUrl(): string {
 }
 
 export function getAccessToken(): string | null {
-  return process.env.INSFORGE_ACCESS_TOKEN ?? getCredentials()?.access_token ?? null;
+  const creds = getCredentials();
+  // Priority: env override > direct user API key (uak_) > OAuth/exchange JWT.
+  // refresh_token is intentionally NOT a fallback here — it is refresh fuel,
+  // not a bearer credential (an OAuth refresh token would just 401).
+  return (
+    process.env.INSFORGE_ACCESS_TOKEN ?? creds?.user_api_key ?? creds?.access_token ?? null
+  );
 }
 
 export function getProjectId(override?: string): string | null {

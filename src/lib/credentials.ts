@@ -5,9 +5,14 @@ import * as clack from '@clack/prompts';
 import * as prompts from './prompts.js';
 import type { StoredCredentials } from '../types.js';
 
-/** True if stored credentials represent a PAT-based login (refresh_token is a uak_ token). */
+/** True if stored credentials represent an exchange-based PAT login (refresh_token is a uak_ token). */
 export function isPatLogin(creds: StoredCredentials | null | undefined): boolean {
   return creds?.refresh_token?.startsWith('uak_') ?? false;
+}
+
+/** True if stored credentials use a direct user API key (uak_) as the bearer token. */
+export function isDirectApiKeyLogin(creds: StoredCredentials | null | undefined): boolean {
+  return !!creds?.user_api_key;
 }
 
 export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promise<StoredCredentials> {
@@ -27,7 +32,8 @@ export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promi
   }
 
   const creds = getCredentials();
-  if (creds && creds.access_token) return creds;
+  // A direct API key or a present access token is enough to proceed.
+  if (creds && (creds.user_api_key || creds.access_token)) return creds;
 
   // PAT session with an expired/empty access_token: silently re-exchange
   // instead of prompting for browser OAuth.
@@ -62,6 +68,15 @@ export async function refreshAccessToken(apiUrl?: string): Promise<string> {
   }
 
   const platformUrl = getPlatformApiUrl(apiUrl);
+
+  // Direct API key branch: the uak_ IS the credential and cannot be refreshed.
+  // Reaching here means a request 401'd with the key attached, i.e. the key was
+  // revoked or expired — surface a clear re-login message rather than looping.
+  if (isDirectApiKeyLogin(creds)) {
+    throw new AuthError(
+      'API key is invalid, revoked, or expired. Run `npx @insforge/cli login --api-key <new-key>` again.'
+    );
+  }
 
   // PAT branch: re-exchange the stored uak_ for a fresh JWT.
   if (isPatLogin(creds)) {

@@ -1,4 +1,4 @@
-import { getAccessToken, getPlatformApiUrl } from '../config.js';
+import { getAccessToken, getCredentials, getPlatformApiUrl } from '../config.js';
 import { AuthError, CLIError, formatFetchError } from '../errors.js';
 import { refreshAccessToken } from '../credentials.js';
 import type {
@@ -46,7 +46,15 @@ export async function platformFetch(
 ): Promise<Response> {
   const { passThroughStatuses, ...fetchOptions } = options;
   const baseUrl = getPlatformApiUrl(apiUrl);
-  const token = getAccessToken();
+  let token = getAccessToken();
+  if (!token) {
+    // No usable bearer (e.g. an OAuth/exchange session whose access_token was
+    // cleared) but a refresh token can mint one. Direct-API-key logins never
+    // reach here — getAccessToken returns the uak_ itself.
+    if (getCredentials()?.refresh_token) {
+      token = await refreshAccessToken(apiUrl);
+    }
+  }
   if (!token) {
     throw new AuthError();
   }
