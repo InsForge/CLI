@@ -70,3 +70,68 @@ describe('compute deploy --protocol', () => {
     ).rejects.toThrow(/Invalid --protocol/);
   });
 });
+
+describe('compute deploy --always-on / --scale-to-zero', () => {
+  beforeEach(() => {
+    ossFetchMock.mockReset();
+    ossFetchMock.mockResolvedValueOnce({ json: async () => [] }); // initial list
+    ossFetchMock.mockResolvedValueOnce({
+      json: async () => ({ name: 'api', status: 'running', endpointUrl: 'https://api.fly.dev', port: 8080, scaleToZero: false }),
+    });
+  });
+
+  it('includes scaleToZero=false in request body when --always-on', async () => {
+    const cmd = new Command();
+    cmd.exitOverride();
+    const compute = cmd.command('compute');
+    registerComputeDeployCommand(compute);
+    await cmd.parseAsync([
+      'node', 'lim', 'compute', 'deploy',
+      '--image', 'nginx', '--name', 'api', '--always-on',
+    ]);
+    const createCall = ossFetchMock.mock.calls[1];
+    const body = JSON.parse(createCall[1].body);
+    expect(body.scaleToZero).toBe(false);
+  });
+
+  it('includes scaleToZero=true in request body when --scale-to-zero (explicit revert)', async () => {
+    const cmd = new Command();
+    cmd.exitOverride();
+    const compute = cmd.command('compute');
+    registerComputeDeployCommand(compute);
+    await cmd.parseAsync([
+      'node', 'lim', 'compute', 'deploy',
+      '--image', 'nginx', '--name', 'api', '--scale-to-zero',
+    ]);
+    const createCall = ossFetchMock.mock.calls[1];
+    const body = JSON.parse(createCall[1].body);
+    expect(body.scaleToZero).toBe(true);
+  });
+
+  it('omits scaleToZero from body when neither flag is passed — create defaults server-side, update keeps the existing setting', async () => {
+    const cmd = new Command();
+    cmd.exitOverride();
+    const compute = cmd.command('compute');
+    registerComputeDeployCommand(compute);
+    await cmd.parseAsync([
+      'node', 'lim', 'compute', 'deploy',
+      '--image', 'nginx', '--name', 'api',
+    ]);
+    const createCall = ossFetchMock.mock.calls[1];
+    const body = JSON.parse(createCall[1].body);
+    expect('scaleToZero' in body).toBe(false);
+  });
+
+  it('rejects --always-on combined with --scale-to-zero', async () => {
+    const cmd = new Command();
+    cmd.exitOverride();
+    const compute = cmd.command('compute');
+    registerComputeDeployCommand(compute);
+    await expect(
+      cmd.parseAsync([
+        'node', 'lim', 'compute', 'deploy',
+        '--image', 'nginx', '--name', 'api', '--always-on', '--scale-to-zero',
+      ])
+    ).rejects.toThrow(/mutually exclusive/);
+  });
+});

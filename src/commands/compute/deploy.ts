@@ -55,6 +55,14 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
       'Edge protocol: "http" (default) or "tcp" (raw pass-through for Redis, etc.)',
       'http'
     )
+    .option(
+      '--always-on',
+      'Keep the machine running 24/7 instead of scaling to zero when idle (no cold starts; billed for the full uptime)'
+    )
+    .option(
+      '--scale-to-zero',
+      'Explicitly switch an always-on service back to scale-to-zero (the default for new services)'
+    )
     .action(async (dir: string | undefined, opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
@@ -86,6 +94,16 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             '--env and --env-file are mutually exclusive — pick one source for the env vars.'
           );
         }
+        if (opts.alwaysOn && opts.scaleToZero) {
+          throw new CLIError('--always-on and --scale-to-zero are mutually exclusive — pick one.');
+        }
+        // Omitted flags send nothing: create defaults to scale-to-zero
+        // server-side, update keeps the service's existing setting.
+        const scaleToZero: boolean | undefined = opts.alwaysOn
+          ? false
+          : opts.scaleToZero
+            ? true
+            : undefined;
         let envVars: Record<string, string> | undefined;
         if (opts.env) {
           let parsed: unknown;
@@ -118,6 +136,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         };
         if (envVars) baseBody.envVars = envVars;
         if (opts.protocol === 'tcp') baseBody.protocol = 'tcp';
+        if (scaleToZero !== undefined) baseBody.scaleToZero = scaleToZero;
 
         // ─── Image mode ─────────────────────────────────────────────────
         if (!dir) {
@@ -163,6 +182,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
               console.log(`  Endpoint: ${service.endpointUrl}`);
             }
             if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
+            if (service.scaleToZero === false) console.log(`  Always-on: scale-to-zero disabled (machine runs 24/7; pass --scale-to-zero to revert)`);
           }
           await reportCliUsage('cli.compute.deploy', true);
           return;
@@ -279,6 +299,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
         };
         if (envVars) updateBody.envVars = envVars;
         if (opts.protocol === 'tcp') updateBody.protocol = 'tcp';
+        if (scaleToZero !== undefined) updateBody.scaleToZero = scaleToZero;
 
         const finalRes = await ossFetch(
           `/api/compute/services/${encodeURIComponent(serviceId)}`,
@@ -302,6 +323,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             console.log(`  Endpoint: ${service.endpointUrl}`);
           }
           if (service.port !== undefined) console.log(`  Port: ${service.port} (container must listen on this port)`);
+          if (service.scaleToZero === false) console.log(`  Always-on: scale-to-zero disabled (machine runs 24/7; pass --scale-to-zero to revert)`);
           console.log(`  Image: ${imageRef} (built remotely; no local image to clean up)`);
         }
 
