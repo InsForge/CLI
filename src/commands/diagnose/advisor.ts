@@ -1,8 +1,8 @@
 import type { Command } from 'commander';
-import { platformFetch } from '../../lib/api/platform.js';
+import { platformFetch, getProject } from '../../lib/api/platform.js';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
+import { handleError, getRootOpts, ProjectNotLinkedError } from '../../lib/errors.js';
 import { getProjectConfig, FAKE_PROJECT_ID } from '../../lib/config.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
@@ -69,29 +69,15 @@ function isVersionGte(version: string, min: string): boolean {
 }
 
 /**
- * Read the project's own OSS backend version from its health endpoint.
- * `/api/health` returns `{ version: "2.2.2" }` (may carry a leading `v`).
- * Returns null when the version can't be determined; callers treat that as
- * "older than the advisor threshold" (safe: routes to cloud-backend in
- * Platform mode, clear error in OSS mode).
+ * In Platform mode, decide whether the project's own OSS backend is new enough
+ * to serve the advisor endpoints itself, based on the Platform-tracked
+ * `service_version` (the authoritative version; same source manage.ts and
+ * update-version use). A Platform hiccup / null version degrades to `false`
+ * (→ cloud-backend legacy path) rather than erroring.
  */
-async function getOssBackendVersion(): Promise<string | null> {
-  try {
-    const res = await ossFetch('/api/health');
-    const body = (await res.json()) as { version?: string };
-    return typeof body.version === 'string' && body.version.length > 0 ? body.version : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Decide whether the project's OSS backend is new enough to serve the advisor
- * endpoints itself. `false` means route to cloud-backend (Platform mode) or
- * error out (OSS `--api-key` mode).
- */
-async function ossBackendServesAdvisor(): Promise<boolean> {
-  const version = await getOssBackendVersion();
+async function platformProjectServesAdvisor(projectId: string, apiUrl?: string): Promise<boolean> {
+  const project = await getProject(projectId, apiUrl).catch(() => null);
+  const version = project?.service_version;
   if (!version) return false;
   return isVersionGte(version, OSS_ADVISOR_MIN_VERSION);
 }
@@ -129,24 +115,22 @@ async function fetchPlatformAdvisorIssues(
 
 /**
  * Scan summary only, used by `diagnose` (no subcommand) to build the
- * aggregate health report. Routes by an explicit backend-version gate: OSS
- * backends >= OSS_ADVISOR_MIN_VERSION serve the advisor themselves; older
- * project backends read from cloud-backend (Platform mode only). In OSS
- * `--api-key` mode with an older backend there is no cloud fallback, so this
- * throws.
+ * aggregate health report.
+ *
+ * OSS `--api-key` mode: read the project's own OSS advisor directly (only
+ * source; the oss.ts route-level-404 message guards old backends).
+ * Platform mode: gate on the Platform-tracked `service_version` — >= 2.2.7
+ * uses the project's OSS advisor, otherwise the cloud-backend legacy path.
  */
 export async function fetchAdvisorSummary(
   projectId: string,
   apiUrl?: string,
 ): Promise<AdvisorScanSummary | null> {
-  const useOssAdvisor = await ossBackendServesAdvisor();
-  if (useOssAdvisor) {
+  if (projectId === FAKE_PROJECT_ID) {
     return await fetchOssAdvisorLatest();
   }
-  if (projectId === FAKE_PROJECT_ID) {
-    throw new CLIError(
-      `Backend Advisor requires InsForge backend >= ${OSS_ADVISOR_MIN_VERSION}. Upgrade your instance.`,
-    );
+  if (await platformProjectServesAdvisor(projectId, apiUrl)) {
+    return await fetchOssAdvisorLatest();
   }
   return await fetchPlatformAdvisorLatest(projectId, apiUrl);
 }
@@ -177,17 +161,15 @@ export function registerDiagnoseAdvisorCommand(diagnoseCmd: Command): void {
         let scan: AdvisorScanSummary | null;
         let issuesData: AdvisorIssuesResponse;
 
-        // Explicit version gate: the project's own OSS backend serves the
-        // advisor from OSS_ADVISOR_MIN_VERSION onward. Older project backends
-        // don't have the route — their data lives in cloud-backend, which we
-        // can only reach in Platform mode.
-        if (await ossBackendServesAdvisor()) {
+        // Version gate. OSS `--api-key` mode: no Platform project to query, so
+        // hit the project's own OSS advisor directly — the oss.ts
+        // route-level-404 message guards backends too old to have the route.
+        // Platform mode: route by the Platform-tracked `service_version` —
+        // >= OSS_ADVISOR_MIN_VERSION uses the project's OSS advisor, older
+        // projects read from cloud-backend (which still holds their data).
+        if (ossMode || (await platformProjectServesAdvisor(projectId, apiUrl))) {
           scan = await fetchOssAdvisorLatest();
           issuesData = await fetchOssAdvisorIssues(issueParams);
-        } else if (ossMode) {
-          throw new CLIError(
-            `Backend Advisor requires InsForge backend >= ${OSS_ADVISOR_MIN_VERSION}. Upgrade your instance.`,
-          );
         } else {
           scan = await fetchPlatformAdvisorLatest(projectId, apiUrl);
           issuesData = await fetchPlatformAdvisorIssues(projectId, issueParams, apiUrl);
