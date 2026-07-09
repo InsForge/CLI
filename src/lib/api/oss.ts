@@ -213,6 +213,15 @@ export async function ossFetch(
       message = 'The web scraper is not available on this backend.\nThe Apify web scraper is cloud-only. Self-hosted: this feature is not supported. Cloud: contact your InsForge admin to enable it.';
     }
 
+    // Safe to treat any 404 on /api/advisor/* as a route-level miss: the OSS
+    // advisor endpoints return 200 with a null/empty body when no scan exists
+    // (a resource-level "no data" state), so they never emit a 404 for a
+    // present-but-empty resource. A 404 here therefore means the route itself
+    // is absent (backend older than the advisor feature).
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/advisor')) {
+      message = 'Backend Advisor is not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: update the project to a newer version.';
+    }
+
     throw new CLIError(message, 1, err.error, res.status);
   }
 

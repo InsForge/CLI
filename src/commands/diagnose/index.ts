@@ -35,9 +35,10 @@ async function collectDiagnosticData(
   const metricsPromise = ossMode
     ? Promise.reject(new Error('Platform login required (linked via --api-key)'))
     : fetchMetricsSummary(projectId, apiUrl);
-  const advisorPromise = ossMode
-    ? Promise.reject(new Error('Platform login required (linked via --api-key)'))
-    : fetchAdvisorSummary(projectId, apiUrl);
+  // Tries the project's own OSS advisor first, falling back to the
+  // cloud-backend Platform advisor for older project backends — works in
+  // both OSS and Platform link modes.
+  const advisorPromise = fetchAdvisorSummary(projectId, apiUrl);
 
   const [metricsResult, advisorResult, dbResult, logsResult] = await Promise.allSettled([
     metricsPromise,
@@ -75,6 +76,9 @@ async function collectDiagnosticData(
   }
 
   if (advisorResult.status === 'fulfilled') {
+    // A null summary is a healthy "no scan yet" state, not a failure — leave
+    // `advisor` null without recording an error so JSON consumers don't treat
+    // an unscanned project as a failed diagnostic run.
     advisor = advisorResult.value;
   } else {
     errors.push(advisorResult.reason?.message ?? 'Advisor unavailable');
