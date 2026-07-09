@@ -48,14 +48,17 @@ function isOssAdvisorRouteMissing(err: unknown): boolean {
 
 async function fetchOssAdvisorLatest(): Promise<AdvisorScanSummary | null> {
   const res = await ossFetch('/api/advisor/latest');
-  return (await res.json()) as AdvisorScanSummary | null;
+  // Guard the parse: no-scan returns null and an empty body would make
+  // res.json() throw, matching the .catch pattern used across the codebase.
+  return (await res.json().catch(() => null)) as AdvisorScanSummary | null;
 }
 
 async function fetchOssAdvisorIssues(params: URLSearchParams): Promise<AdvisorIssuesResponse> {
   const res = await ossFetch(`/api/advisor/issues?${params.toString()}`);
   // The OSS backend returns { issues: [], total: 0 } for the no-scan state, but
-  // normalize defensively so a null/empty body can never crash the caller.
-  const data = (await res.json()) as AdvisorIssuesResponse | null;
+  // normalize defensively so a null/empty body can never crash the caller
+  // (res.json() throws on an empty body, so guard the parse itself too).
+  const data = (await res.json().catch(() => null)) as AdvisorIssuesResponse | null;
   return data ?? { issues: [], total: 0 };
 }
 
