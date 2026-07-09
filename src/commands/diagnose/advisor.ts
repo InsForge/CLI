@@ -53,7 +53,10 @@ async function fetchOssAdvisorLatest(): Promise<AdvisorScanSummary | null> {
 
 async function fetchOssAdvisorIssues(params: URLSearchParams): Promise<AdvisorIssuesResponse> {
   const res = await ossFetch(`/api/advisor/issues?${params.toString()}`);
-  return (await res.json()) as AdvisorIssuesResponse;
+  // The OSS backend returns { issues: [], total: 0 } for the no-scan state, but
+  // normalize defensively so a null/empty body can never crash the caller.
+  const data = (await res.json()) as AdvisorIssuesResponse | null;
+  return data ?? { issues: [], total: 0 };
 }
 
 async function fetchPlatformAdvisorLatest(
