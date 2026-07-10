@@ -132,7 +132,10 @@ export function registerComputeUpdateCommand(computeCmd: Command): void {
         } catch (updateErr) {
           // A timeout on a registry.fly.io image usually means the tag was
           // deleted along with a previous service — say so instead of
-          // "cloud unavailable".
+          // "cloud unavailable". Known gap: an update without --image
+          // relaunches against the service's *stored* image, which can be a
+          // dead registry.fly.io tag too, but the CLI doesn't know that URL
+          // without an extra fetch — those timeouts pass through unhinted.
           throw opts.image
             ? withStaleImageHint(updateErr, String(opts.image))
             : updateErr;

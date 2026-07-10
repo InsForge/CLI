@@ -20,7 +20,13 @@ export function flyRegistryRepo(imageUrl: string): string | null {
 /** True when the image reference points at the registry of the Fly app that
  *  backs this very service (`<service-name>-<project-id>`). If that service
  *  does not exist, neither does the app — so the registry is empty and the
- *  deploy is guaranteed to fail. */
+ *  deploy is guaranteed to fail.
+ *
+ *  The `<name>-<projectId>` scheme mirrors the OSS backend's makeFlyAppName
+ *  (insforge/backend/src/providers/compute/services.service.ts) — the CLI
+ *  never builds app names itself. If the server ever changes the scheme this
+ *  guard silently no-ops (falls back to the timeout + hint path); it can
+ *  never wrongly block a valid deploy. */
 export function imageBelongsToOwnService(
   imageUrl: string,
   serviceName: string,
