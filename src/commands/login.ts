@@ -17,6 +17,9 @@ export function registerLoginCommand(program: Command): void {
     .option('--user-api-key <key>', 'Authenticate with a uak_ user API key')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
+      // Which auth path was taken — user_api_key logins are the signal the
+      // dashboard's connect-agent onboarding funnel is measured by.
+      const method = opts.userApiKey ? 'user_api_key' : opts.email ? 'email' : 'oauth';
 
       try {
         if (opts.userApiKey) {
@@ -27,12 +30,12 @@ export function registerLoginCommand(program: Command): void {
           await loginWithOAuth(json, apiUrl);
         }
 
-        await trackTopLevelUsage('login', true);
+        await trackTopLevelUsage('login', true, { method });
       } catch (err) {
         if (err instanceof Error && err.message.includes('cancelled')) {
           process.exit(0);
         }
-        await trackTopLevelUsage('login', false, {}, err);
+        await trackTopLevelUsage('login', false, { method }, err);
         handleError(err, json);
       }
     });
