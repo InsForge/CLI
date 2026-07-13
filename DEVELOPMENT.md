@@ -106,8 +106,8 @@ npm pack --dry-run
 
 Releases are fully automated via GitHub Actions
 ([`.github/workflows/publish.yml`](.github/workflows/publish.yml)).
-The CLI is published to npm as `@insforge/cli` whenever a version tag is
-pushed.
+The CLI is published to npm as `@insforge/cli` whenever a GitHub Release is
+published.
 
 **Steps to ship a release:**
 
@@ -116,14 +116,17 @@ pushed.
    additive features, major for breaking changes.
 2. **Commit the bump** with a message like `chore: bump version to X.Y.Z`.
 3. **Merge to `main`** via PR as usual.
-4. **Create and push a tag** matching the version on `main`:
+4. **Create and publish a GitHub Release** for the version tag on `main`:
    ```bash
    git checkout main && git pull
-   git tag vX.Y.Z
-   git push origin vX.Y.Z
+   gh release create vX.Y.Z --title vX.Y.Z --generate-notes
    ```
-5. The `publish` workflow triggers on the tag push and:
-   - Runs `npm run build` with `POSTHOG_API_KEY` injected from repo secrets.
+   `gh release create` creates the tag and the release in one step. Note that
+   pushing a bare tag (`git push origin vX.Y.Z`) does **not** trigger the
+   workflow — it only fires when a GitHub Release is published for the tag.
+5. The `publish` workflow triggers on the release being published and:
+   - Runs `npm run lint`, then `npm run build` with `POSTHOG_API_KEY`
+     injected from repo secrets.
    - Runs `npm publish --access public` with `NPM_TOKEN` from repo secrets.
 6. **Verify** the new version appears on
    [npmjs.com/package/@insforge/cli](https://www.npmjs.com/package/@insforge/cli)
