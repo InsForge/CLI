@@ -1159,6 +1159,66 @@ Skill files are written to per-agent directories (e.g. `.claude/`, `.cursor/`, `
 
 For bare agent harnesses that follow the open [agents.md](https://agents.md) standard (a single `AGENTS.md` at the project root) rather than the per-agent skill directories, the CLI also writes an `AGENTS.md` into your project. It contains a delimited `<!-- INSFORGE:START -->…<!-- INSFORGE:END -->` block with InsForge context (where credentials live, when to reach for the SDK vs. the CLI, and a few correctness patterns). If you already have an `AGENTS.md`, the block is appended once and refreshed in place on subsequent runs, leaving your own content untouched. Unlike the per-agent skill files, `AGENTS.md` is **not** gitignored, so you can commit and share it.
 
+### MCP Connection
+
+After linking a project, connect or disconnect a local MCP provider config.
+
+#### `npx @insforge/cli connect [provider]`
+
+Writes the InsForge MCP server configuration into the provider's local config file, then marks the backend MCP status as `connected`.
+
+```bash
+# Connect the default provider (cursor)
+npx @insforge/cli connect
+
+# Connect a specific provider
+npx @insforge/cli connect cursor
+npx @insforge/cli connect claude-code
+npx @insforge/cli connect windsurf
+npx @insforge/cli connect cline
+npx @insforge/cli connect roo
+npx @insforge/cli connect codex
+npx @insforge/cli connect antigravity
+
+# Output as JSON
+npx @insforge/cli connect cursor --json
+```
+
+The `connect` command:
+1. Reads the linked project config from `.insforge/project.json`
+2. Writes an `insforge` MCP server entry into the provider's config file (e.g. `.cursor/mcp.json` for Cursor, `.mcp.json` for Claude Code)
+3. Reports the backend MCP status as `connected`
+
+Config files written per provider:
+
+| Provider      | Config file written              |
+| ------------- | -------------------------------- |
+| `cursor`      | `.cursor/mcp.json`               |
+| `claude-code` | `.mcp.json`                      |
+| `windsurf`    | `.windsurf/mcp_config.json`      |
+| `cline`       | `.cline/mcp.json`                |
+| `roo`         | `.roo/mcp.json`                  |
+| `codex`       | `.codex/mcp.json`                |
+| `antigravity` | `.antigravity/mcp.json`          |
+
+#### `npx @insforge/cli disconnect [provider]`
+
+Removes the InsForge MCP server entry from the provider's local config file, then marks the backend MCP status as `disconnected`.
+
+```bash
+# Disconnect from all known local provider configs
+npx @insforge/cli disconnect
+
+# Disconnect from a specific provider
+npx @insforge/cli disconnect cursor
+npx @insforge/cli disconnect claude-code
+
+# Output as JSON
+npx @insforge/cli disconnect cursor --json
+```
+
+The `disconnect` command removes only the `insforge` key from `mcpServers` — all other MCP server entries in the config file are left untouched.
+
 ## Analytics
 
 The CLI reports anonymous usage events to [PostHog](https://posthog.com) so we can understand which features are being used and prioritize improvements.
