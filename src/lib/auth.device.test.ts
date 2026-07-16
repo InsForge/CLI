@@ -104,6 +104,28 @@ describe('pollForDeviceTokens', () => {
     await expect(pollForDeviceTokens({ ...params, expiresIn: 0.05 })).rejects.toThrow(/expired/i);
   });
 
+  it('defaults to a 5s interval when the server omits it (RFC 8628 §3.2)', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn(async () =>
+        jsonResponse({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 })
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const promise = pollForDeviceTokens({ ...params, interval: undefined });
+
+      // A missing interval must NOT collapse to a zero-delay hammer loop.
+      await vi.advanceTimersByTimeAsync(4900);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(200);
+      await expect(promise).resolves.toMatchObject({ access_token: 'at' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('survives transient network errors and keeps polling', async () => {
     let calls = 0;
     vi.stubGlobal(

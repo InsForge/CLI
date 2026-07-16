@@ -328,7 +328,7 @@ export async function requestDeviceAuthorization(params: {
       body: JSON.stringify({ client_id: params.clientId, scope: params.scopes }),
     });
   } catch (err) {
-    throw new Error(formatFetchError(err, url), { cause: err });
+    throw new Error(`Device authorization failed — ${formatFetchError(err, url)}`, { cause: err });
   }
 
   if (!res.ok) {
@@ -351,20 +351,19 @@ export async function pollForDeviceTokens(params: {
   platformUrl: string;
   clientId: string;
   deviceCode: string;
-  interval: number;
+  /** RFC 8628 §3.2 makes this optional in the server response; defaults to 5s. */
+  interval?: number;
   expiresIn: number;
-  onPoll?: () => void;
 }): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
   const tokenUrl = `${params.platformUrl}/api/oauth/v1/token`;
   const deadline = Date.now() + params.expiresIn * 1000;
-  let intervalMs = Math.max(params.interval, 1) * 1000;
+  let intervalMs = Math.max(params.interval || 5, 1) * 1000;
 
   while (Date.now() < deadline) {
     // Deliberately NOT unref'd: this timer is often the only thing on the
     // event loop (no callback server in this flow), and unref'ing it lets
     // the process exit mid-poll with an unsettled top-level await.
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    params.onPoll?.();
 
     let res: Response;
     try {
@@ -441,7 +440,7 @@ export async function performDeviceLogin(apiUrl?: string): Promise<StoredCredent
   }
 
   const s = isInteractive ? clack.spinner() : null;
-  s?.start(`Waiting for approval in the browser (code ${device.user_code})...`);
+  s?.start(`Waiting for approval (code ${device.user_code})...`);
 
   try {
     const tokens = await pollForDeviceTokens({
