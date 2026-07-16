@@ -129,6 +129,18 @@ describe('assess — command-path classification', () => {
     expect(assess(cmd('secrets delete', ['KEY'])).severity).toBe('high');
   });
 
+  it('flags Razorpay webhook secret rotation as high risk', () => {
+    const risk = assess({
+      path: 'payments razorpay webhooks rotate-secret',
+      args: [],
+      opts: { environment: 'live' },
+    });
+
+    expect(risk.severity).toBe('high');
+    expect(risk.kind).toBe('payments.razorpay_webhook.rotate_secret');
+    expect(risk.whatHappens).toContain('live');
+  });
+
   it('catches unregistered destructive verbs (defense in depth)', () => {
     const r = assess(cmd('widgets destroy', ['x']));
     expect(r.severity).toBe('high');
