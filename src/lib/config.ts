@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { GlobalConfig, ProjectConfig, StoredCredentials } from '../types.js';
+import type { GlobalConfig, PendingOAuthLogin, ProjectConfig, StoredCredentials } from '../types.js';
 
 const GLOBAL_DIR = join(homedir(), '.insforge');
 const CREDENTIALS_FILE = join(GLOBAL_DIR, 'credentials.json');
 const CONFIG_FILE = join(GLOBAL_DIR, 'config.json');
+const PENDING_LOGIN_FILE = join(GLOBAL_DIR, 'pending-login.json');
 
 const DEFAULT_PLATFORM_URL = 'https://api.insforge.dev';
 const DEFAULT_FRONTEND_URL = 'https://insforge.dev';
@@ -48,6 +49,27 @@ export function getCredentials(): StoredCredentials | null {
 export function saveCredentials(creds: StoredCredentials): void {
   ensureGlobalDir();
   writeFileSync(CREDENTIALS_FILE, JSON.stringify(creds, null, 2), { mode: 0o600 });
+}
+
+// --- Pending headless OAuth login (login --no-browser) ---
+
+export function getPendingLogin(): PendingOAuthLogin | null {
+  if (!existsSync(PENDING_LOGIN_FILE)) {
+    return null;
+  }
+  const raw = readFileSync(PENDING_LOGIN_FILE, 'utf-8');
+  return JSON.parse(raw);
+}
+
+export function savePendingLogin(pending: PendingOAuthLogin): void {
+  ensureGlobalDir();
+  writeFileSync(PENDING_LOGIN_FILE, JSON.stringify(pending, null, 2), { mode: 0o600 });
+}
+
+export function clearPendingLogin(): void {
+  if (existsSync(PENDING_LOGIN_FILE)) {
+    unlinkSync(PENDING_LOGIN_FILE);
+  }
 }
 
 export function clearCredentials(): void {

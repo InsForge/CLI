@@ -3,7 +3,7 @@ import * as clack from '@clack/prompts';
 import * as prompts from '../lib/prompts.js';
 import { saveCredentials, getPlatformApiUrl } from '../lib/config.js';
 import { login as platformLogin } from '../lib/api/platform.js';
-import { performOAuthLogin } from '../lib/auth.js';
+import { performOAuthLogin, startHeadlessOAuthLogin, completeHeadlessOAuthLogin } from '../lib/auth.js';
 import { handleError, getRootOpts, CLIError, formatFetchError } from '../lib/errors.js';
 import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 import type { StoredCredentials, User } from '../types.js';
@@ -15,17 +15,31 @@ export function registerLoginCommand(program: Command): void {
     .option('--email', 'Login with email and password instead of browser')
     .option('--client-id <id>', 'OAuth client ID (defaults to insforge-cli)')
     .option('--user-api-key <key>', 'Authenticate with a uak_ user API key')
+    .option('--no-browser', 'Print the sign-in URL and exit; finish later with --callback-url (for sandboxes/SSH where the browser cannot reach this process)')
+    .option('--callback-url <url>', 'Complete a --no-browser login with the URL the browser was redirected to')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       // Which auth path was taken — user_api_key logins are the signal the
       // dashboard's connect-agent onboarding funnel is measured by.
-      const method = opts.userApiKey ? 'user_api_key' : opts.email ? 'email' : 'oauth';
+      const method = opts.userApiKey
+        ? 'user_api_key'
+        : opts.email
+          ? 'email'
+          : opts.callbackUrl
+            ? 'oauth_callback_url'
+            : opts.browser === false
+              ? 'oauth_no_browser'
+              : 'oauth';
 
       try {
         if (opts.userApiKey) {
           await loginWithUserApiKey(opts.userApiKey, json, apiUrl);
         } else if (opts.email) {
           await loginWithEmail(json, apiUrl);
+        } else if (opts.callbackUrl) {
+          await completeHeadlessLogin(opts.callbackUrl, json, apiUrl);
+        } else if (opts.browser === false) {
+          startHeadlessLogin(json, apiUrl);
         } else {
           await loginWithOAuth(json, apiUrl);
         }
@@ -96,6 +110,51 @@ async function loginWithEmail(json: boolean, apiUrl?: string): Promise<void> {
     };
     saveCredentials(creds);
     console.log(JSON.stringify({ success: true, user: result.user }));
+  }
+}
+
+/**
+ * `login --no-browser`, step 1: print the authorize URL and exit. The PKCE
+ * state is persisted so a separate `login --callback-url` invocation can
+ * finish — required in agent sandboxes (e.g. the ChatGPT app) where the
+ * browser can never reach a loopback listener inside this process.
+ */
+function startHeadlessLogin(json: boolean, apiUrl?: string): void {
+  const { authUrl } = startHeadlessOAuthLogin(apiUrl);
+
+  if (json) {
+    console.log(JSON.stringify({
+      success: true,
+      pending: true,
+      auth_url: authUrl,
+      next_step: 'Open auth_url in a browser, sign in, then run: insforge login --callback-url "<url from the browser address bar>"',
+    }));
+    return;
+  }
+
+  clack.intro('InsForge CLI');
+  clack.log.info(`Open this URL in your browser to sign in:\n\n${authUrl}`);
+  clack.log.info(
+    'After signing in, the browser will land on a http://127.0.0.1/... page that cannot connect — that is expected.\n' +
+    'Copy the FULL URL from the address bar and run:\n\n' +
+    '  insforge login --callback-url "<pasted url>"',
+  );
+  clack.outro('Waiting for you to finish in the browser (link valid ~10 minutes)');
+}
+
+/** `login --callback-url`, step 2: redeem the pasted callback URL. */
+async function completeHeadlessLogin(callbackUrl: string, json: boolean, apiUrl?: string): Promise<void> {
+  if (!json) {
+    clack.intro('InsForge CLI');
+  }
+
+  const creds = await completeHeadlessOAuthLogin(callbackUrl, apiUrl);
+
+  if (!json) {
+    clack.log.success(`Authenticated as ${creds.user.email || creds.user.id}`);
+    clack.outro('Done');
+  } else {
+    console.log(JSON.stringify({ success: true, user: creds.user }));
   }
 }
 
