@@ -360,7 +360,10 @@ export async function pollForDeviceTokens(params: {
   let intervalMs = Math.max(params.interval, 1) * 1000;
 
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, intervalMs).unref?.());
+    // Deliberately NOT unref'd: this timer is often the only thing on the
+    // event loop (no callback server in this flow), and unref'ing it lets
+    // the process exit mid-poll with an unsettled top-level await.
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
     params.onPoll?.();
 
     let res: Response;
