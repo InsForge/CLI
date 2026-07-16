@@ -4,10 +4,17 @@ import { URL } from 'node:url';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 import { isInteractive } from './prompts.js';
-import { getGlobalConfig, getPlatformApiUrl, saveCredentials } from './config.js';
+import {
+  getGlobalConfig,
+  getPlatformApiUrl,
+  saveCredentials,
+  getPendingDeviceLogin,
+  savePendingDeviceLogin,
+  clearPendingDeviceLogin,
+} from './config.js';
 import { getProfile } from './api/platform.js';
 import { formatFetchError } from './errors.js';
-import type { StoredCredentials } from '../types.js';
+import type { PendingDeviceLogin, StoredCredentials } from '../types.js';
 
 // Default OAuth client for InsForge CLI (pre-registered on the platform)
 export const DEFAULT_CLIENT_ID = 'clf_NK8cMUs41gm8ZcfdtSguVw';
@@ -405,29 +412,69 @@ export async function pollForDeviceTokens(params: {
 }
 
 /**
- * Full device login: request codes, show the verification URL + user code,
- * poll until approved, store credentials.
+ * A prior `login --device` attempt that can still complete: same server and
+ * client, with a meaningful amount of its 15-minute lifetime left. Used to
+ * RESUME polling the same code after the process was killed mid-poll (agent
+ * sandboxes with command timeouts) — if the user already approved while no
+ * poller was alive, the resumed poll redeems immediately.
+ */
+function getResumableDeviceLogin(platformUrl: string, clientId: string): PendingDeviceLogin | null {
+  try {
+    const pending = getPendingDeviceLogin();
+    if (
+      pending &&
+      pending.platform_url === platformUrl &&
+      pending.client_id === clientId &&
+      new Date(pending.expires_at).getTime() - Date.now() > 60_000
+    ) {
+      return pending;
+    }
+  } catch {
+    /* corrupt file — fall through to a fresh attempt */
+  }
+  return null;
+}
+
+/**
+ * Full device login: request codes (or resume a still-valid pending attempt),
+ * show the verification URL + user code, poll until approved, store
+ * credentials.
  */
 export async function performDeviceLogin(apiUrl?: string): Promise<StoredCredentials> {
   const platformUrl = getPlatformApiUrl(apiUrl);
   const config = getGlobalConfig();
   const clientId = config.oauth_client_id ?? DEFAULT_CLIENT_ID;
 
-  const device = await requestDeviceAuthorization({
-    platformUrl,
-    clientId,
-    scopes: OAUTH_SCOPES,
-  });
+  const resumed = getResumableDeviceLogin(platformUrl, clientId);
+  const device = resumed ?? await (async () => {
+    const fresh = await requestDeviceAuthorization({
+      platformUrl,
+      clientId,
+      scopes: OAUTH_SCOPES,
+    });
+    const pending: PendingDeviceLogin = {
+      device_code: fresh.device_code,
+      user_code: fresh.user_code,
+      verification_uri_complete: fresh.verification_uri_complete,
+      interval: fresh.interval ?? 5,
+      expires_at: new Date(Date.now() + fresh.expires_in * 1000).toISOString(),
+      platform_url: platformUrl,
+      client_id: clientId,
+    };
+    savePendingDeviceLogin(pending);
+    return pending;
+  })();
 
+  const resumeNote = resumed ? ' (resuming the previous login attempt — same code)' : '';
   const instructions =
     `Open ${pc.cyan(pc.underline(device.verification_uri_complete))}\n` +
-    `and confirm this code: ${pc.bold(device.user_code)}`;
+    `and confirm this code: ${pc.bold(device.user_code)}${resumeNote}`;
 
   if (isInteractive) {
     clack.log.info(`To sign in:\n${instructions}`);
   } else {
     // Agent shells: stderr so JSON stdout stays clean, but agents and humans see it.
-    process.stderr.write(`\nTo sign in, ask the user to open:\n\n  ${device.verification_uri_complete}\n\nand confirm the code ${device.user_code}. Waiting for approval...\n`);
+    process.stderr.write(`\nTo sign in, ask the user to open:\n\n  ${device.verification_uri_complete}\n\nand confirm the code ${device.user_code}${resumeNote}. If they already approved, this completes immediately. Waiting for approval...\n`);
   }
 
   // Best-effort browser open — on a local machine this lands the user
@@ -448,8 +495,9 @@ export async function performDeviceLogin(apiUrl?: string): Promise<StoredCredent
       clientId,
       deviceCode: device.device_code,
       interval: device.interval,
-      expiresIn: device.expires_in,
+      expiresIn: Math.max((new Date(device.expires_at).getTime() - Date.now()) / 1000, 1),
     });
+    clearPendingDeviceLogin();
 
     const creds: StoredCredentials = {
       access_token: tokens.access_token,
@@ -471,6 +519,11 @@ export async function performDeviceLogin(apiUrl?: string): Promise<StoredCredent
 
     return creds;
   } catch (err) {
+    // Denied/expired codes are dead — a rerun must mint a fresh one. On
+    // transient failures keep the pending file so a rerun resumes this code.
+    if (err instanceof Error && /denied|expired/i.test(err.message)) {
+      clearPendingDeviceLogin();
+    }
     s?.stop('Authentication failed');
     if (!isInteractive) process.stderr.write('Authentication failed\n');
     throw err;

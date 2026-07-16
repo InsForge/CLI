@@ -91,6 +91,24 @@ export interface StoredCredentials {
   user: User;
 }
 
+/**
+ * In-flight device login (`login --device`) persisted so a re-run can resume
+ * polling the SAME code instead of minting a new one — critical in agent
+ * sandboxes that may kill the polling process before the user approves (the
+ * approval still lands, and the re-run redeems it immediately). The
+ * device_code is the bearer secret for this attempt, so the file is 0600 and
+ * cleared on completion, denial, or expiry.
+ */
+export interface PendingDeviceLogin {
+  device_code: string;
+  user_code: string;
+  verification_uri_complete: string;
+  interval: number;
+  expires_at: string;
+  platform_url: string;
+  client_id: string;
+}
+
 // Global config
 export interface GlobalConfig {
   default_org_id?: string;

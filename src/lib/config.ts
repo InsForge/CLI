@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { GlobalConfig, ProjectConfig, StoredCredentials } from '../types.js';
+import type { GlobalConfig, PendingDeviceLogin, ProjectConfig, StoredCredentials } from '../types.js';
 
 const GLOBAL_DIR = join(homedir(), '.insforge');
 const CREDENTIALS_FILE = join(GLOBAL_DIR, 'credentials.json');
@@ -50,10 +50,33 @@ export function saveCredentials(creds: StoredCredentials): void {
   writeFileSync(CREDENTIALS_FILE, JSON.stringify(creds, null, 2), { mode: 0o600 });
 }
 
+// --- Pending device login (login --device) ---
+
+const PENDING_DEVICE_FILE = join(GLOBAL_DIR, 'pending-device.json');
+
+export function getPendingDeviceLogin(): PendingDeviceLogin | null {
+  if (!existsSync(PENDING_DEVICE_FILE)) {
+    return null;
+  }
+  return JSON.parse(readFileSync(PENDING_DEVICE_FILE, 'utf-8'));
+}
+
+export function savePendingDeviceLogin(pending: PendingDeviceLogin): void {
+  ensureGlobalDir();
+  writeFileSync(PENDING_DEVICE_FILE, JSON.stringify(pending, null, 2), { mode: 0o600 });
+}
+
+export function clearPendingDeviceLogin(): void {
+  if (existsSync(PENDING_DEVICE_FILE)) {
+    unlinkSync(PENDING_DEVICE_FILE);
+  }
+}
+
 export function clearCredentials(): void {
   if (existsSync(CREDENTIALS_FILE)) {
     unlinkSync(CREDENTIALS_FILE);
   }
+  clearPendingDeviceLogin();
   // Clear session-related config (default_org_id) but keep platform_api_url etc.
   const config = getGlobalConfig();
   if (config.default_org_id) {
