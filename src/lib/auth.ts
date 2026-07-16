@@ -1,13 +1,20 @@
 import { createServer } from 'node:http';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, randomInt, createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 import { isInteractive } from './prompts.js';
-import { getGlobalConfig, getPlatformApiUrl, saveCredentials } from './config.js';
+import {
+  getGlobalConfig,
+  getPlatformApiUrl,
+  saveCredentials,
+  getPendingLogin,
+  savePendingLogin,
+  clearPendingLogin,
+} from './config.js';
 import { getProfile } from './api/platform.js';
 import { formatFetchError } from './errors.js';
-import type { StoredCredentials } from '../types.js';
+import type { PendingOAuthLogin, StoredCredentials } from '../types.js';
 
 // Default OAuth client for InsForge CLI (pre-registered on the platform)
 export const DEFAULT_CLIENT_ID = 'clf_NK8cMUs41gm8ZcfdtSguVw';
@@ -230,6 +237,7 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
     // Non-TTY (agent shell): surface the URL prominently via stderr so it stays out of
     // any JSON stdout stream but is still visible to agents and humans.
     process.stderr.write(`\nTo sign in, open this URL in your browser:\n\n  ${pc.cyan(pc.underline(authUrl))}\n\n`);
+    process.stderr.write(`If the browser cannot reach this machine after sign-in (sandbox/SSH/container), cancel and use:\n  insforge login --no-browser\n\n`);
   }
 
   // 4. Open browser (best effort — often works even from agent shells since we're on the same machine)
@@ -291,4 +299,140 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
     if (!isInteractive) process.stderr.write('Authentication failed\n');
     throw err;
   }
+}
+
+// Matches the platform's authorization-code TTL (10 min) so a stale pending
+// login fails locally with a clear message instead of a server-side error.
+const PENDING_LOGIN_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Headless variant of the OAuth login, step 1 of 2 (`login --no-browser`).
+ *
+ * For environments where the browser can never reach a loopback listener in
+ * this process (agent sandboxes like the ChatGPT app, SSH sessions, CI): no
+ * server is started. PKCE verifier + state are persisted to
+ * ~/.insforge/pending-login.json so a *separate* CLI invocation
+ * (`login --callback-url`) can finish the exchange. The redirect still points
+ * at a loopback URL nothing listens on — the browser shows a connection
+ * error, but the code/state survive in the address bar for the user to copy.
+ */
+export function startHeadlessOAuthLogin(apiUrl?: string): { authUrl: string; redirectUri: string } {
+  const platformUrl = getPlatformApiUrl(apiUrl);
+  const config = getGlobalConfig();
+  const clientId = config.oauth_client_id ?? DEFAULT_CLIENT_ID;
+
+  const pkce = generatePKCE();
+  const state = generateState();
+  // Random loopback port (nothing listens on it): the platform allows any
+  // port on 127.0.0.1 redirects (RFC 8252 §7.3), and randomness avoids
+  // handing the code to whatever service might occupy a fixed port.
+  const redirectUri = `http://127.0.0.1:${randomInt(1024, 65536)}/callback`;
+
+  const pending: PendingOAuthLogin = {
+    code_verifier: pkce.code_verifier,
+    state,
+    redirect_uri: redirectUri,
+    platform_url: platformUrl,
+    client_id: clientId,
+    created_at: new Date().toISOString(),
+  };
+  savePendingLogin(pending);
+
+  const authUrl = buildAuthorizeUrl({
+    platformUrl,
+    clientId,
+    redirectUri,
+    codeChallenge: pkce.code_challenge,
+    state,
+    scopes: OAUTH_SCOPES,
+  });
+
+  return { authUrl, redirectUri };
+}
+
+/**
+ * Extract code + state from a pasted callback URL (or bare query string).
+ * Tolerates surrounding whitespace/quotes from copy-paste.
+ */
+export function parseCallbackInput(input: string): OAuthCallbackResult {
+  const cleaned = input.trim().replace(/^['"<]+|['">]+$/g, '');
+
+  let params: URLSearchParams;
+  if (cleaned.includes('://')) {
+    let url: URL;
+    try {
+      url = new URL(cleaned);
+    } catch {
+      throw new Error('Could not parse the callback URL. Paste the full URL from the browser address bar.');
+    }
+    params = url.searchParams;
+  } else if (cleaned.includes('code=')) {
+    params = new URLSearchParams(cleaned.replace(/^\?/, ''));
+  } else {
+    throw new Error(
+      'Expected the full callback URL (http://127.0.0.1:.../callback?code=...&state=...) from the browser address bar, not a bare code.',
+    );
+  }
+
+  const error = params.get('error');
+  if (error) {
+    throw new Error(params.get('error_description') ?? `Authorization failed: ${error}`);
+  }
+
+  const code = params.get('code');
+  const state = params.get('state');
+  if (!code || !state) {
+    throw new Error('Callback URL is missing code or state. Paste the full URL from the browser address bar.');
+  }
+  return { code, state };
+}
+
+/**
+ * Headless OAuth login, step 2 of 2 (`login --callback-url <url>`).
+ * Verifies the pasted callback against the pending login saved by
+ * startHeadlessOAuthLogin, exchanges the code, and stores credentials.
+ */
+export async function completeHeadlessOAuthLogin(
+  callbackInput: string,
+  apiUrl?: string,
+): Promise<StoredCredentials> {
+  const pending = getPendingLogin();
+  if (!pending) {
+    throw new Error('No login in progress. Run `insforge login --no-browser` first, then retry with the callback URL.');
+  }
+  if (Date.now() - new Date(pending.created_at).getTime() > PENDING_LOGIN_TTL_MS) {
+    clearPendingLogin();
+    throw new Error('The pending login expired (10 minutes). Run `insforge login --no-browser` again.');
+  }
+
+  const { code, state } = parseCallbackInput(callbackInput);
+  if (state !== pending.state) {
+    throw new Error('State mismatch — the callback URL does not belong to this login attempt. Run `insforge login --no-browser` again.');
+  }
+
+  const tokens = await exchangeCodeForTokens({
+    platformUrl: apiUrl ? getPlatformApiUrl(apiUrl) : pending.platform_url,
+    code,
+    redirectUri: pending.redirect_uri,
+    clientId: pending.client_id,
+    codeVerifier: pending.code_verifier,
+  });
+  clearPendingLogin();
+
+  const creds: StoredCredentials = {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    user: { id: '', name: '', email: '', avatar_url: null, email_verified: true },
+  };
+  saveCredentials(creds);
+
+  try {
+    const profile = await getProfile(apiUrl);
+    creds.user = profile;
+    saveCredentials(creds);
+  } catch {
+    // Token is saved and valid; profile fetch is best-effort (same as performOAuthLogin).
+  }
+
+  return creds;
 }

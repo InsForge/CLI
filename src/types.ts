@@ -91,6 +91,21 @@ export interface StoredCredentials {
   user: User;
 }
 
+/**
+ * In-flight `login --no-browser` state persisted between the invocation that
+ * prints the authorize URL and the later `login --callback-url` invocation
+ * that redeems the pasted code. Holds the PKCE verifier, so it is stored
+ * 0600 and deleted as soon as the login completes (or expires).
+ */
+export interface PendingOAuthLogin {
+  code_verifier: string;
+  state: string;
+  redirect_uri: string;
+  platform_url: string;
+  client_id: string;
+  created_at: string;
+}
+
 // Global config
 export interface GlobalConfig {
   default_org_id?: string;
