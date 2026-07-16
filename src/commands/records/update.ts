@@ -4,6 +4,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
+import { schemaProfileHeaders } from './profile.js';
 
 export function registerRecordsUpdateCommand(recordsCmd: Command): void {
   recordsCmd
@@ -11,6 +12,7 @@ export function registerRecordsUpdateCommand(recordsCmd: Command): void {
     .description('Update records in a table matching a filter')
     .option('--filter <filter>', 'Filter expression (e.g. "id=eq.123")')
     .option('--data <json>', 'JSON data to update')
+    .option('--schema <name>', 'Schema to target (default: public)')
     .action(async (table: string, opts, cmd) => {
       const { json } = getRootOpts(cmd);
       try {
@@ -39,6 +41,7 @@ export function registerRecordsUpdateCommand(recordsCmd: Command): void {
           {
             method: 'PATCH',
             body: JSON.stringify(body),
+            headers: schemaProfileHeaders('write', opts.schema),
           },
         );
 
