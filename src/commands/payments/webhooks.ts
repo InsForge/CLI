@@ -147,13 +147,14 @@ function registerRazorpayWebhookCommands(webhooksCmd: Command): void {
       const { json, yes, apiUrl } = getRootOpts(cmd);
       try {
         const environment = parseEnvironment(opts.environment);
-        await requireAuth(apiUrl);
 
         if (json && !yes) {
           throw new CLIError(
             "Use --yes with --json to rotate the Razorpay webhook secret non-interactively.",
           );
         }
+
+        await requireAuth(apiUrl);
 
         if (!yes) {
           const confirm = await prompts.confirm({

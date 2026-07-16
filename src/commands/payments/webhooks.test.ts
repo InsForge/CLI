@@ -167,6 +167,7 @@ describe("payments webhooks commands", () => {
     );
 
     expect(apiMocks.rotateRazorpayWebhookSecret).not.toHaveBeenCalled();
+    expect(authMocks.requireAuth).not.toHaveBeenCalled();
     expect(telemetryMocks.trackPaymentUsage).toHaveBeenCalledWith(
       "webhooks.rotate-secret",
       false,
