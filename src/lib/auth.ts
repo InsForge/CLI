@@ -292,3 +292,185 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
     throw err;
   }
 }
+
+// ============================================================================
+// Device Authorization Grant (RFC 8628) — `insforge login --device`
+//
+// For environments where the browser can never reach a loopback listener in
+// this process (agent sandboxes like the ChatGPT app, SSH, containers, CI).
+// No callback and nothing to paste: the user approves a short code on the
+// dashboard while this process polls the token endpoint over outbound HTTPS.
+// ============================================================================
+
+export interface DeviceAuthorization {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete: string;
+  expires_in: number;
+  interval: number;
+}
+
+const DEVICE_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
+
+/** Request a device_code + user_code pair from the platform. */
+export async function requestDeviceAuthorization(params: {
+  platformUrl: string;
+  clientId: string;
+  scopes: string;
+}): Promise<DeviceAuthorization> {
+  const url = `${params.platformUrl}/api/oauth/v1/device_authorization`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: params.clientId, scope: params.scopes }),
+    });
+  } catch (err) {
+    throw new Error(formatFetchError(err, url), { cause: err });
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string; message?: string };
+    if (err.error === 'unauthorized_client') {
+      throw new Error('Device login is not enabled for this OAuth client (server too old or grant not enabled). Use `insforge login` or `insforge login --user-api-key` instead.');
+    }
+    throw new Error(err.message ?? err.error ?? `Device authorization failed (HTTP ${res.status})`);
+  }
+
+  return await res.json() as DeviceAuthorization;
+}
+
+/**
+ * Poll the token endpoint until the user approves/denies or the code expires.
+ * Follows RFC 8628 §3.5: keep waiting on authorization_pending, add 5s on
+ * slow_down, stop on access_denied / expired_token.
+ */
+export async function pollForDeviceTokens(params: {
+  platformUrl: string;
+  clientId: string;
+  deviceCode: string;
+  interval: number;
+  expiresIn: number;
+  onPoll?: () => void;
+}): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const tokenUrl = `${params.platformUrl}/api/oauth/v1/token`;
+  const deadline = Date.now() + params.expiresIn * 1000;
+  let intervalMs = Math.max(params.interval, 1) * 1000;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs).unref?.());
+    params.onPoll?.();
+
+    let res: Response;
+    try {
+      res = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: DEVICE_CODE_GRANT,
+          device_code: params.deviceCode,
+          client_id: params.clientId,
+        }),
+      });
+    } catch {
+      // Transient network error mid-poll — keep polling until the deadline.
+      continue;
+    }
+
+    if (res.ok) {
+      return await res.json() as { access_token: string; refresh_token: string; expires_in: number };
+    }
+
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    switch (err.error) {
+      case 'authorization_pending':
+        continue;
+      case 'slow_down':
+        intervalMs += 5000;
+        continue;
+      case 'access_denied':
+        throw new Error('Login request was denied in the dashboard.');
+      case 'expired_token':
+        throw new Error('The device code expired before the login was approved. Run `insforge login --device` again.');
+      default:
+        throw new Error(err.error ?? `Token polling failed (HTTP ${res.status})`);
+    }
+  }
+
+  throw new Error('The device code expired before the login was approved. Run `insforge login --device` again.');
+}
+
+/**
+ * Full device login: request codes, show the verification URL + user code,
+ * poll until approved, store credentials.
+ */
+export async function performDeviceLogin(apiUrl?: string): Promise<StoredCredentials> {
+  const platformUrl = getPlatformApiUrl(apiUrl);
+  const config = getGlobalConfig();
+  const clientId = config.oauth_client_id ?? DEFAULT_CLIENT_ID;
+
+  const device = await requestDeviceAuthorization({
+    platformUrl,
+    clientId,
+    scopes: OAUTH_SCOPES,
+  });
+
+  const instructions =
+    `Open ${pc.cyan(pc.underline(device.verification_uri_complete))}\n` +
+    `and confirm this code: ${pc.bold(device.user_code)}`;
+
+  if (isInteractive) {
+    clack.log.info(`To sign in:\n${instructions}`);
+  } else {
+    // Agent shells: stderr so JSON stdout stays clean, but agents and humans see it.
+    process.stderr.write(`\nTo sign in, ask the user to open:\n\n  ${device.verification_uri_complete}\n\nand confirm the code ${device.user_code}. Waiting for approval...\n`);
+  }
+
+  // Best-effort browser open — on a local machine this lands the user
+  // directly on the confirm page; in a sandbox it silently fails.
+  try {
+    const open = (await import('open')).default;
+    await open(device.verification_uri_complete);
+  } catch {
+    /* URL is already printed */
+  }
+
+  const s = isInteractive ? clack.spinner() : null;
+  s?.start(`Waiting for approval in the browser (code ${device.user_code})...`);
+
+  try {
+    const tokens = await pollForDeviceTokens({
+      platformUrl,
+      clientId,
+      deviceCode: device.device_code,
+      interval: device.interval,
+      expiresIn: device.expires_in,
+    });
+
+    const creds: StoredCredentials = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      user: { id: '', name: '', email: '', avatar_url: null, email_verified: true },
+    };
+    saveCredentials(creds);
+
+    try {
+      const profile = await getProfile(apiUrl);
+      creds.user = profile;
+      saveCredentials(creds);
+      s?.stop(`Authenticated as ${profile.email}`);
+      if (!isInteractive) process.stderr.write(`Authenticated as ${profile.email}\n`);
+    } catch {
+      s?.stop('Authenticated successfully');
+      if (!isInteractive) process.stderr.write('Authenticated successfully\n');
+    }
+
+    return creds;
+  } catch (err) {
+    s?.stop('Authentication failed');
+    if (!isInteractive) process.stderr.write('Authentication failed\n');
+    throw err;
+  }
+}
