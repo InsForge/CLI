@@ -4,10 +4,17 @@ import { URL } from 'node:url';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 import { isInteractive } from './prompts.js';
-import { getGlobalConfig, getPlatformApiUrl, saveCredentials } from './config.js';
+import {
+  getGlobalConfig,
+  getPlatformApiUrl,
+  saveCredentials,
+  getPendingDeviceLogin,
+  savePendingDeviceLogin,
+  clearPendingDeviceLogin,
+} from './config.js';
 import { getProfile } from './api/platform.js';
 import { formatFetchError } from './errors.js';
-import type { StoredCredentials } from '../types.js';
+import type { PendingDeviceLogin, StoredCredentials } from '../types.js';
 
 // Default OAuth client for InsForge CLI (pre-registered on the platform)
 export const DEFAULT_CLIENT_ID = 'clf_NK8cMUs41gm8ZcfdtSguVw';
@@ -287,6 +294,236 @@ export async function performOAuthLogin(apiUrl?: string): Promise<StoredCredenti
     return creds;
   } catch (err) {
     close();
+    s?.stop('Authentication failed');
+    if (!isInteractive) process.stderr.write('Authentication failed\n');
+    throw err;
+  }
+}
+
+// ============================================================================
+// Device Authorization Grant (RFC 8628) — `insforge login --device`
+//
+// For environments where the browser can never reach a loopback listener in
+// this process (agent sandboxes like the ChatGPT app, SSH, containers, CI).
+// No callback and nothing to paste: the user approves a short code on the
+// dashboard while this process polls the token endpoint over outbound HTTPS.
+// ============================================================================
+
+export interface DeviceAuthorization {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete: string;
+  expires_in: number;
+  interval: number;
+}
+
+const DEVICE_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
+
+/** Request a device_code + user_code pair from the platform. */
+export async function requestDeviceAuthorization(params: {
+  platformUrl: string;
+  clientId: string;
+  scopes: string;
+}): Promise<DeviceAuthorization> {
+  const url = `${params.platformUrl}/api/oauth/v1/device_authorization`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: params.clientId, scope: params.scopes }),
+    });
+  } catch (err) {
+    throw new Error(`Device authorization failed — ${formatFetchError(err, url)}`, { cause: err });
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string; message?: string };
+    if (err.error === 'unauthorized_client') {
+      throw new Error('Device login is not enabled for this OAuth client (server too old or grant not enabled). Use `insforge login` or `insforge login --user-api-key` instead.');
+    }
+    throw new Error(err.message ?? err.error ?? `Device authorization failed (HTTP ${res.status})`);
+  }
+
+  return await res.json() as DeviceAuthorization;
+}
+
+/**
+ * Poll the token endpoint until the user approves/denies or the code expires.
+ * Follows RFC 8628 §3.5: keep waiting on authorization_pending, add 5s on
+ * slow_down, stop on access_denied / expired_token.
+ */
+export async function pollForDeviceTokens(params: {
+  platformUrl: string;
+  clientId: string;
+  deviceCode: string;
+  /** RFC 8628 §3.2 makes this optional in the server response; defaults to 5s. */
+  interval?: number;
+  expiresIn: number;
+}): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const tokenUrl = `${params.platformUrl}/api/oauth/v1/token`;
+  const deadline = Date.now() + params.expiresIn * 1000;
+  let intervalMs = Math.max(params.interval || 5, 1) * 1000;
+
+  while (Date.now() < deadline) {
+    // Deliberately NOT unref'd: this timer is often the only thing on the
+    // event loop (no callback server in this flow), and unref'ing it lets
+    // the process exit mid-poll with an unsettled top-level await.
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+
+    let res: Response;
+    try {
+      res = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: DEVICE_CODE_GRANT,
+          device_code: params.deviceCode,
+          client_id: params.clientId,
+        }),
+      });
+    } catch {
+      // Transient network error mid-poll — keep polling until the deadline.
+      continue;
+    }
+
+    if (res.ok) {
+      return await res.json() as { access_token: string; refresh_token: string; expires_in: number };
+    }
+
+    const err = await res.json().catch(() => ({})) as { error?: string };
+    switch (err.error) {
+      case 'authorization_pending':
+        continue;
+      case 'slow_down':
+        intervalMs += 5000;
+        continue;
+      case 'access_denied':
+        throw new Error('Login request was denied in the dashboard.');
+      case 'expired_token':
+        throw new Error('The device code expired before the login was approved. Run `insforge login --device` again.');
+      default:
+        throw new Error(err.error ?? `Token polling failed (HTTP ${res.status})`);
+    }
+  }
+
+  throw new Error('The device code expired before the login was approved. Run `insforge login --device` again.');
+}
+
+/**
+ * A prior `login --device` attempt that can still complete: same server and
+ * client, with a meaningful amount of its 15-minute lifetime left. Used to
+ * RESUME polling the same code after the process was killed mid-poll (agent
+ * sandboxes with command timeouts) — if the user already approved while no
+ * poller was alive, the resumed poll redeems immediately.
+ */
+function getResumableDeviceLogin(platformUrl: string, clientId: string): PendingDeviceLogin | null {
+  try {
+    const pending = getPendingDeviceLogin();
+    if (
+      pending &&
+      pending.platform_url === platformUrl &&
+      pending.client_id === clientId &&
+      new Date(pending.expires_at).getTime() - Date.now() > 60_000
+    ) {
+      return pending;
+    }
+  } catch {
+    /* corrupt file — fall through to a fresh attempt */
+  }
+  return null;
+}
+
+/**
+ * Full device login: request codes (or resume a still-valid pending attempt),
+ * show the verification URL + user code, poll until approved, store
+ * credentials.
+ */
+export async function performDeviceLogin(apiUrl?: string): Promise<StoredCredentials> {
+  const platformUrl = getPlatformApiUrl(apiUrl);
+  const config = getGlobalConfig();
+  const clientId = config.oauth_client_id ?? DEFAULT_CLIENT_ID;
+
+  const resumed = getResumableDeviceLogin(platformUrl, clientId);
+  const device = resumed ?? await (async () => {
+    const fresh = await requestDeviceAuthorization({
+      platformUrl,
+      clientId,
+      scopes: OAUTH_SCOPES,
+    });
+    const pending: PendingDeviceLogin = {
+      device_code: fresh.device_code,
+      user_code: fresh.user_code,
+      verification_uri_complete: fresh.verification_uri_complete,
+      interval: fresh.interval ?? 5,
+      expires_at: new Date(Date.now() + fresh.expires_in * 1000).toISOString(),
+      platform_url: platformUrl,
+      client_id: clientId,
+    };
+    savePendingDeviceLogin(pending);
+    return pending;
+  })();
+
+  const resumeNote = resumed ? ' (resuming the previous login attempt — same code)' : '';
+  const instructions =
+    `Open ${pc.cyan(pc.underline(device.verification_uri_complete))}\n` +
+    `and confirm this code: ${pc.bold(device.user_code)}${resumeNote}`;
+
+  if (isInteractive) {
+    clack.log.info(`To sign in:\n${instructions}`);
+  } else {
+    // Agent shells: stderr so JSON stdout stays clean, but agents and humans see it.
+    process.stderr.write(`\nTo sign in, ask the user to open:\n\n  ${device.verification_uri_complete}\n\nand confirm the code ${device.user_code}${resumeNote}. If they already approved, this completes immediately. Waiting for approval...\n`);
+  }
+
+  // Best-effort browser open — on a local machine this lands the user
+  // directly on the confirm page; in a sandbox it silently fails.
+  try {
+    const open = (await import('open')).default;
+    await open(device.verification_uri_complete);
+  } catch {
+    /* URL is already printed */
+  }
+
+  const s = isInteractive ? clack.spinner() : null;
+  s?.start(`Waiting for approval (code ${device.user_code})...`);
+
+  try {
+    const tokens = await pollForDeviceTokens({
+      platformUrl,
+      clientId,
+      deviceCode: device.device_code,
+      interval: device.interval,
+      expiresIn: Math.max((new Date(device.expires_at).getTime() - Date.now()) / 1000, 1),
+    });
+    clearPendingDeviceLogin();
+
+    const creds: StoredCredentials = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      user: { id: '', name: '', email: '', avatar_url: null, email_verified: true },
+    };
+    saveCredentials(creds);
+
+    try {
+      const profile = await getProfile(apiUrl);
+      creds.user = profile;
+      saveCredentials(creds);
+      s?.stop(`Authenticated as ${profile.email}`);
+      if (!isInteractive) process.stderr.write(`Authenticated as ${profile.email}\n`);
+    } catch {
+      s?.stop('Authenticated successfully');
+      if (!isInteractive) process.stderr.write('Authenticated successfully\n');
+    }
+
+    return creds;
+  } catch (err) {
+    // Denied/expired codes are dead — a rerun must mint a fresh one. On
+    // transient failures keep the pending file so a rerun resumes this code.
+    if (err instanceof Error && /denied|expired/i.test(err.message)) {
+      clearPendingDeviceLogin();
+    }
     s?.stop('Authentication failed');
     if (!isInteractive) process.stderr.write('Authentication failed\n');
     throw err;

@@ -3,7 +3,7 @@ import * as clack from '@clack/prompts';
 import * as prompts from '../lib/prompts.js';
 import { saveCredentials, getPlatformApiUrl } from '../lib/config.js';
 import { login as platformLogin } from '../lib/api/platform.js';
-import { performOAuthLogin } from '../lib/auth.js';
+import { performOAuthLogin, performDeviceLogin } from '../lib/auth.js';
 import { handleError, getRootOpts, CLIError, formatFetchError } from '../lib/errors.js';
 import { trackTopLevelUsage } from '../lib/command-telemetry.js';
 import type { StoredCredentials, User } from '../types.js';
@@ -15,17 +15,26 @@ export function registerLoginCommand(program: Command): void {
     .option('--email', 'Login with email and password instead of browser')
     .option('--client-id <id>', 'OAuth client ID (defaults to insforge-cli)')
     .option('--user-api-key <key>', 'Authenticate with a uak_ user API key')
+    .option('--device', 'Device login: approve a short code on the dashboard while the CLI polls — for sandboxes/SSH/containers where the browser cannot reach this process')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       // Which auth path was taken — user_api_key logins are the signal the
       // dashboard's connect-agent onboarding funnel is measured by.
-      const method = opts.userApiKey ? 'user_api_key' : opts.email ? 'email' : 'oauth';
+      const method = opts.userApiKey
+        ? 'user_api_key'
+        : opts.email
+          ? 'email'
+          : opts.device
+            ? 'oauth_device'
+            : 'oauth';
 
       try {
         if (opts.userApiKey) {
           await loginWithUserApiKey(opts.userApiKey, json, apiUrl);
         } else if (opts.email) {
           await loginWithEmail(json, apiUrl);
+        } else if (opts.device) {
+          await loginWithDevice(json, apiUrl);
         } else {
           await loginWithOAuth(json, apiUrl);
         }
@@ -96,6 +105,25 @@ async function loginWithEmail(json: boolean, apiUrl?: string): Promise<void> {
     };
     saveCredentials(creds);
     console.log(JSON.stringify({ success: true, user: result.user }));
+  }
+}
+
+/**
+ * Device login (RFC 8628): the user approves a short code on the dashboard
+ * while the CLI polls. No loopback callback — works in agent sandboxes
+ * (ChatGPT app), SSH sessions, and containers.
+ */
+async function loginWithDevice(json: boolean, apiUrl?: string): Promise<void> {
+  if (!json) {
+    clack.intro('InsForge CLI');
+  }
+
+  const creds = await performDeviceLogin(apiUrl);
+
+  if (!json) {
+    clack.outro('Done');
+  } else {
+    console.log(JSON.stringify({ success: true, user: creds.user }));
   }
 }
 
