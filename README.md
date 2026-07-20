@@ -665,9 +665,25 @@ Create or recreate the InsForge-managed Stripe webhook endpoint for an environme
 npx @insforge/cli payments stripe webhooks configure --environment test
 ```
 
-#### Razorpay webhook setup
+#### `npx @insforge/cli payments razorpay webhooks setup --environment <environment>`
 
-Razorpay webhooks are configured manually in the Razorpay dashboard. Use the InsForge dashboard payments settings dialog to copy the webhook URL and webhook secret, then select the recommended events on Razorpay's website.
+Show the webhook URL and secret to use when manually creating the webhook in Razorpay Dashboard.
+
+```bash
+npx @insforge/cli payments razorpay webhooks setup --environment test
+npx @insforge/cli payments razorpay webhooks setup --environment live --json
+```
+
+#### `npx @insforge/cli payments razorpay webhooks rotate-secret --environment <environment>`
+
+Rotate the webhook secret for an environment. Existing Razorpay webhook deliveries fail until the new secret is updated in Razorpay Dashboard. The command asks for confirmation; use `--yes` to skip the prompt. JSON mode requires `--yes`.
+
+```bash
+npx @insforge/cli payments razorpay webhooks rotate-secret --environment test
+npx @insforge/cli payments razorpay webhooks rotate-secret --environment live --yes --json
+```
+
+Razorpay webhooks must still be created manually in Razorpay Dashboard. Copy the URL and secret returned by `webhooks setup`, select the recommended events, and save the webhook for the matching environment.
 
 #### `npx @insforge/cli payments <provider> catalog --environment <environment>`
 

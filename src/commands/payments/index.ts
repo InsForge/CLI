@@ -21,7 +21,7 @@ export function registerPaymentsCommands(paymentsCmd: Command): void {
   registerPaymentsStatusCommand(stripeCmd, "stripe");
   registerPaymentsConfigCommand(stripeCmd, "stripe");
   registerPaymentsSyncCommand(stripeCmd, "stripe");
-  registerPaymentsWebhooksCommand(stripeCmd);
+  registerPaymentsWebhooksCommand(stripeCmd, "stripe");
   registerPaymentsCatalogCommand(stripeCmd, "stripe");
   registerPaymentsCustomersCommand(stripeCmd, "stripe");
   registerPaymentsProductsCommand(stripeCmd);
@@ -35,6 +35,7 @@ export function registerPaymentsCommands(paymentsCmd: Command): void {
   registerPaymentsStatusCommand(razorpayCmd, "razorpay");
   registerPaymentsConfigCommand(razorpayCmd, "razorpay");
   registerPaymentsSyncCommand(razorpayCmd, "razorpay");
+  registerPaymentsWebhooksCommand(razorpayCmd, "razorpay");
   registerPaymentsCatalogCommand(razorpayCmd, "razorpay");
   registerPaymentsCustomersCommand(razorpayCmd, "razorpay");
   registerPaymentsItemsCommand(razorpayCmd);

@@ -7,6 +7,7 @@ import type {
   CreateStripePriceBody,
   CreateStripeProductBody,
   DeleteStripeProductResponse,
+  GetRazorpayWebhookSetupResponse,
   GetRazorpayStatusResponse,
   GetStripePriceResponse,
   GetStripeProductResponse,
@@ -29,6 +30,7 @@ import type {
   MutateStripeProductResponse,
   PaymentEnvironment,
   PaymentProvider,
+  RegenerateRazorpayWebhookSecretResponse,
   SyncRazorpayPaymentsRequest,
   SyncRazorpayPaymentsResponse,
   SyncStripePaymentsRequest,
@@ -158,6 +160,31 @@ export async function configureStripeWebhook(
       {
         method: "POST",
       },
+    ),
+  );
+}
+
+export async function getRazorpayWebhookSetup(
+  environment: PaymentEnvironment,
+): Promise<GetRazorpayWebhookSetupResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath("razorpay", environment, "/webhook"),
+    ),
+  );
+}
+
+export async function rotateRazorpayWebhookSecret(
+  environment: PaymentEnvironment,
+): Promise<RegenerateRazorpayWebhookSecretResponse> {
+  return readJson(
+    await ossFetch(
+      withProviderEnvironmentPath(
+        "razorpay",
+        environment,
+        "/webhook/rotate-secret",
+      ),
+      { method: "POST" },
     ),
   );
 }

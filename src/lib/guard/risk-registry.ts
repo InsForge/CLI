@@ -317,6 +317,15 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     blastRadius: 'Clients still using the old key fail once the grace period ends.',
     risk: 'Update every consumer of the old key before the grace window closes.',
   }),
+
+  'payments razorpay webhooks rotate-secret': (ctx) => ({
+    severity: 'high',
+    kind: 'payments.razorpay_webhook.rotate_secret',
+    title: 'Rotate a Razorpay webhook secret',
+    whatHappens: `Replaces the Razorpay ${String(ctx.opts.environment ?? '?')} webhook secret immediately.`,
+    blastRadius: 'Existing Razorpay webhook deliveries fail until the new secret is configured in Razorpay Dashboard.',
+    risk: 'Update the matching Razorpay webhook immediately after rotation.',
+  }),
 };
 
 /**

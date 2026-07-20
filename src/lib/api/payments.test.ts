@@ -9,11 +9,13 @@ import {
   createRazorpayItem,
   createRazorpayPlan,
   createStripePrice,
+  getRazorpayWebhookSetup,
   getStripeProduct,
   getStripePaymentsStatus,
   listPaymentTransactions,
   listRazorpayCatalog,
   listStripePrices,
+  rotateRazorpayWebhookSecret,
   syncRazorpayPayments,
   syncStripePayments,
   updateRazorpayItem,
@@ -59,6 +61,35 @@ describe("payments API client", () => {
     await listStripePrices("live", "prod_123");
     expect(ossFetchMock).toHaveBeenLastCalledWith(
       "/api/payments/stripe/live/catalog/prices?productId=prod_123",
+    );
+  });
+
+  it("builds Razorpay webhook setup and secret rotation paths", async () => {
+    const setup = {
+      connection: { environment: "test" },
+      webhookUrl: "https://example.com/webhooks/razorpay",
+      webhookSecret: "secret_test",
+    };
+    ossFetchMock.mockResolvedValueOnce(mockJsonResponse(setup));
+
+    await expect(getRazorpayWebhookSetup("test")).resolves.toEqual(setup);
+    expect(ossFetchMock).toHaveBeenLastCalledWith(
+      "/api/payments/razorpay/test/webhook",
+    );
+
+    const rotated = {
+      ...setup,
+      connection: { environment: "live" },
+      webhookSecret: "secret_live_rotated",
+    };
+    ossFetchMock.mockResolvedValueOnce(mockJsonResponse(rotated));
+
+    await expect(rotateRazorpayWebhookSecret("live")).resolves.toEqual(
+      rotated,
+    );
+    expect(ossFetchMock).toHaveBeenLastCalledWith(
+      "/api/payments/razorpay/live/webhook/rotate-secret",
+      { method: "POST" },
     );
   });
 
