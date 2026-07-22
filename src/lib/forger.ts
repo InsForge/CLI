@@ -96,7 +96,7 @@ export async function playForgerAnimation(): Promise<void> {
   const rows = process.stdout.rows ?? 0;
   if ((cols > 0 && cols < MIN_TERMINAL_COLUMNS) || (rows > 0 && rows < MIN_TERMINAL_ROWS)) {
     process.stdout.write(
-      `Please resize the terminal to at least ${MIN_TERMINAL_COLUMNS}x${MIN_TERMINAL_ROWS}.\n`,
+      `Skipping Forger animation: terminal must be at least ${MIN_TERMINAL_COLUMNS}x${MIN_TERMINAL_ROWS}.\n`,
     );
     return;
   }
