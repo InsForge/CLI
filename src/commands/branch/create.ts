@@ -198,7 +198,18 @@ export function registerBranchCreateCommand(branch: Command): void {
  *   1. only a tagged transport failure is eligible; every HTTP/API rejection
  *      (duplicate name, quota, auth) rethrows untouched;
  *   2. the branch must have been created at or after the moment we sent the
- *      request, so a pre-existing same-name branch is never a candidate.
+ *      request, so a pre-existing same-name branch is never a candidate;
+ *   3. the branch's mode must match what we asked for.
+ *
+ * Guard 3 narrows a residual collision the timestamp window alone cannot close:
+ * a collaborator creating a same-name branch inside the skew window, at the same
+ * moment our own request loses its response leg, would otherwise be adoptable —
+ * and with the default `--switch` that would silently move local context onto
+ * their branch. Requiring a mode match makes that require an even more specific
+ * coincidence (same name AND same mode AND the same ~60s AND our transport
+ * failure). The real fix is a server-issued idempotency/request token on
+ * `createBranchApi`; until that exists, this is the tightest client-side guard.
+ * Reported upstream: InsForge/InsForge#1790.
  */
 function isTransportFailure(err: unknown): boolean {
   return err instanceof CLIError && err.code === NETWORK_ERROR_CODE;
@@ -219,6 +230,7 @@ async function createBranchOrAdopt(
         branches.find(
           branch =>
             branch.name === body.name &&
+            branch.branch_metadata?.mode === body.mode &&
             Date.parse(branch.branch_created_at) >= requestedAt,
         ),
       )

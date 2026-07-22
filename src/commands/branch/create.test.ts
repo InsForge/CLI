@@ -70,6 +70,27 @@ vi.mock('@clack/prompts', () => ({
   spinner: () => spinnerMock,
 }));
 
+// Run `fn` with process.exit + stderr captured, and always restore them. Returns
+// the exit code fn triggered (undefined if it never exited). Timer/mock lifecycle
+// stays with the caller — this only owns the exit/stderr swap.
+async function withCapturedExit(fn: () => Promise<void>): Promise<number | undefined> {
+  let exitCode: number | undefined;
+  const origExit = process.exit;
+  const origStderr = process.stderr.write.bind(process.stderr);
+  process.exit = ((code?: number) => {
+    exitCode = code;
+    throw new Error('__exit__');
+  }) as typeof process.exit;
+  process.stderr.write = (() => true) as typeof process.stderr.write;
+  try {
+    await fn();
+  } finally {
+    process.exit = origExit;
+    process.stderr.write = origStderr;
+  }
+  return exitCode;
+}
+
 describe('branch create', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -352,27 +373,20 @@ describe('branch create', () => {
       branch_metadata: { mode: 'schema-only' },
     });
     let exitCode: number | undefined;
-    const origExit = process.exit;
-    process.exit = ((code?: number) => {
-      exitCode = code;
-      throw new Error('__exit__');
-    }) as typeof process.exit;
-    const origStderr = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (() => true) as typeof process.stderr.write;
     vi.useFakeTimers();
     try {
-      const program = new Command().exitOverride();
-      program.option('--json').option('--api-url <url>').option('-y, --yes');
-      registerBranchCreateCommand(program);
-      const run = program
-        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
-        .catch(() => {});
-      await vi.runAllTimersAsync();
-      await run;
+      exitCode = await withCapturedExit(async () => {
+        const program = new Command().exitOverride();
+        program.option('--json').option('--api-url <url>').option('-y, --yes');
+        registerBranchCreateCommand(program);
+        const run = program
+          .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+          .catch(() => {});
+        await vi.runAllTimersAsync();
+        await run;
+      });
     } finally {
       vi.useRealTimers();
-      process.exit = origExit;
-      process.stderr.write = origStderr;
       // Restore the shared 'ready' impl — clearAllMocks keeps implementations, so
       // leaving this 'creating' would make every later test poll the full budget.
       (getBranchApi as Mock).mockImplementation(originalImpl!);
@@ -415,6 +429,47 @@ describe('branch create', () => {
     expect(listBranchesApi as Mock).toHaveBeenCalledWith('p1', undefined);
     // The run continued instead of exiting as a failed creation.
     expect(String(spinnerMock.stop.mock.calls.at(-1)?.[0])).not.toContain('creation failed');
+  });
+
+  it('does NOT adopt a same-name branch created with a DIFFERENT mode', async () => {
+    // A collaborator's same-name branch landing in the skew window — at the same
+    // moment our own request loses its response leg — must not be adopted, or a
+    // default --switch would move local context onto their branch. Requiring a
+    // matching mode narrows that collision. (cubic P2, InsForge/CLI#201.)
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
+    (createBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError('Connection to api.insforge.dev was reset.', 1, 'NETWORK_ERROR'),
+    );
+    // Same name, freshly created (inside the window), but the WRONG mode.
+    (listBranchesApi as Mock).mockResolvedValueOnce([
+      {
+        id: 'someone-elses-branch',
+        parent_project_id: 'p1',
+        organization_id: 'o1',
+        name: 'feat-x',
+        appkey: 'p1ky-x9p',
+        region: 'us-east',
+        branch_state: 'creating',
+        branch_created_at: new Date().toISOString(),
+        branch_metadata: { mode: 'full' },
+      },
+    ]);
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    const exitCode = await withCapturedExit(() =>
+      program
+        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+        .catch(() => {})
+    );
+    // No adoption → the original transport error propagates → non-zero exit.
+    expect(exitCode).toBe(1);
   });
 
   it('rethrows the original error when nothing was actually created', async () => {
