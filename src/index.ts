@@ -124,7 +124,7 @@ program
   .option('--flag-destructive [reason]', 'Agent: flag this op as destructive for human approval even if InsForge\'s rules consider it safe (escalate-only — cannot downgrade the verdict)');
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
-  if (!process.stdout.isTTY || didPlayForgerAnimation) return;
+  if (!prompts.isInteractive || didPlayForgerAnimation) return;
   if (actionCommand !== program) return;
 
   const opts = actionCommand.optsWithGlobals() as { forger?: boolean };
@@ -292,8 +292,7 @@ registerSchedulesLogsCommand(schedulesCmd);
 registerConfigCommand(program);
 
 program.action(async (options: { forger?: boolean; json?: boolean }) => {
-  const isInteractive = process.stdout.isTTY;
-  if (isInteractive) {
+  if (prompts.isInteractive) {
     await showInteractiveMenu();
   } else if (options.forger) {
     const message = 'The --forger animation requires an interactive terminal. Run insforge in a TTY or omit --forger.';

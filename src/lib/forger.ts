@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isInteractive } from './prompts.js';
 
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
@@ -89,7 +90,7 @@ function buildFrameLines(
 }
 
 export async function playForgerAnimation(): Promise<void> {
-  if (!process.stdout.isTTY) return;
+  if (!isInteractive) return;
 
   const cols = process.stdout.columns ?? 0;
   const rows = process.stdout.rows ?? 0;
