@@ -1,6 +1,11 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
-import { createBranchApi, getBranchApi, listBranchesApi } from '../../lib/api/platform.js';
+import {
+  createBranchApi,
+  getBranchApi,
+  listBranchesApi,
+  NETWORK_ERROR_CODE,
+} from '../../lib/api/platform.js';
 import { probeBackendHealth } from '../../lib/api/oss.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { requireAuth } from '../../lib/credentials.js';
@@ -21,6 +26,11 @@ const POLL_TIMEOUT_MS = 15 * 60 * 1_000;
 // passes, every subsequent command against the branch fails.
 const HEALTH_TIMEOUT_MS = 10 * 60 * 1_000;
 const HEALTH_INTERVAL_MS = 5_000;
+// Tolerance for clock skew when deciding whether a branch is the one we just
+// asked for. Generous on purpose: the cost of being slightly wide is adopting a
+// branch someone created seconds ago under the same name; the cost of being too
+// narrow is orphaning a billing resource, which is the bug this exists to fix.
+const CREATED_AT_SKEW_MS = 60_000;
 
 export function registerBranchCreateCommand(branch: Command): void {
   branch
@@ -56,6 +66,10 @@ export function registerBranchCreateCommand(branch: Command): void {
         // ready })` below remains the sole authoritative output.
         const spinner = !json ? clack.spinner() : null;
         let ready: Branch;
+        // Whether the branch's own host answered. Separate from `provisioned`
+        // because the branch can be genuinely created and genuinely unusable,
+        // and the exit status has to reflect the second one.
+        let serving = false;
         // Tracks whether the branch reached `ready` state in the cloud — once
         // true, any later throw is a switch failure (local), not a creation
         // failure. Lets the catch render an accurate message instead of the
@@ -63,7 +77,13 @@ export function registerBranchCreateCommand(branch: Command): void {
         let provisioned = false;
         try {
           spinner?.start(`Creating branch '${name}'...`);
-          const created = await createBranchOrAdopt(project.project_id, { mode, name }, apiUrl);
+          const requestedAt = Date.now() - CREATED_AT_SKEW_MS;
+          const created = await createBranchOrAdopt(
+            project.project_id,
+            { mode, name },
+            apiUrl,
+            requestedAt,
+          );
           captureEvent(project.project_id, 'cli_branch_create', {
             mode,
             parent_project_id: project.project_id,
@@ -78,11 +98,8 @@ export function registerBranchCreateCommand(branch: Command): void {
           // runs — including the auto-switch below — hits a host that resets.
           if (provisioned) {
             spinner?.message('Branch ready. Waiting for it to start serving...');
-            const serving = await waitUntilServing(ready, spinner);
-            if (!serving) {
-              provisioned = false;
-              ready = { ...ready, branch_state: ready.branch_state };
-            }
+            serving = await waitUntilServing(ready, spinner);
+            if (!serving) provisioned = false;
           }
 
           if (provisioned && opts.switch) {
@@ -114,17 +131,35 @@ export function registerBranchCreateCommand(branch: Command): void {
           throw err;
         }
 
+        // Emit the branch identity BEFORE any failure is raised: the branch
+        // exists and is billing, so a caller must be able to find and delete it
+        // even when this command is about to exit non-zero.
         if (json) {
-          outputJson({ branch: ready });
-        } else if (ready.branch_state === 'ready') {
+          outputJson({ branch: ready, serving });
+        } else if (ready.branch_state === 'ready' && serving) {
           if (opts.switch) {
             outputInfo(
               '⚠ Re-source your dev server env (.env) to pick up the new INSFORGE_URL / ANON_KEY.',
             );
           }
+        } else if (ready.branch_state === 'ready') {
+          outputInfo(
+            `Branch '${name}' exists but its host is not serving yet. Run \`insforge branch list\` to check, or \`insforge branch delete ${name}\` to remove it.`,
+          );
         } else {
           outputInfo(
             `Branch '${name}' is still in '${ready.branch_state}' state. Run \`insforge branch list\` to check.`,
+          );
+        }
+
+        // Exit non-zero when the branch cannot be used. Reporting success here
+        // is what lets automation continue straight into a host that resets —
+        // the failure mode this whole change exists to remove.
+        if (ready.branch_state === 'ready' && !serving) {
+          throw new CLIError(
+            `Branch '${name}' was created but its host did not start serving within ${
+              Math.round(HEALTH_TIMEOUT_MS / 60_000)
+            } minutes.`,
           );
         }
       } catch (err) {
@@ -145,17 +180,38 @@ export function registerBranchCreateCommand(branch: Command): void {
  * anything exists — so the branch is silently orphaned. `branch list` is
  * authoritative here, and it is a control-plane call, so it still works while
  * the branch's own host is unreachable.
+ *
+ * Two guards keep this from adopting something it did not create — a duplicate
+ * name is a REJECTION, not a lost response, and adopting on it would switch the
+ * caller into someone else's branch with a different mode and different data:
+ *
+ *   1. only a tagged transport failure is eligible; every HTTP/API rejection
+ *      (duplicate name, quota, auth) rethrows untouched;
+ *   2. the branch must have been created at or after the moment we sent the
+ *      request, so a pre-existing same-name branch is never a candidate.
  */
+function isTransportFailure(err: unknown): boolean {
+  return err instanceof CLIError && err.code === NETWORK_ERROR_CODE;
+}
+
 async function createBranchOrAdopt(
   parentId: string,
   body: { mode: BranchMode; name: string },
   apiUrl: string | undefined,
+  requestedAt: number,
 ): Promise<Branch> {
   try {
     return await createBranchApi(parentId, body, apiUrl);
   } catch (err) {
+    if (!isTransportFailure(err)) throw err;
     const existing = await listBranchesApi(parentId, apiUrl)
-      .then(branches => branches.find(branch => branch.name === body.name))
+      .then(branches =>
+        branches.find(
+          branch =>
+            branch.name === body.name &&
+            Date.parse(branch.branch_created_at) >= requestedAt,
+        ),
+      )
       .catch(() => undefined);
     if (!existing) throw err;
     return existing;

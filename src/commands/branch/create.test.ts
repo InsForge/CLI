@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchCreateCommand } from './create.js';
+import { CLIError } from '../../lib/errors.js';
 
 vi.mock('../../lib/api/platform.js', () => ({
   createBranchApi: vi.fn(async (_parentId: string, body: { mode: string; name: string }) => ({
@@ -26,6 +27,7 @@ vi.mock('../../lib/api/platform.js', () => ({
     branch_metadata: { mode: 'full' },
   })),
   listBranchesApi: vi.fn(async () => []),
+  NETWORK_ERROR_CODE: 'NETWORK_ERROR',
 }));
 
 // The data-plane readiness probe. It MUST be mocked: unmocked it makes a real
@@ -334,7 +336,7 @@ describe('branch create', () => {
     });
     const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
     (createBranchApi as Mock).mockRejectedValueOnce(
-      new Error('Connection to api.insforge.dev was reset.'),
+      new CLIError('Connection to api.insforge.dev was reset.', 1, 'NETWORK_ERROR'),
     );
     (listBranchesApi as Mock).mockResolvedValueOnce([
       {
@@ -368,7 +370,9 @@ describe('branch create', () => {
       org_id: 'o1',
     });
     const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
-    (createBranchApi as Mock).mockRejectedValueOnce(new Error('boom'));
+    (createBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError('Connection to api.insforge.dev was reset.', 1, 'NETWORK_ERROR'),
+    );
     (listBranchesApi as Mock).mockResolvedValueOnce([]);
     const program = new Command().exitOverride();
     program.option('--json').option('--api-url <url>').option('-y, --yes');
@@ -389,6 +393,137 @@ describe('branch create', () => {
       process.exit = origExit;
       process.stderr.write = origStderr;
     }
+    expect(exitCode).toBe(1);
+  });
+  it('does NOT adopt on an API rejection — a duplicate name is a refusal, not a lost response', async () => {
+    // Adopting here would switch the caller into a pre-existing branch with a
+    // different mode and different data. Only a transport failure is ambiguous.
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
+    (createBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError("Branch name 'feat-x' already exists on this parent", 1),
+    );
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      await program
+        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+        .catch(() => {});
+    } finally {
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+    }
+    expect(listBranchesApi as Mock).not.toHaveBeenCalled();
+    expect(exitCode).toBe(1);
+  });
+
+  it('does NOT adopt a branch that predates the request', async () => {
+    // Same name, but it existed before we asked — so it is not ours.
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
+    (createBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError('Connection to api.insforge.dev was reset.', 1, 'NETWORK_ERROR'),
+    );
+    (listBranchesApi as Mock).mockResolvedValueOnce([
+      {
+        id: 'someone-elses',
+        parent_project_id: 'p1',
+        organization_id: 'o1',
+        name: 'feat-x',
+        appkey: 'p1ky-old',
+        region: 'us-east',
+        branch_state: 'ready',
+        branch_created_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+        branch_metadata: { mode: 'full' },
+      },
+    ]);
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      await program
+        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+        .catch(() => {});
+    } finally {
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+    }
+    expect(exitCode).toBe(1);
+  });
+
+  it('exits non-zero when the branch never serves, but still emits its identity first', async () => {
+    // The branch exists and is billing: automation must be able to find and
+    // delete it even though the command is failing.
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { probeBackendHealth } = await import('../../lib/api/oss.js');
+    (probeBackendHealth as Mock).mockResolvedValue({ reachable: false, status: null });
+    const lines: string[] = [];
+    const origLog = console.log;
+    console.log = ((...args: unknown[]) => {
+      lines.push(args.join(' '));
+    }) as typeof console.log;
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    vi.useFakeTimers();
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    try {
+      const run = program
+        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch', '--json'], {
+          from: 'user',
+        })
+        .catch(() => {});
+      await vi.runAllTimersAsync();
+      await run;
+    } finally {
+      vi.useRealTimers();
+      console.log = origLog;
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+    }
+    const payload = lines.join('\n');
+    expect(payload).toContain('branch-id');
+    expect(payload).toContain('"serving"');
+    expect(payload).toContain('false');
     expect(exitCode).toBe(1);
   });
 });
