@@ -154,8 +154,18 @@ export function registerBranchCreateCommand(branch: Command): void {
 
         // Exit non-zero when the branch cannot be used. Reporting success here
         // is what lets automation continue straight into a host that resets —
-        // the failure mode this whole change exists to remove.
-        if (ready.branch_state === 'ready' && !serving) {
+        // the failure mode this whole change exists to remove. Two outcomes are
+        // "not usable", and both must fail: the branch never finished
+        // provisioning (still non-'ready' after the poll budget), and the branch
+        // is 'ready' but its host never started serving.
+        if (ready.branch_state !== 'ready') {
+          throw new CLIError(
+            `Branch '${name}' was created but did not finish provisioning (still '${ready.branch_state}') within ${
+              Math.round(POLL_TIMEOUT_MS / 60_000)
+            } minutes.`,
+          );
+        }
+        if (!serving) {
           throw new CLIError(
             `Branch '${name}' was created but its host did not start serving within ${
               Math.round(HEALTH_TIMEOUT_MS / 60_000)

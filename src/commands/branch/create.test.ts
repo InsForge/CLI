@@ -325,6 +325,61 @@ describe('branch create', () => {
     expect(stopped?.[1]).toBe(1);
   });
 
+  it('exits non-zero when the branch never finishes provisioning', async () => {
+    // The sibling of "ready but not serving": if the branch is stuck in a
+    // non-terminal state past the poll budget it is equally unusable, so
+    // automation reading the exit code must not see success. (Review suggestion,
+    // InsForge/CLI#201.)
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { getBranchApi } = await import('../../lib/api/platform.js');
+    const originalImpl = (getBranchApi as Mock).getMockImplementation();
+    // Never reaches 'ready' — pollUntilReady exhausts its budget and returns the
+    // last 'creating' snapshot.
+    (getBranchApi as Mock).mockResolvedValue({
+      id: 'branch-id',
+      parent_project_id: 'p1',
+      organization_id: 'o1',
+      name: 'feat-x',
+      appkey: 'p1ky-x9p',
+      region: 'us-east',
+      branch_state: 'creating',
+      branch_created_at: new Date().toISOString(),
+      branch_metadata: { mode: 'schema-only' },
+    });
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    vi.useFakeTimers();
+    try {
+      const program = new Command().exitOverride();
+      program.option('--json').option('--api-url <url>').option('-y, --yes');
+      registerBranchCreateCommand(program);
+      const run = program
+        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+        .catch(() => {});
+      await vi.runAllTimersAsync();
+      await run;
+    } finally {
+      vi.useRealTimers();
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+      // Restore the shared 'ready' impl — clearAllMocks keeps implementations, so
+      // leaving this 'creating' would make every later test poll the full budget.
+      (getBranchApi as Mock).mockImplementation(originalImpl!);
+    }
+    expect(exitCode).toBe(1);
+  });
+
   it('adopts a branch that was created despite a transport failure', async () => {
     // createBranchApi carries no idempotency key, so a reset on the RESPONSE
     // leg leaves a real, billing branch behind. Giving up here orphans it.

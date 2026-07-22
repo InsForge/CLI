@@ -1,10 +1,6 @@
 import { getAccessToken, getCredentials, getPlatformApiUrl } from '../config.js';
-import { AuthError, CLIError, formatFetchError } from '../errors.js';
-
-// Marks a CLIError that came from a failed fetch rather than an HTTP response:
-// the request may still have been received and acted on by the server.
-export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
 import { refreshAccessToken } from '../credentials.js';
+import { AuthError, CLIError, formatFetchError } from '../errors.js';
 import type {
   ApiKeyResponse,
   Backup,
@@ -33,6 +29,10 @@ import type {
   UpgradeInstanceResult,
   User,
 } from '../../types.js';
+
+// Marks a CLIError that came from a failed fetch rather than an HTTP response:
+// the request may still have been received and acted on by the server.
+export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
 
 export interface PlatformFetchOptions extends RequestInit {
   /**
