@@ -115,7 +115,7 @@ program
 // Global options
 program
   .option('--json', 'Output in JSON format')
-  .option('--forger', 'Play the Forger animation and return to the interactive menu')
+  .option('--forger', 'Play the Forger animation (root command only) and return to the interactive menu')
   .option('--api-url <url>', 'Override Platform API URL')
   .option('-y, --yes', 'Skip confirmation prompts')
   .option('--reason <text>', 'Agent: what the operation does and why (intent) — shown to the human approver for destructive operations')
@@ -124,11 +124,24 @@ program
   .option('--flag-destructive [reason]', 'Agent: flag this op as destructive for human approval even if InsForge\'s rules consider it safe (escalate-only — cannot downgrade the verdict)');
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
-  if (!prompts.isInteractive || didPlayForgerAnimation) return;
-  if (actionCommand !== program) return;
+  if (didPlayForgerAnimation) return;
 
-  const opts = actionCommand.optsWithGlobals() as { forger?: boolean };
+  const opts = actionCommand.optsWithGlobals() as { forger?: boolean; json?: boolean };
   if (!opts.forger) return;
+
+  // --forger is root-only: reject `insforge <subcommand> --forger` in every context
+  // (TTY, piped, CI) instead of silently dropping the flag.
+  if (actionCommand !== program) {
+    const message = 'Error: --forger can only be used without a subcommand.';
+    if (opts.json) {
+      outputJson({ error: message });
+    } else {
+      console.error(message);
+    }
+    process.exit(1);
+  }
+
+  if (!prompts.isInteractive) return;
 
   didPlayForgerAnimation = true;
   try {
