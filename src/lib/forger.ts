@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isInteractive } from './prompts.js';
 
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
@@ -8,6 +9,9 @@ const CURSOR_HOME = '\x1b[H';
 const CLEAR_SCREEN = '\x1b[2J';
 const RESET = '\x1b[0m';
 const FORGER_ASSET_URL = new URL('./assets/forger.json', import.meta.url);
+/** Minimum terminal size that renders the animation cleanly. */
+const MIN_TERMINAL_COLUMNS = 80;
+const MIN_TERMINAL_ROWS = 14;
 
 type Frame = {
   duration?: number;
@@ -86,7 +90,16 @@ function buildFrameLines(
 }
 
 export async function playForgerAnimation(): Promise<void> {
-  if (!process.stdout.isTTY) return;
+  if (!isInteractive) return;
+
+  const cols = process.stdout.columns ?? 0;
+  const rows = process.stdout.rows ?? 0;
+  if ((cols > 0 && cols < MIN_TERMINAL_COLUMNS) || (rows > 0 && rows < MIN_TERMINAL_ROWS)) {
+    process.stdout.write(
+      `Skipping Forger animation: terminal must be at least ${MIN_TERMINAL_COLUMNS}x${MIN_TERMINAL_ROWS}.\n`,
+    );
+    return;
+  }
 
   const animation = JSON.parse(readFileSync(FORGER_ASSET_URL, 'utf-8')) as AnimationFile;
   const width = animation.canvas.width;

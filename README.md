@@ -68,7 +68,9 @@ All commands support the following flags:
 | `--json`            | Output in JSON format (useful for scripts and AI agents) |
 | `--api-url <url>`   | Override the Platform API URL                            |
 | `-y, --yes`         | Skip confirmation prompts                                |
-| `--forger`          | Play the Insforge forger animation              |
+| `--forger`          | Play the Forger animation (root command only: `insforge --forger`) |
+
+`--forger` cannot be combined with a subcommand (e.g. `insforge login --forger` errors).
 
 The `--project-id <id>` flag is command-specific and is supported by `link`
 when you want to link a directory directly to a known project.
