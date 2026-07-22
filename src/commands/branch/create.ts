@@ -38,7 +38,8 @@ export function registerBranchCreateCommand(branch: Command): void {
     .description('Create a branch from the currently linked project')
     .option('--mode <mode>', 'full | schema-only', 'full')
     .option('--no-switch', 'Do not auto-switch context after creation')
-    .action(async (name: string, opts: { mode: string; switch: boolean }, cmd) => {
+    .option('--no-wait-ready', 'Skip waiting for data plane readiness (exit immediately after control plane confirms creation)')
+    .action(async (name: string, opts: { mode: string; switch: boolean; waitReady: boolean }, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
@@ -96,10 +97,12 @@ export function registerBranchCreateCommand(branch: Command): void {
           // returned, not that the branch answers. Confirm the data plane
           // before reporting success, otherwise the very next command the user
           // runs — including the auto-switch below — hits a host that resets.
-          if (provisioned) {
+          if (provisioned && opts.waitReady !== false) {
             spinner?.message('Branch ready. Waiting for it to start serving...');
             serving = await waitUntilServing(ready, spinner);
             if (!serving) provisioned = false;
+          } else if (provisioned) {
+            serving = true;
           }
 
           if (provisioned && opts.switch) {

@@ -16,6 +16,56 @@ function requireProjectConfig(): ProjectConfig {
 }
 
 /**
+ * Check if an error is likely caused by a branch still provisioning.
+ * This detects network-level failures (ECONNRESET, fetch failed, timeout)
+ * that occur when the branch's data plane isn't ready yet.
+ */
+export function isProvisioningError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  const cause = (err as { cause?: unknown }).cause;
+  const causeCode = cause && typeof cause === 'object' && 'code' in cause 
+    ? String((cause as { code: unknown }).code).toLowerCase() 
+    : '';
+  
+  // Network errors that indicate the data plane isn't ready
+  const provisioningCodes = [
+    'econnreset',
+    'etimedout',
+    'econnrefused',
+    'enotfound',
+    'eai_again',
+    'und_err_connect_timeout',
+    'und_err_socket',
+  ];
+  
+  // Check error message for provisioning indicators
+  const provisioningMessages = [
+    'fetch failed',
+    'connection reset',
+    'connection refused',
+    'timed out',
+    'dns lookup failed',
+    'cannot resolve',
+  ];
+  
+  if (causeCode && provisioningCodes.includes(causeCode)) return true;
+  if (provisioningMessages.some(m => msg.includes(m))) return true;
+  
+  return false;
+}
+
+/**
+ * Build a user-friendly error message when a branch-scoped command fails
+ * due to the branch still provisioning.
+ */
+export function buildProvisioningErrorMessage(branchName?: string): string {
+  const base = 'Branch is still provisioning (this can take up to ~12 minutes).';
+  const branchPart = branchName ? ` Branch: ${branchName}.` : '';
+  return `${base}${branchPart} Retry shortly, or create the branch with \`--wait-ready\` to block until it's usable.`;
+}
+
+/**
  * Unified OSS API fetch. Uses API key as Bearer token for all requests,
  * which grants superadmin access (SQL execution, bucket management, etc.).
  */

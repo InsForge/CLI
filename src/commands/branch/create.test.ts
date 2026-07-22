@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchCreateCommand } from './create.js';
 import { CLIError } from '../../lib/errors.js';
@@ -72,7 +72,7 @@ vi.mock('@clack/prompts', () => ({
 
 // Run `fn` with process.exit + stderr captured, and always restore them. Returns
 // the exit code fn triggered (undefined if it never exited). Timer/mock lifecycle
-// stays with the caller — this only owns the exit/stderr swap.
+// stays with the caller ΓÇö this only owns the exit/stderr swap.
 async function withCapturedExit(fn: () => Promise<void>): Promise<number | undefined> {
   let exitCode: number | undefined;
   const origExit = process.exit;
@@ -303,7 +303,7 @@ describe('branch create', () => {
     expect(spinnerMock.start).toHaveBeenCalledTimes(1);
     expect(spinnerMock.start).toHaveBeenCalledWith(expect.stringContaining("Creating branch 'feat-x'"));
     // ...and stop fires exactly once (after the switch completes), with the
-    // unified "ready and active" message — never with the misleading "ready"
+    // unified "ready and active" message ΓÇö never with the misleading "ready"
     // line that a separate stop+restart pair would produce.
     expect(spinnerMock.stop).toHaveBeenCalledTimes(1);
     expect(spinnerMock.stop).toHaveBeenCalledWith(
@@ -359,7 +359,7 @@ describe('branch create', () => {
     });
     const { getBranchApi } = await import('../../lib/api/platform.js');
     const originalImpl = (getBranchApi as Mock).getMockImplementation();
-    // Never reaches 'ready' — pollUntilReady exhausts its budget and returns the
+    // Never reaches 'ready' ΓÇö pollUntilReady exhausts its budget and returns the
     // last 'creating' snapshot.
     (getBranchApi as Mock).mockResolvedValue({
       id: 'branch-id',
@@ -387,7 +387,7 @@ describe('branch create', () => {
       });
     } finally {
       vi.useRealTimers();
-      // Restore the shared 'ready' impl — clearAllMocks keeps implementations, so
+      // Restore the shared 'ready' impl ΓÇö clearAllMocks keeps implementations, so
       // leaving this 'creating' would make every later test poll the full budget.
       (getBranchApi as Mock).mockImplementation(originalImpl!);
     }
@@ -432,8 +432,8 @@ describe('branch create', () => {
   });
 
   it('does NOT adopt a same-name branch created with a DIFFERENT mode', async () => {
-    // A collaborator's same-name branch landing in the skew window — at the same
-    // moment our own request loses its response leg — must not be adopted, or a
+    // A collaborator's same-name branch landing in the skew window ΓÇö at the same
+    // moment our own request loses its response leg ΓÇö must not be adopted, or a
     // default --switch would move local context onto their branch. Requiring a
     // matching mode narrows that collision. (cubic P2, InsForge/CLI#201.)
     const { getProjectConfig } = await import('../../lib/config.js');
@@ -468,7 +468,7 @@ describe('branch create', () => {
         .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
         .catch(() => {})
     );
-    // No adoption → the original transport error propagates → non-zero exit.
+    // No adoption ΓåÆ the original transport error propagates ΓåÆ non-zero exit.
     expect(exitCode).toBe(1);
   });
 
@@ -505,7 +505,7 @@ describe('branch create', () => {
     }
     expect(exitCode).toBe(1);
   });
-  it('does NOT adopt on an API rejection — a duplicate name is a refusal, not a lost response', async () => {
+  it('does NOT adopt on an API rejection ΓÇö a duplicate name is a refusal, not a lost response', async () => {
     // Adopting here would switch the caller into a pre-existing branch with a
     // different mode and different data. Only a transport failure is ambiguous.
     const { getProjectConfig } = await import('../../lib/config.js');
@@ -542,7 +542,7 @@ describe('branch create', () => {
   });
 
   it('does NOT adopt a branch that predates the request', async () => {
-    // Same name, but it existed before we asked — so it is not ours.
+    // Same name, but it existed before we asked ΓÇö so it is not ours.
     const { getProjectConfig } = await import('../../lib/config.js');
     (getProjectConfig as Mock).mockReturnValue({
       project_id: 'p1',
@@ -635,5 +635,23 @@ describe('branch create', () => {
     expect(payload).toContain('"serving"');
     expect(payload).toContain('false');
     expect(exitCode).toBe(1);
+  });
+
+  it('--no-wait-ready skips data-plane health polling', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    await program.parseAsync(
+      ['create', 'feat-x', '--mode', 'full', '--no-switch', '--no-wait-ready', '--json'],
+      { from: 'user' },
+    );
+    const { probeBackendHealth } = await import('../../lib/api/oss.js');
+    expect(probeBackendHealth).not.toHaveBeenCalled();
   });
 });
