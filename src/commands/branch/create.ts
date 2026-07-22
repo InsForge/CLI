@@ -1,16 +1,26 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
-import { createBranchApi, getBranchApi } from '../../lib/api/platform.js';
+import { createBranchApi, getBranchApi, listBranchesApi } from '../../lib/api/platform.js';
+import { probeBackendHealth } from '../../lib/api/oss.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { getProjectConfig } from '../../lib/config.js';
+import { buildOssHost, getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { runBranchSwitch } from './switch.js';
 import type { Branch, BranchMode } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1_000;
+// `branch_state` reaching 'ready' and the branch's own host answering are two
+// different events, and the gap between them has been measured in MINUTES
+// (2 min and 11.5 min on ap-southeast). A 5-minute ceiling reported the slower
+// one as "still creating" when it was simply not finished yet, so the budget
+// now covers the observed range with headroom.
+const POLL_TIMEOUT_MS = 15 * 60 * 1_000;
+// Once the control plane says ready, wait for the data plane too. Until this
+// passes, every subsequent command against the branch fails.
+const HEALTH_TIMEOUT_MS = 10 * 60 * 1_000;
+const HEALTH_INTERVAL_MS = 5_000;
 
 export function registerBranchCreateCommand(branch: Command): void {
   branch
@@ -53,7 +63,7 @@ export function registerBranchCreateCommand(branch: Command): void {
         let provisioned = false;
         try {
           spinner?.start(`Creating branch '${name}'...`);
-          const created = await createBranchApi(project.project_id, { mode, name }, apiUrl);
+          const created = await createBranchOrAdopt(project.project_id, { mode, name }, apiUrl);
           captureEvent(project.project_id, 'cli_branch_create', {
             mode,
             parent_project_id: project.project_id,
@@ -61,6 +71,19 @@ export function registerBranchCreateCommand(branch: Command): void {
           spinner?.message(`Branch '${name}' created (appkey: ${created.appkey}). Provisioning...`);
           ready = await pollUntilReady(created.id, apiUrl, spinner);
           provisioned = ready.branch_state === 'ready';
+
+          // 'ready' is a control-plane state: it means the provisioning job
+          // returned, not that the branch answers. Confirm the data plane
+          // before reporting success, otherwise the very next command the user
+          // runs — including the auto-switch below — hits a host that resets.
+          if (provisioned) {
+            spinner?.message('Branch ready. Waiting for it to start serving...');
+            const serving = await waitUntilServing(ready, spinner);
+            if (!serving) {
+              provisioned = false;
+              ready = { ...ready, branch_state: ready.branch_state };
+            }
+          }
 
           if (provisioned && opts.switch) {
             spinner?.message('Branch ready. Switching context...');
@@ -71,6 +94,11 @@ export function registerBranchCreateCommand(branch: Command): void {
             spinner?.stop(`Branch '${name}' is ready and active`);
           } else if (provisioned) {
             spinner?.stop(`Branch '${name}' is ready`);
+          } else if (ready.branch_state === 'ready') {
+            spinner?.stop(
+              `Branch '${name}' reports ready but is not serving yet — retry your next command shortly`,
+              1,
+            );
           } else {
             spinner?.stop(`Branch '${name}' is in '${ready.branch_state}' state`);
           }
@@ -105,6 +133,59 @@ export function registerBranchCreateCommand(branch: Command): void {
         await shutdownAnalytics();
       }
     });
+}
+
+/**
+ * Create the branch, and if the request fails at the TRANSPORT layer, check
+ * whether it was created anyway before giving up.
+ *
+ * `createBranchApi` carries no idempotency key, and a reset on the RESPONSE leg
+ * leaves a fully created, billing branch behind while the CLI exits non-zero.
+ * The caller then has no id, no name in the output, and no reason to believe
+ * anything exists — so the branch is silently orphaned. `branch list` is
+ * authoritative here, and it is a control-plane call, so it still works while
+ * the branch's own host is unreachable.
+ */
+async function createBranchOrAdopt(
+  parentId: string,
+  body: { mode: BranchMode; name: string },
+  apiUrl: string | undefined,
+): Promise<Branch> {
+  try {
+    return await createBranchApi(parentId, body, apiUrl);
+  } catch (err) {
+    const existing = await listBranchesApi(parentId, apiUrl)
+      .then(branches => branches.find(branch => branch.name === body.name))
+      .catch(() => undefined);
+    if (!existing) throw err;
+    return existing;
+  }
+}
+
+/**
+ * Poll the branch's own host until it serves, so 'ready' means usable.
+ *
+ * Returns false rather than throwing when the budget runs out: the branch DOES
+ * exist and is billing, so the command must still report its name and id and
+ * must not look like a failed creation.
+ */
+async function waitUntilServing(
+  branch: Branch,
+  spinner: ReturnType<typeof clack.spinner> | null,
+): Promise<boolean> {
+  const baseUrl = buildOssHost(branch.appkey, branch.region);
+  const start = Date.now();
+  let announced = false;
+  while (Date.now() - start < HEALTH_TIMEOUT_MS) {
+    const health = await probeBackendHealth(baseUrl);
+    if (health.reachable) return true;
+    if (spinner && !announced) {
+      spinner.message(`Branch is provisioning its instance (${baseUrl} not answering yet)...`);
+      announced = true;
+    }
+    await new Promise(r => setTimeout(r, HEALTH_INTERVAL_MS));
+  }
+  return false;
 }
 
 async function pollUntilReady(

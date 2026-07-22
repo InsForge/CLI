@@ -25,6 +25,13 @@ vi.mock('../../lib/api/platform.js', () => ({
     branch_created_at: new Date().toISOString(),
     branch_metadata: { mode: 'full' },
   })),
+  listBranchesApi: vi.fn(async () => []),
+}));
+
+// The data-plane readiness probe. It MUST be mocked: unmocked it makes a real
+// request to a fake host and then polls for minutes.
+vi.mock('../../lib/api/oss.js', () => ({
+  probeBackendHealth: vi.fn(async () => ({ reachable: true, status: 200 })),
 }));
 
 vi.mock('../../lib/credentials.js', () => ({
@@ -32,6 +39,7 @@ vi.mock('../../lib/credentials.js', () => ({
 }));
 
 vi.mock('../../lib/config.js', () => ({
+  buildOssHost: (appkey: string, region: string) => `https://${appkey}.${region}.insforge.app`,
   getProjectConfig: vi.fn(),
   saveProjectConfig: vi.fn(),
   getLocalConfigDir: () => '/tmp/.insforge',
@@ -61,11 +69,16 @@ vi.mock('@clack/prompts', () => ({
 }));
 
 describe('branch create', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     spinnerMock.start.mockReset();
     spinnerMock.message.mockReset();
     spinnerMock.stop.mockReset();
+    // clearAllMocks clears CALLS but keeps implementations, so a test that made
+    // the branch unreachable would otherwise leave every later test polling for
+    // the full readiness budget.
+    const { probeBackendHealth } = await import('../../lib/api/oss.js');
+    (probeBackendHealth as Mock).mockResolvedValue({ reachable: true, status: 200 });
   });
 
   it('rejects when no project linked', async () => {
@@ -279,5 +292,103 @@ describe('branch create', () => {
     expect(runBranchSwitch).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'feat-x', json: false, silent: true }),
     );
+  });
+  it('does not report success while the branch host is not serving yet', async () => {
+    // 'ready' is a control-plane state. Reporting success on it alone is what
+    // makes the user's NEXT command fail against a host that resets.
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { probeBackendHealth } = await import('../../lib/api/oss.js');
+    (probeBackendHealth as Mock).mockResolvedValue({
+      reachable: false,
+      status: null,
+      detail: 'Connection to p1ky-x9p.us-east.insforge.app was reset.',
+    });
+    vi.useFakeTimers();
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    const run = program
+      .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+      .catch(() => {});
+    await vi.runAllTimersAsync();
+    await run;
+    vi.useRealTimers();
+    const stopped = spinnerMock.stop.mock.calls.at(-1);
+    expect(String(stopped?.[0])).toContain('not serving yet');
+    expect(stopped?.[1]).toBe(1);
+  });
+
+  it('adopts a branch that was created despite a transport failure', async () => {
+    // createBranchApi carries no idempotency key, so a reset on the RESPONSE
+    // leg leaves a real, billing branch behind. Giving up here orphans it.
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
+    (createBranchApi as Mock).mockRejectedValueOnce(
+      new Error('Connection to api.insforge.dev was reset.'),
+    );
+    (listBranchesApi as Mock).mockResolvedValueOnce([
+      {
+        id: 'branch-id',
+        parent_project_id: 'p1',
+        organization_id: 'o1',
+        name: 'feat-x',
+        appkey: 'p1ky-x9p',
+        region: 'us-east',
+        branch_state: 'creating',
+        branch_created_at: new Date().toISOString(),
+        branch_metadata: { mode: 'schema-only' },
+      },
+    ]);
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    await program
+      .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+      .catch(() => {});
+    expect(listBranchesApi as Mock).toHaveBeenCalledWith('p1', undefined);
+    // The run continued instead of exiting as a failed creation.
+    expect(String(spinnerMock.stop.mock.calls.at(-1)?.[0])).not.toContain('creation failed');
+  });
+
+  it('rethrows the original error when nothing was actually created', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
+    (createBranchApi as Mock).mockRejectedValueOnce(new Error('boom'));
+    (listBranchesApi as Mock).mockResolvedValueOnce([]);
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      await program
+        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+        .catch(() => {});
+    } finally {
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+    }
+    expect(exitCode).toBe(1);
   });
 });
