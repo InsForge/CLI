@@ -16,6 +16,17 @@ vi.mock('../../lib/api/platform.js', () => ({
       branch_metadata: { mode: 'full' },
     },
   ]),
+  getBranchApi: vi.fn(async () => ({
+    id: 'b1',
+    name: 'feat-x',
+    branch_state: 'ready',
+    organization_id: 'o1',
+    parent_project_id: 'p1',
+    appkey: 'k1',
+    region: 'us-east',
+    branch_created_at: '2026-04-29T00:00:00Z',
+    branch_metadata: { mode: 'full' },
+  })),
   deleteBranchApi: vi.fn(async () => undefined),
 }));
 
@@ -160,5 +171,82 @@ describe('branch delete', () => {
     }
     const parsed = JSON.parse(logs.join('\n'));
     expect(parsed).toEqual({ deleted: true, branch_id: 'b1', switched_back: true });
+  });
+
+  it('isBusyError matches busy, creating, and merging messages', async () => {
+    const { deleteBranchApi } = await import('../../lib/api/platform.js');
+    const busyErr = new (await import('../../lib/errors.js')).CLIError(
+      'Branch is currently busy with provisioning. Please wait.',
+    );
+    (deleteBranchApi as Mock).mockRejectedValueOnce(busyErr);
+
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const program = makeProgram();
+    await runSilently(program, ['delete', 'feat-x', '--yes', '--json']);
+    // deleteBranchApi should have been called twice: first fails (busy),
+    // then getBranchApi says "ready", so retry succeeds
+    const { deleteBranchApi: dbApi } = await import('../../lib/api/platform.js');
+    expect(dbApi).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries deletion when branch busy then becomes ready', async () => {
+    const { deleteBranchApi } = await import('../../lib/api/platform.js');
+    (deleteBranchApi as Mock)
+      .mockRejectedValueOnce(new (await import('../../lib/errors.js')).CLIError('Branch is busy creating'))
+      .mockResolvedValueOnce(undefined);
+
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const program = makeProgram();
+    await runSilently(program, ['delete', 'feat-x', '--yes', '--json']);
+    const { deleteBranchApi: dbApi } = await import('../../lib/api/platform.js');
+    expect(dbApi).toHaveBeenCalledTimes(2);
+    expect(dbApi).toHaveBeenLastCalledWith('b1', undefined);
+  });
+
+  it('does not retry on non-busy errors', async () => {
+    const { deleteBranchApi } = await import('../../lib/api/platform.js');
+    (deleteBranchApi as Mock).mockRejectedValueOnce(
+      new (await import('../../lib/errors.js')).CLIError('Permission denied: not authorized'),
+    );
+
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      const program = makeProgram();
+      await program
+        .parseAsync(['delete', 'feat-x', '--yes', '--json'], { from: 'user' })
+        .catch(() => {});
+    } finally {
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+    }
+
+    const { deleteBranchApi: dbApi } = await import('../../lib/api/platform.js');
+    // Only one call — no retry for non-busy errors
+    expect(dbApi).toHaveBeenCalledTimes(1);
+    expect(exitCode).toBe(1);
   });
 });
