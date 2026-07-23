@@ -31,6 +31,12 @@ describe('redactSensitive', () => {
     expect(redactSensitive('ghp_16C7e42F292c6912E7710c838347Ae178B4a')).toBe('[REDACTED_KEY]');
     expect(redactSensitive('AKIAIOSFODNN7EXAMPLE')).toBe('[REDACTED_KEY]');
     expect(redactSensitive('xoxb-1234567890-abcdefg')).toBe('[REDACTED_KEY]');
+    // Fixtures deliberately shorter than the real key formats so they stay
+    // below GitHub push-protection detector thresholds
+    expect(redactSensitive('AIzaSyA1b2C3d4E5f6G7h8I9j0K1')).toBe('[REDACTED_KEY]');
+    expect(redactSensitive('npm_a1B2c3D4e5F6g7H8i9J0k1L2')).toBe('[REDACTED_KEY]');
+    expect(redactSensitive('phc_a1B2c3D4e5F6g7H8i9J0k1L2')).toBe('[REDACTED_KEY]');
+    expect(redactSensitive('phx_a1B2c3D4e5F6g7H8i9J0k1L2')).toBe('[REDACTED_KEY]');
   });
 
   it('redacts generic secret assignments but keeps the key name', () => {

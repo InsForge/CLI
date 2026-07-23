@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Command } from 'commander';
 import { registerFeedbackCommand } from './feedback.js';
 import { resetTelemetryOutcomeForTests } from '../lib/command-telemetry.js';
@@ -6,17 +9,19 @@ import { resetTelemetryOutcomeForTests } from '../lib/command-telemetry.js';
 vi.mock('../lib/api/feedback.js', () => ({
   submitFeedback: vi.fn(async () => ({ id: 'fb_123', status: 'received' })),
 }));
+const PROJECT_CONFIG = {
+  project_id: 'p1',
+  project_name: 'demo',
+  org_id: 'o1',
+  appkey: 'k',
+  region: 'us-east',
+  api_key: 'key',
+  oss_host: 'http://localhost',
+};
+
 vi.mock('../lib/config.js', () => ({
   FAKE_PROJECT_ID: 'fa4e0000-1234-5678-90ab-cd1234567890',
-  getProjectConfig: vi.fn(() => ({
-    project_id: 'p1',
-    project_name: 'demo',
-    org_id: 'o1',
-    appkey: 'k',
-    region: 'us-east',
-    api_key: 'key',
-    oss_host: 'http://localhost',
-  })),
+  getProjectConfig: vi.fn(),
 }));
 vi.mock('../lib/analytics.js', () => ({
   trackGroupCommand: vi.fn(),
@@ -41,9 +46,12 @@ async function run(argv: string[]) {
 }
 
 describe('feedback command', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     resetTelemetryOutcomeForTests();
+    // Reset per test so a mockReturnValue override in one test can't leak
+    const { getProjectConfig } = await import('../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue(PROJECT_CONFIG);
   });
 
   it('submits a structured payload with auto-attached context', async () => {
@@ -214,6 +222,48 @@ describe('feedback command', () => {
     } finally {
       errSpy.mockRestore();
       exitSpy.mockRestore();
+    }
+  });
+
+  it('reads the detail text from --file and still redacts it', async () => {
+    const { submitFeedback } = await import('../lib/api/feedback.js');
+    const path = join(tmpdir(), `feedback-detail-${process.pid}.txt`);
+    writeFileSync(path, 'detail from a file, reported by jane@example.com');
+    try {
+      await run(['feedback', '--type', 'bug', '--component', 'cli', '--title', 't', '--file', path]);
+      const [payload] = (submitFeedback as Mock).mock.calls[0];
+      expect(payload.detail).toBe('detail from a file, reported by [REDACTED_EMAIL]');
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  it('omits project context when no project is linked at all', async () => {
+    const { getProjectConfig } = await import('../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue(null);
+    const { submitFeedback } = await import('../lib/api/feedback.js');
+
+    await run(['feedback', '--type', 'bug', '--component', 'cli', '--title', 't', '--detail', 'd']);
+
+    const [payload] = (submitFeedback as Mock).mock.calls[0];
+    expect(payload.project_id).toBeUndefined();
+    expect(payload.org_id).toBeUndefined();
+    expect(payload.region).toBeUndefined();
+  });
+
+  it('tells the user when a report folded into an existing one', async () => {
+    const { submitFeedback } = await import('../lib/api/feedback.js');
+    (submitFeedback as Mock).mockResolvedValueOnce({ id: 'fb1', status: 'duplicate' });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await makeProgram().parseAsync(
+        ['feedback', '--type', 'bug', '--component', 'cli', '--title', 't', '--detail', 'd'],
+        { from: 'user' },
+      );
+      expect(logSpy.mock.calls.flat().join('\n')).toContain('already reported');
+    } finally {
+      logSpy.mockRestore();
     }
   });
 

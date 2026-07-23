@@ -25,6 +25,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/\bgithub_pat_\w{20,}/g, '[REDACTED_KEY]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED_KEY]'],
   [/\bxox[baprs]-[\w-]{10,}/g, '[REDACTED_KEY]'],
+  // Google API keys, npm tokens, PostHog keys (phc_ is a public client key,
+  // but this module is conservative by design; phx_ personal keys are not)
+  [/\bAIza[\w-]{20,}/g, '[REDACTED_KEY]'],
+  [/\bnpm_[A-Za-z0-9]{20,}/g, '[REDACTED_KEY]'],
+  [/\bph[cx]_[\w-]{20,}/g, '[REDACTED_KEY]'],
   // Generic secret assignments: password=..., api_key: "...", ANON_TOKEN=...
   // Allows prefixed key names (DB_PASSWORD, my-secret) via [\w-]*
   [
