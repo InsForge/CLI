@@ -56,6 +56,7 @@ import { registerDeploymentsMetadataCommand } from './commands/deployments/metad
 import { registerDeploymentsSlugCommand } from './commands/deployments/slug.js';
 
 import { registerDocsCommand } from './commands/docs.js';
+import { registerFeedbackCommand } from './commands/feedback.js';
 import { registerSecretsListCommand } from './commands/secrets/list.js';
 import { registerSecretsGetCommand } from './commands/secrets/get.js';
 import { registerSecretsAddCommand } from './commands/secrets/add.js';
@@ -152,6 +153,7 @@ registerCreateCommand(program);
 registerContextCommand(program);
 registerListCommand(program);
 registerDocsCommand(program);
+registerFeedbackCommand(program);
 registerProjectLinkCommand(program);
 
 // Orgs commands
