@@ -33,9 +33,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
   ],
   // Emails
   [/\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b/g, '[REDACTED_EMAIL]'],
-  // Home directories — the username segment is PII
+  // Home directories — the username segment is PII. Windows (either slash
+  // direction) runs first so `C:/Users/x` collapses to `~` instead of the
+  // unix pattern matching its `/Users/x` suffix and leaving `C:~`.
+  [/\b[A-Za-z]:[\\/]Users[\\/][\w.-]+/g, '~'],
   [/(?:\/Users|\/home)\/[\w.-]+/g, '~'],
-  [/\b[A-Za-z]:\\Users\\[\w.-]+/g, '~'],
 ];
 
 const IPV4 = /\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/g;

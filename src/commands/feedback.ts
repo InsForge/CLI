@@ -12,6 +12,24 @@ import { redactSensitive, truncateMiddle } from '../lib/redact.js';
 const TYPES = ['bug', 'feature-request', 'friction', 'other'] as const;
 const COMPONENTS = ['backend', 'sdk', 'cli', 'skills', 'docs', 'other'] as const;
 const SEVERITIES = ['blocker', 'major', 'minor'] as const;
+
+// --area and --language stay free text toward the feedback backend (that is
+// their home), but PostHog must only ever see fixed values — never
+// user-entered text (DEVELOPMENT.md §2). Unknown values report as 'other'.
+const TELEMETRY_AREAS = new Set([
+  'db', 'auth', 'storage', 'functions', 'deployments', 'billing', 'ai',
+  'realtime', 'payments', 'docs', 'cli',
+]);
+const TELEMETRY_LANGUAGES = new Set([
+  'js', 'ts', 'javascript', 'typescript', 'python', 'flutter', 'dart',
+  'swift', 'kotlin', 'java', 'go', 'rust', 'ruby', 'php', 'csharp',
+  'rest-api', 'rest', 'multiple',
+]);
+
+function telemetryEnum(value: string | undefined, known: Set<string>): string | undefined {
+  if (!value) return undefined;
+  return known.has(value.toLowerCase()) ? value.toLowerCase() : 'other';
+}
 type FeedbackType = (typeof TYPES)[number];
 type FeedbackComponent = (typeof COMPONENTS)[number];
 type FeedbackSeverity = (typeof SEVERITIES)[number];
@@ -226,9 +244,9 @@ export function registerFeedbackCommand(program: Command): void {
         await trackTopLevelUsage('feedback', true, {
           type,
           component,
-          language: payload.language,
+          language: telemetryEnum(payload.language, TELEMETRY_LANGUAGES),
           severity: opts.severity,
-          area: payload.area,
+          area: telemetryEnum(payload.area, TELEMETRY_AREAS),
           status,
           has_command: Boolean(payload.command),
           has_error: Boolean(payload.error),

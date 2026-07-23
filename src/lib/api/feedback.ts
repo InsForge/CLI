@@ -20,6 +20,9 @@ const FEEDBACK_ANON_KEY =
   process.env.INSFORGE_FEEDBACK_ANON_KEY ||
   'anon_d6bd647caa3988037271f3e00661c014c12c3a8be6a01f66c6efa30afe03d0f8';
 
+// Feedback is a side quest — never let a hung endpoint hang the CLI.
+const FEEDBACK_TIMEOUT_MS = 10_000;
+
 export interface FeedbackPayload {
   /**
    * The kind of hurdle hit: bug (should work — per contract or docs — but
@@ -76,8 +79,14 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<Feedback
         Authorization: `Bearer ${FEEDBACK_ANON_KEY}`,
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(FEEDBACK_TIMEOUT_MS),
     });
   } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      throw new CLIError(
+        `Feedback submission timed out after ${FEEDBACK_TIMEOUT_MS / 1000}s. Try again later.`,
+      );
+    }
     throw new CLIError(formatFetchError(err, FEEDBACK_ENDPOINT));
   }
 

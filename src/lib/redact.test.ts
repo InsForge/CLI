@@ -57,6 +57,8 @@ describe('redactSensitive', () => {
     expect(redactSensitive('read C:\\Users\\jdoe\\app\\.env failed')).toBe(
       'read ~\\app\\.env failed',
     );
+    // Windows paths often arrive with normalized forward slashes
+    expect(redactSensitive('read C:/Users/jdoe/app/.env failed')).toBe('read ~/app/.env failed');
   });
 
   it('redacts public IPs but keeps private/loopback ones', () => {

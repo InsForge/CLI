@@ -255,6 +255,29 @@ describe('feedback command', () => {
     expect(calls).not.toContain('example.com');
   });
 
+  it('reports free-text --area/--language to analytics as "other", not verbatim', async () => {
+    const { trackTopLevelCommand } = await import('../lib/analytics.js');
+
+    await run([
+      'feedback',
+      '--type', 'bug',
+      '--component', 'sdk',
+      '--language', 'my proprietary language',
+      '--area', 'the whole storage subsystem honestly',
+      '--title', 't',
+      '--detail', 'd',
+    ]);
+
+    const props = (trackTopLevelCommand as Mock).mock.calls[0][2];
+    expect(props.language).toBe('other');
+    expect(props.area).toBe('other');
+    // Known values still pass through for real analytics value
+    const { submitFeedback } = await import('../lib/api/feedback.js');
+    const [payload] = (submitFeedback as Mock).mock.calls[0];
+    expect(payload.language).toBe('my proprietary language');
+    expect(payload.area).toBe('the whole storage subsystem honestly');
+  });
+
   it('truncates oversized error output but keeps head and tail', async () => {
     const { submitFeedback } = await import('../lib/api/feedback.js');
     const bigError = 'START ' + 'x'.repeat(5000) + ' END';
