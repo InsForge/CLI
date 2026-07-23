@@ -61,7 +61,7 @@ npx @insforge/cli logout
 
 ## Global Options
 
-All commands support the following flags:
+Global flags (available on all commands unless noted otherwise):
 
 | Flag                | Description                                              |
 | ------------------- | -------------------------------------------------------- |

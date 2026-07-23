@@ -94,7 +94,9 @@ export async function playForgerAnimation(): Promise<void> {
 
   const cols = process.stdout.columns ?? 0;
   const rows = process.stdout.rows ?? 0;
-  if ((cols > 0 && cols < MIN_TERMINAL_COLUMNS) || (rows > 0 && rows < MIN_TERMINAL_ROWS)) {
+  // Unknown size (0) can happen in pseudo-TTYs where isTTY is true but
+  // dimensions are absent — skip rather than risk mid-frame wrapping.
+  if (cols === 0 || rows === 0 || cols < MIN_TERMINAL_COLUMNS || rows < MIN_TERMINAL_ROWS) {
     process.stdout.write(
       `Skipping Forger animation: terminal must be at least ${MIN_TERMINAL_COLUMNS}x${MIN_TERMINAL_ROWS}.\n`,
     );
