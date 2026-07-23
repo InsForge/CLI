@@ -139,3 +139,24 @@ silently disabled in published artifacts.
 If a release goes wrong, deprecate the bad version with `npm deprecate` rather
 than unpublishing — unpublishing breaks downstream users who already installed
 that version.
+
+## 6. Feedback backend
+
+The `insforge feedback` command submits reports to a dedicated InsForge
+project via a public edge function — no login required, spam contained
+server-side (RLS-locked table, allow-list validation, per-IP rate limit,
+duplicate folding). The endpoint URL and anon key are deliberately
+hardcoded in `src/lib/api/feedback.ts` (public client credentials
+protected by RLS + function-side rate limiting), overridable via
+`INSFORGE_FEEDBACK_URL` / `INSFORGE_FEEDBACK_ANON_KEY` for testing and
+rotation.
+
+The backend itself (the `feedback` table, the `submit-feedback` edge
+function, and its secrets) lives in the feedback project — it is not
+versioned in this repo. To inspect or maintain it, link a scratch
+directory to that project with the admin key, then use
+`insforge functions code submit-feedback`, `db query`, and
+`functions deploy` as usual; the project's agent memory
+(`insforge memory list`) records the design decisions and triage
+workflow. If you change the CLI's feedback payload shape, update the
+function's allow-list and the table schema in the same change set.
