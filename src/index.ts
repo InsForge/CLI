@@ -132,7 +132,7 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
   // --forger is root-only: reject `insforge <subcommand> --forger` in every context
   // (TTY, piped, CI) instead of silently dropping the flag.
   if (actionCommand !== program) {
-    const jsonMessage = 'Error: --forger can only be used without a subcommand.';
+    const jsonMessage = '--forger can only be used without a subcommand.';
     const humanMessage = `Error: ${jsonMessage}`;
     if (opts.json) {
       outputJson({ error: jsonMessage });
