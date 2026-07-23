@@ -1,5 +1,5 @@
 import { getProjectConfig } from '../config.js';
-import { CLIError, ProjectNotLinkedError } from '../errors.js';
+import { CLIError, formatFetchError, ProjectNotLinkedError } from '../errors.js';
 import type {
   ProjectConfig,
   RotateKeyResponse,
@@ -226,4 +226,27 @@ export async function ossFetch(
   }
 
   return res;
+}
+
+/**
+ * Probe an InsForge backend's `/api/health` on an EXPLICIT base URL.
+ *
+ * Unlike `ossFetch`, this deliberately does not read the linked project: a
+ * freshly created branch is not linked yet, and the whole point is to ask
+ * whether ITS host is answering before we tell the user it is usable.
+ *
+ * Unauthenticated and non-throwing — callers poll it, so a connection reset
+ * while the instance boots is an expected answer ("not yet"), not an error.
+ */
+export async function probeBackendHealth(
+  baseUrl: string,
+  timeoutMs = 10_000,
+): Promise<{ reachable: boolean; status: number | null; detail?: string }> {
+  const url = `${baseUrl.replace(/\/$/, '')}/api/health`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    return { reachable: res.ok, status: res.status };
+  } catch (err) {
+    return { reachable: false, status: null, detail: formatFetchError(err, url) };
+  }
 }
