@@ -1,6 +1,6 @@
 import { getAccessToken, getCredentials, getPlatformApiUrl } from '../config.js';
-import { AuthError, CLIError, formatFetchError } from '../errors.js';
 import { refreshAccessToken } from '../credentials.js';
+import { AuthError, CLIError, formatFetchError } from '../errors.js';
 import type {
   ApiKeyResponse,
   Backup,
@@ -29,6 +29,10 @@ import type {
   UpgradeInstanceResult,
   User,
 } from '../../types.js';
+
+// Marks a CLIError that came from a failed fetch rather than an HTTP response:
+// the request may still have been received and acted on by the server.
+export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
 
 export interface PlatformFetchOptions extends RequestInit {
   /**
@@ -97,7 +101,7 @@ export async function platformFetch(
   try {
     res = await fetch(fullUrl, { ...fetchOptions, headers });
   } catch (err) {
-    throw new CLIError(formatFetchError(err, fullUrl));
+    throw new CLIError(formatFetchError(err, fullUrl), 1, NETWORK_ERROR_CODE);
   }
 
   // Auto-refresh on 401
@@ -108,7 +112,7 @@ export async function platformFetch(
     try {
       retryRes = await fetch(fullUrl, { ...fetchOptions, headers });
     } catch (err) {
-      throw new CLIError(formatFetchError(err, fullUrl));
+      throw new CLIError(formatFetchError(err, fullUrl), 1, NETWORK_ERROR_CODE);
     }
     if (passThroughStatuses?.includes(retryRes.status)) {
       return retryRes;
