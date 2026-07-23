@@ -8,17 +8,23 @@ import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { runBranchSwitch } from './switch.js';
 
-// Retry configuration for deleting busy branches
-const DELETE_RETRY_INTERVAL_MS = 30_000; // 30 seconds
-const DELETE_MAX_RETRY_TIME_MS = 6 * 60 * 1_000; // 6 minutes max
+const DELETE_RETRY_INTERVAL_MS = 30_000;
+const DELETE_MAX_RETRY_TIME_MS = 6 * 60 * 1_000;
 
+// Match on the server's structured error code if available; fall back to
+// checking the response message only when no code is present. This avoids
+// false positives from unrelated error text that happens to contain "busy".
 function isBusyError(err: unknown): boolean {
   if (!(err instanceof CLIError)) return false;
+  // Exact server error codes for busy/provisioning states
+  if (err.code && ['BRANCH_BUSY', 'BRANCH_CREATING', 'BRANCH_MERGING', 'PROVISIONING_IN_PROGRESS'].includes(err.code)) {
+    return true;
+  }
   const msg = err.message.toLowerCase();
-  return msg.includes('busy') || 
-         msg.includes('creating') || 
-         msg.includes('merging') ||
-         msg.includes('currently busy');
+  return msg.includes('branch is busy') ||
+         msg.includes('currently busy') ||
+         msg.includes('still creating') ||
+         msg.includes('still merging');
 }
 
 async function waitForBranchDeletable(
@@ -31,17 +37,18 @@ async function waitForBranchDeletable(
   while (Date.now() - start < DELETE_MAX_RETRY_TIME_MS) {
     const branch = await getBranchApi(branchId, apiUrl);
     if (branch.branch_state !== 'creating' && branch.branch_state !== 'merging') {
-      return; // Branch is no longer busy
+      return;
     }
     
-    const elapsedSec = Math.floor((Date.now() - start) / 1000);
     const remainingSec = Math.floor((DELETE_MAX_RETRY_TIME_MS - (Date.now() - start)) / 1000);
     spinner?.message(`Branch is ${branch.branch_state}, waiting to be deletable... (${remainingSec}s remaining)`);
     
-    await new Promise(r => setTimeout(r, DELETE_RETRY_INTERVAL_MS));
+    // Cap sleep to the remaining time budget so we don't exceed the max
+    const remainingBudget = DELETE_MAX_RETRY_TIME_MS - (Date.now() - start);
+    const sleepMs = Math.min(DELETE_RETRY_INTERVAL_MS, Math.max(0, remainingBudget));
+    await new Promise(r => setTimeout(r, sleepMs));
   }
   
-  // Final check - if still busy, throw a clear error
   const branch = await getBranchApi(branchId, apiUrl);
   if (branch.branch_state === 'creating' || branch.branch_state === 'merging') {
     throw new CLIError(
@@ -56,22 +63,28 @@ async function waitForBranchDeletable(
 
 async function deleteBranchWithRetry(
   branchId: string,
+  name: string,
   apiUrl: string | undefined,
   spinner: ReturnType<typeof clack.spinner> | null
 ): Promise<void> {
   try {
-    await deleteBranchApi(branchId, apiUrl);
-    spinner?.stop(`Branch deletion requested.`);
-  } catch (err) {
-    if (isBusyError(err)) {
-      spinner?.message(`Branch is busy (creating/merging). Waiting for it to become deletable...`);
-      await waitForBranchDeletable(branchId, apiUrl, spinner);
-      // Retry deletion after branch is no longer busy
+    try {
       await deleteBranchApi(branchId, apiUrl);
-      spinner?.stop(`Branch deletion requested after wait.`);
-    } else {
+      spinner?.stop(`Branch deletion requested.`);
+      return;
+    } catch (err) {
+      if (isBusyError(err)) {
+        spinner?.message(`Branch is busy (creating/merging). Waiting for it to become deletable...`);
+        await waitForBranchDeletable(branchId, apiUrl, spinner);
+        await deleteBranchApi(branchId, apiUrl);
+        spinner?.stop(`Branch deletion requested after wait.`);
+        return;
+      }
       throw err;
     }
+  } catch (err) {
+    spinner?.stop(`Branch '${name}' deletion failed`, 1);
+    throw err;
   }
 }
 
@@ -101,24 +114,17 @@ export function registerBranchDeleteCommand(branch: Command): void {
           }
         }
 
-        // Set up spinner for progress indication during delete/retry
         const spinner = !json ? clack.spinner() : null;
         spinner?.start(`Deleting branch '${name}'...`);
         
-        await deleteBranchWithRetry(target.id, apiUrl, spinner);
+        await deleteBranchWithRetry(target.id, name, apiUrl, spinner);
         captureEvent(parentId, 'cli_branch_delete', {});
 
-        // If the directory is currently switched onto the deleted branch,
-        // flip back to parent so subsequent commands don't operate on a
-        // dead instance.
         const currentlyOnDeleted = project.project_id === target.id;
         if (currentlyOnDeleted) {
           try {
-            // silent in JSON mode so we don't emit two JSON documents — the
-            // single `outputJson({ deleted, ... })` below is authoritative.
             await runBranchSwitch({ toParent: true, apiUrl, json, silent: json });
           } catch (err) {
-            // Non-fatal: the branch is gone, but we can at least tell the user.
             outputInfo(
               `Switched-to-parent failed (${(err as Error).message}). Run \`insforge branch switch --parent\` manually.`,
             );

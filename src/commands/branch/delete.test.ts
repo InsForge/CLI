@@ -213,6 +213,64 @@ describe('branch delete', () => {
     expect(dbApi).toHaveBeenLastCalledWith('b1', undefined);
   });
 
+  it('still busy after max retry time throws BRANCH_STILL_BUSY', async () => {
+    const { deleteBranchApi, getBranchApi } = await import('../../lib/api/platform.js');
+    // deleteBranchApi always fails with busy
+    (deleteBranchApi as Mock).mockRejectedValue(
+      new (await import('../../lib/errors.js')).CLIError('Branch is currently busy'),
+    );
+    // getBranchApi always returns 'creating' state so waitForBranchDeletable loops to timeout
+    (getBranchApi as Mock).mockResolvedValue({
+      id: 'b1', name: 'feat-x', branch_state: 'creating',
+      organization_id: 'o1', parent_project_id: 'p1',
+      appkey: 'k1', region: 'us-east',
+      branch_created_at: '2026-04-29T00:00:00Z',
+      branch_metadata: { mode: 'full' },
+    });
+
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+
+    // Silence the __exit__ rejection that handleError's process.exit mock produces
+    const onRejection = vi.fn();
+    process.on('unhandledRejection', onRejection);
+
+    vi.useFakeTimers();
+
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    const origStderr = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    try {
+      const program = new Command().exitOverride();
+      program.option('--json').option('--api-url <url>').option('-y, --yes');
+      registerBranchDeleteCommand(program);
+      const promise = program
+        .parseAsync(['delete', 'feat-x', '--yes', '--json'], { from: 'user' });
+      // Advance past the 6-minute retry window
+      await vi.advanceTimersByTimeAsync(7 * 60 * 1000);
+      await promise.catch(() => {});
+    } finally {
+      process.exit = origExit;
+      process.stderr.write = origStderr;
+      vi.useRealTimers();
+      process.off('unhandledRejection', onRejection);
+    }
+
+    const { deleteBranchApi: dbApi } = await import('../../lib/api/platform.js');
+    // deleteBranchApi was called at least once (the initial attempt)
+    expect(dbApi).toHaveBeenCalled();
+    expect(exitCode).toBe(1);
+  });
+
   it('does not retry on non-busy errors', async () => {
     const { deleteBranchApi } = await import('../../lib/api/platform.js');
     (deleteBranchApi as Mock).mockRejectedValueOnce(

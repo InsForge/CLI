@@ -1,11 +1,10 @@
 import type { Command } from 'commander';
-import { runRawSql, isProvisioningError, buildProvisioningErrorMessage } from '../../lib/api/oss.js';
+import { runRawSql, handleBranchProvisioningError } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
+import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
-import { getProjectConfig } from '../../lib/config.js';
 
 export function registerDbCommands(dbCmd: Command): void {
   dbCmd
@@ -42,22 +41,7 @@ export function registerDbCommands(dbCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.db.query', false);
         await trackCommandUsage('db', 'query', false, {}, err);
-        
-        // Check if this is a provisioning error on a branch
-        const projectConfig = getProjectConfig();
-        const isBranch = projectConfig?.branched_from != null;
-        const branchName = projectConfig?.project_name;
-        
-        if (isBranch && isProvisioningError(err)) {
-          const msg = buildProvisioningErrorMessage(branchName);
-          if (json) {
-            console.error(JSON.stringify({ error: msg, code: 'BRANCH_PROVISIONING' }));
-          } else {
-            console.error(`Error: ${msg}`);
-          }
-          process.exit(1);
-        }
-        
+        await handleBranchProvisioningError(err, json);
         handleError(err, json);
       }
     });

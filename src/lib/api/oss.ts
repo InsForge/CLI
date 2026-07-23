@@ -1,5 +1,5 @@
 import { getProjectConfig } from '../config.js';
-import { CLIError, formatFetchError, ProjectNotLinkedError } from '../errors.js';
+import { CLIError, formatFetchError, handleError, ProjectNotLinkedError } from '../errors.js';
 import type {
   ProjectConfig,
   RotateKeyResponse,
@@ -63,6 +63,55 @@ export function buildProvisioningErrorMessage(branchName?: string): string {
   const base = 'Branch is still provisioning (this can take up to ~12 minutes).';
   const branchPart = branchName ? ` Branch: ${branchName}.` : '';
   return `${base}${branchPart} Retry shortly, or create the branch with \`--wait-ready\` to block until it's usable.`;
+}
+
+/**
+ * Handle a branching provisioning error by checking if the error is
+ * provisioning-related, verifying via health endpoint, and exiting with
+ * a helpful message if so. Non-provisioning errors are passed through.
+ */
+export async function handleBranchProvisioningError(err: unknown, json: boolean): Promise<void> {
+  if (!isProvisioningError(err)) return;
+
+  let branchName: string | undefined;
+  let config: ProjectConfig | undefined;
+  try {
+    config = getProjectConfig() ?? undefined;
+    branchName = config?.project_name;
+  } catch {
+    handleError(err, json);
+    return;
+  }
+  if (!config) return;
+
+  // Verify the branch is actually still provisioning — if the health endpoint
+  // responds healthy, this is a genuine network outage, not provisioning.
+  if (config.oss_host && config.api_key) {
+    try {
+      const healthUrl = `${config.oss_host.replace(/\/+$/, '')}/api/health`;
+      const res = await fetch(healthUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5_000),
+        headers: { Authorization: `Bearer ${config.api_key}` },
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'healthy' || data.status === 'ok') {
+          return;
+        }
+      }
+    } catch {
+      // Can't reach the health endpoint either — branch is likely provisioning
+    }
+  }
+
+  const msg = buildProvisioningErrorMessage(branchName);
+  if (json) {
+    console.error(JSON.stringify({ error: msg, code: 'BRANCH_PROVISIONING' }));
+  } else {
+    console.error(`Error: ${msg}`);
+  }
+  process.exit(1);
 }
 
 /**
