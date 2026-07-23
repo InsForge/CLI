@@ -66,6 +66,7 @@ export function buildProvisioningErrorMessage(branchName?: string): string {
 }
 
 /**
+<<<<<<< HEAD
  * Handle a branching provisioning error by checking if the error is
  * provisioning-related, verifying via health endpoint, and exiting with
  * a helpful message if so. Non-provisioning errors are passed through.
@@ -115,6 +116,8 @@ export async function handleBranchProvisioningError(err: unknown, json: boolean)
 }
 
 /**
+=======
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
  * Unified OSS API fetch. Uses API key as Bearer token for all requests,
  * which grants superadmin access (SQL execution, bucket management, etc.).
  */

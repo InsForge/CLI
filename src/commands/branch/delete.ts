@@ -8,6 +8,7 @@ import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { runBranchSwitch } from './switch.js';
 
+<<<<<<< HEAD
 const DELETE_RETRY_INTERVAL_MS = 30_000;
 const DELETE_MAX_RETRY_TIME_MS = 6 * 60 * 1_000;
 
@@ -25,6 +26,19 @@ function isBusyError(err: unknown): boolean {
          msg.includes('currently busy') ||
          msg.includes('still creating') ||
          msg.includes('still merging');
+=======
+// Retry configuration for deleting busy branches
+const DELETE_RETRY_INTERVAL_MS = 30_000; // 30 seconds
+const DELETE_MAX_RETRY_TIME_MS = 6 * 60 * 1_000; // 6 minutes max
+
+function isBusyError(err: unknown): boolean {
+  if (!(err instanceof CLIError)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes('busy') || 
+         msg.includes('creating') || 
+         msg.includes('merging') ||
+         msg.includes('currently busy');
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
 }
 
 async function waitForBranchDeletable(
@@ -37,6 +51,7 @@ async function waitForBranchDeletable(
   while (Date.now() - start < DELETE_MAX_RETRY_TIME_MS) {
     const branch = await getBranchApi(branchId, apiUrl);
     if (branch.branch_state !== 'creating' && branch.branch_state !== 'merging') {
+<<<<<<< HEAD
       return;
     }
     
@@ -49,6 +64,19 @@ async function waitForBranchDeletable(
     await new Promise(r => setTimeout(r, sleepMs));
   }
   
+=======
+      return; // Branch is no longer busy
+    }
+    
+    const elapsedSec = Math.floor((Date.now() - start) / 1000);
+    const remainingSec = Math.floor((DELETE_MAX_RETRY_TIME_MS - (Date.now() - start)) / 1000);
+    spinner?.message(`Branch is ${branch.branch_state}, waiting to be deletable... (${remainingSec}s remaining)`);
+    
+    await new Promise(r => setTimeout(r, DELETE_RETRY_INTERVAL_MS));
+  }
+  
+  // Final check - if still busy, throw a clear error
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
   const branch = await getBranchApi(branchId, apiUrl);
   if (branch.branch_state === 'creating' || branch.branch_state === 'merging') {
     throw new CLIError(
@@ -63,11 +91,15 @@ async function waitForBranchDeletable(
 
 async function deleteBranchWithRetry(
   branchId: string,
+<<<<<<< HEAD
   name: string,
+=======
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
   apiUrl: string | undefined,
   spinner: ReturnType<typeof clack.spinner> | null
 ): Promise<void> {
   try {
+<<<<<<< HEAD
     try {
       await deleteBranchApi(branchId, apiUrl);
       spinner?.stop(`Branch deletion requested.`);
@@ -85,6 +117,20 @@ async function deleteBranchWithRetry(
   } catch (err) {
     spinner?.stop(`Branch '${name}' deletion failed`, 1);
     throw err;
+=======
+    await deleteBranchApi(branchId, apiUrl);
+    spinner?.stop(`Branch deletion requested.`);
+  } catch (err) {
+    if (isBusyError(err)) {
+      spinner?.message(`Branch is busy (creating/merging). Waiting for it to become deletable...`);
+      await waitForBranchDeletable(branchId, apiUrl, spinner);
+      // Retry deletion after branch is no longer busy
+      await deleteBranchApi(branchId, apiUrl);
+      spinner?.stop(`Branch deletion requested after wait.`);
+    } else {
+      throw err;
+    }
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
   }
 }
 
@@ -114,10 +160,18 @@ export function registerBranchDeleteCommand(branch: Command): void {
           }
         }
 
+<<<<<<< HEAD
         const spinner = !json ? clack.spinner() : null;
         spinner?.start(`Deleting branch '${name}'...`);
         
         await deleteBranchWithRetry(target.id, name, apiUrl, spinner);
+=======
+        // Set up spinner for progress indication during delete/retry
+        const spinner = !json ? clack.spinner() : null;
+        spinner?.start(`Deleting branch '${name}'...`);
+        
+        await deleteBranchWithRetry(target.id, apiUrl, spinner);
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
         captureEvent(parentId, 'cli_branch_delete', {});
 
         const currentlyOnDeleted = project.project_id === target.id;

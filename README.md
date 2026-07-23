@@ -222,11 +222,46 @@ npx @insforge/cli branch list --json
 
 Create a branch from the currently linked project.
 
+Branch provisioning can take 2–12 minutes. The CLI waits for the control plane to report the
+branch as `ready`, then optionally waits for the **data plane** (the branch's actual server) to
+respond to health checks. After creation, if the current context is switched to the new branch,
+commands like `db query` or `db migrations` operate on the branch immediately.
+
 ```bash
 npx @insforge/cli branch create feature-x
 npx @insforge/cli branch create feature-x --mode schema-only   # full | schema-only (default: full)
 npx @insforge/cli branch create feature-x --no-switch          # do not auto-switch context after creation
+npx @insforge/cli branch create feature-x --no-wait-ready      # skip data-plane health check (faster, but may hit provisioning errors)
 ```
+
+**Options:**
+
+- `--mode <mode>`: `full` (default) or `schema-only`
+- `--no-switch`: Skip auto-switching context to the new branch
+- `--wait-ready` (default: `true`): After the control plane reports `ready`, poll the branch's
+  `/api/health` endpoint (5s intervals, up to 15 min timeout) to confirm the data plane is
+  actually serving traffic before returning
+
+**Provisioning notes:**
+
+- Branch creation returns quickly but the underlying infrastructure may still be starting up
+  for several minutes
+- `--wait-ready` blocks until the branch is fully usable — recommended for CI/CD and scripts
+- If you skip `--wait-ready` (`--no-wait-ready`) and hit network errors (`fetch failed`,
+  `ECONNRESET`, `connection refused`, etc.) on a branch-scoped command, the CLI detects the
+  provisioning state and suggests retrying or using `--wait-ready`
+- `branch list` is the authoritative source to confirm a branch exists after ambiguous failures
+
+**Network interruption recovery:**
+
+If a client-side network error interrupts the create request, the CLI automatically attempts
+reconciliation by querying `branch list`. If the branch was created server-side despite the
+interruption, the CLI reports:
+
+> Connection was interrupted, but branch 'feature-x' was created server-side (state: creating).
+> It may still be provisioning. Run `insforge branch list` to check status.
+
+This prevents automation from silently leaking billable resources on transient network issues.
 
 #### `npx @insforge/cli branch switch [name]`
 
@@ -259,8 +294,16 @@ npx @insforge/cli branch reset feature-x
 
 Delete a branch.
 
+If a branch is currently provisioning (`creating`, `merging`), the server may reject the
+deletion request as "busy". The CLI automatically retries: it polls the branch state at 30s
+intervals for up to 6 minutes, then retries the deletion once the branch becomes deletable.
+
+If the branch is still busy after the timeout, the CLI displays a clear message and exits
+without deleting.
+
 ```bash
 npx @insforge/cli branch delete feature-x
+npx @insforge/cli branch delete feature-x --yes   # skip confirmation prompt
 ```
 
 ---

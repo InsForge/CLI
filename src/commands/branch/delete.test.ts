@@ -213,6 +213,7 @@ describe('branch delete', () => {
     expect(dbApi).toHaveBeenLastCalledWith('b1', undefined);
   });
 
+<<<<<<< HEAD
   it('still busy after max retry time throws BRANCH_STILL_BUSY', async () => {
     const { deleteBranchApi, getBranchApi } = await import('../../lib/api/platform.js');
     // deleteBranchApi always fails with busy
@@ -271,6 +272,8 @@ describe('branch delete', () => {
     expect(exitCode).toBe(1);
   });
 
+=======
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
   it('does not retry on non-busy errors', async () => {
     const { deleteBranchApi } = await import('../../lib/api/platform.js');
     (deleteBranchApi as Mock).mockRejectedValueOnce(
