@@ -126,20 +126,14 @@ program
 program.hook('preAction', async (_thisCommand, actionCommand) => {
   if (didPlayForgerAnimation) return;
 
-  const opts = actionCommand.optsWithGlobals() as { forger?: boolean; json?: boolean };
+  const opts = actionCommand.optsWithGlobals() as { forger?: boolean };
   if (!opts.forger) return;
 
-  // --forger is root-only: reject `insforge <subcommand> --forger` in every context
-  // (TTY, piped, CI) instead of silently dropping the flag.
+  // --forger only plays on the root command. With a subcommand, warn and continue
+  // so wrappers/CI that forward global flags are not hard-failed.
   if (actionCommand !== program) {
-    const jsonMessage = '--forger can only be used without a subcommand.';
-    const humanMessage = `Error: ${jsonMessage}`;
-    if (opts.json) {
-      outputJson({ error: jsonMessage });
-    } else {
-      console.error(humanMessage);
-    }
-    process.exit(1);
+    console.error('Warning: --forger is ignored with a subcommand. Use `insforge --forger` alone.');
+    return;
   }
 
   if (!prompts.isInteractive) return;

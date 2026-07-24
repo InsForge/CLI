@@ -70,7 +70,7 @@ Global flags (available on all commands unless noted otherwise):
 | `-y, --yes`         | Skip confirmation prompts                                |
 | `--forger`          | Play the Forger animation (root command only: `insforge --forger`) |
 
-`--forger` cannot be combined with a subcommand (e.g. `insforge login --forger` errors).
+`--forger` is ignored with a warning when combined with a subcommand (e.g. `insforge login --forger`).
 
 The `--project-id <id>` flag is command-specific and is supported by `link`
 when you want to link a directory directly to a known project.
