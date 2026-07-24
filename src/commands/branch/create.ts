@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
+<<<<<<< HEAD
 import {
   createBranchApi,
   getBranchApi,
@@ -7,6 +8,9 @@ import {
   NETWORK_ERROR_CODE,
 } from '../../lib/api/platform.js';
 import { probeBackendHealth } from '../../lib/api/oss.js';
+=======
+import { createBranchApi, getBranchApi, listBranchesApi } from '../../lib/api/platform.js';
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { buildOssHost, getProjectConfig } from '../../lib/config.js';
@@ -16,6 +20,7 @@ import { runBranchSwitch } from './switch.js';
 import type { Branch, BranchMode } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
+<<<<<<< HEAD
 // `branch_state` reaching 'ready' and the branch's own host answering are two
 // different events, and the gap between them has been measured in MINUTES
 // (2 min and 11.5 min on ap-southeast). A 5-minute ceiling reported the slower
@@ -31,6 +36,42 @@ const HEALTH_INTERVAL_MS = 5_000;
 // branch someone created seconds ago under the same name; the cost of being too
 // narrow is orphaning a billing resource, which is the bug this exists to fix.
 const CREATED_AT_SKEW_MS = 60_000;
+=======
+const POLL_TIMEOUT_MS = 5 * 60 * 1_000;
+const HEALTH_CHECK_INTERVAL_MS = 5_000;
+const HEALTH_CHECK_TIMEOUT_MS = 15 * 60 * 1_000;
+
+async function waitForDataPlaneReady(branch: Branch, spinner: ReturnType<typeof clack.spinner> | null): Promise<void> {
+  const healthUrl = `https://${branch.appkey}.${branch.region}.insforge.app/api/health`;
+  const start = Date.now();
+  let lastError: string | null = null;
+
+  while (Date.now() - start < HEALTH_CHECK_TIMEOUT_MS) {
+    try {
+      spinner?.message(`Waiting for data plane to be ready (${Math.ceil((HEALTH_CHECK_TIMEOUT_MS - (Date.now() - start)) / 60000)} min left)...`);
+      const res = await fetch(healthUrl, { method: 'GET', signal: AbortSignal.timeout(10_000) });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'healthy' || data.status === 'ok') {
+          return;
+        }
+        lastError = `Health check returned status: ${data.status}`;
+      } else {
+        lastError = `Health check failed: ${res.status} ${res.statusText}`;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+    await new Promise(r => setTimeout(r, HEALTH_CHECK_INTERVAL_MS));
+  }
+  throw new CLIError(
+    `Branch data plane did not become ready within 15 minutes. Last error: ${lastError}. ` +
+    `The branch may still be provisioning. Run \`insforge branch list\` to check status.`,
+    1,
+    'BRANCH_DATA_PLANE_TIMEOUT'
+  );
+}
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
 
 export function registerBranchCreateCommand(branch: Command): void {
   branch
@@ -38,7 +79,12 @@ export function registerBranchCreateCommand(branch: Command): void {
     .description('Create a branch from the currently linked project')
     .option('--mode <mode>', 'full | schema-only', 'full')
     .option('--no-switch', 'Do not auto-switch context after creation')
-    .action(async (name: string, opts: { mode: string; switch: boolean }, cmd) => {
+<<<<<<< HEAD
+    .option('--no-wait-ready', 'Skip waiting for data plane readiness (exit immediately after control plane confirms creation)')
+=======
+    .option('--wait-ready', 'Wait for the branch data plane to be fully ready (up to 15 min)', true)
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
+    .action(async (name: string, opts: { mode: string; switch: boolean; waitReady: boolean }, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
@@ -92,14 +138,24 @@ export function registerBranchCreateCommand(branch: Command): void {
           ready = await pollUntilReady(created.id, apiUrl, spinner);
           provisioned = ready.branch_state === 'ready';
 
+<<<<<<< HEAD
           // 'ready' is a control-plane state: it means the provisioning job
           // returned, not that the branch answers. Confirm the data plane
           // before reporting success, otherwise the very next command the user
           // runs — including the auto-switch below — hits a host that resets.
-          if (provisioned) {
+          if (provisioned && opts.waitReady !== false) {
             spinner?.message('Branch ready. Waiting for it to start serving...');
             serving = await waitUntilServing(ready, spinner);
             if (!serving) provisioned = false;
+          } else if (provisioned) {
+            serving = true;
+=======
+          // If the branch is ready and wait-ready is enabled, wait for the data plane to be healthy
+          if (provisioned && opts.waitReady) {
+            spinner?.message('Branch control plane ready. Waiting for data plane to be healthy...');
+            await waitForDataPlaneReady(ready, spinner);
+            spinner?.message('Data plane is ready.');
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
           }
 
           if (provisioned && opts.switch) {
@@ -120,6 +176,54 @@ export function registerBranchCreateCommand(branch: Command): void {
             spinner?.stop(`Branch '${name}' is in '${ready.branch_state}' state`);
           }
         } catch (err) {
+          // Check if this is a network error (fetch failed, ECONNRESET, etc.)
+          // Match both raw undici error messages AND the formatted output of
+          // formatFetchError (used by platformFetch), so reconciliation is
+          // reachable regardless of which layer surfaces the error.
+          // If so, attempt to reconcile by checking if the branch was actually created
+          const isNetworkError = err instanceof CLIError && 
+            (err.message.includes('fetch failed') || 
+             err.message.includes('ECONNRESET') ||
+             err.message.includes('ETIMEDOUT') ||
+             err.message.includes('ENOTFOUND') ||
+             err.message.includes('ECONNREFUSED') ||
+             err.message.includes('UND_ERR_CONNECT_TIMEOUT') ||
+             err.message.includes('UND_ERR_SOCKET') ||
+             err.message.includes('timeout') ||
+             // Formatted messages from formatFetchError (used by platformFetch)
+             err.message.includes('was reset') ||
+             err.message.includes('was refused') ||
+             err.message.includes('timed out') ||
+             err.message.includes('Cannot resolve') ||
+             err.message.includes('Network error contacting') ||
+             err.message.includes('TLS certificate error') ||
+             err.code === 'BRANCH_DATA_PLANE_TIMEOUT');
+          
+          if (!provisioned && isNetworkError) {
+            try {
+              // Attempt reconciliation: check if branch exists in branch list
+              // listBranchesApi handles undefined apiUrl (uses default platform URL)
+              const branches = await listBranchesApi(project.project_id, apiUrl);
+              const createdBranch = branches.find(b => b.name === name);
+              if (createdBranch) {
+                // Branch exists server-side despite network error
+                spinner?.stop(
+                  `Connection was interrupted, but branch '${name}' was created server-side (state: ${createdBranch.branch_state}). ` +
+                  `It may still be provisioning. Run \`insforge branch list\` to check status.`,
+                  1
+                );
+                // Output the branch info in JSON mode so automation can parse it
+                if (json) {
+                  outputJson({ branch: createdBranch, reconciled: true });
+                }
+                await shutdownAnalytics();
+                return;
+              }
+            } catch (reconcileErr) {
+              // Reconciliation failed, fall through to original error
+            }
+          }
+          
           if (provisioned) {
             spinner?.stop(
               `Branch '${name}' is ready, but switching context failed — run \`insforge branch switch ${name}\` to retry`,

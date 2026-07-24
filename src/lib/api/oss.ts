@@ -1,5 +1,5 @@
 import { getProjectConfig } from '../config.js';
-import { CLIError, formatFetchError, ProjectNotLinkedError } from '../errors.js';
+import { CLIError, formatFetchError, handleError, ProjectNotLinkedError } from '../errors.js';
 import type {
   ProjectConfig,
   RotateKeyResponse,
@@ -16,6 +16,108 @@ function requireProjectConfig(): ProjectConfig {
 }
 
 /**
+ * Check if an error is likely caused by a branch still provisioning.
+ * This detects network-level failures (ECONNRESET, fetch failed, timeout)
+ * that occur when the branch's data plane isn't ready yet.
+ */
+export function isProvisioningError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  const cause = (err as { cause?: unknown }).cause;
+  const causeCode = cause && typeof cause === 'object' && 'code' in cause 
+    ? String((cause as { code: unknown }).code).toLowerCase() 
+    : '';
+  
+  // Network errors that indicate the data plane isn't ready
+  const provisioningCodes = [
+    'econnreset',
+    'etimedout',
+    'econnrefused',
+    'enotfound',
+    'eai_again',
+    'und_err_connect_timeout',
+    'und_err_socket',
+  ];
+  
+  // Check error message for provisioning indicators
+  const provisioningMessages = [
+    'fetch failed',
+    'connection reset',
+    'connection refused',
+    'timed out',
+    'dns lookup failed',
+    'cannot resolve',
+  ];
+  
+  if (causeCode && provisioningCodes.includes(causeCode)) return true;
+  if (provisioningMessages.some(m => msg.includes(m))) return true;
+  
+  return false;
+}
+
+/**
+ * Build a user-friendly error message when a branch-scoped command fails
+ * due to the branch still provisioning.
+ */
+export function buildProvisioningErrorMessage(branchName?: string): string {
+  const base = 'Branch is still provisioning (this can take up to ~12 minutes).';
+  const branchPart = branchName ? ` Branch: ${branchName}.` : '';
+  return `${base}${branchPart} Retry shortly, or create the branch with \`--wait-ready\` to block until it's usable.`;
+}
+
+/**
+<<<<<<< HEAD
+ * Handle a branching provisioning error by checking if the error is
+ * provisioning-related, verifying via health endpoint, and exiting with
+ * a helpful message if so. Non-provisioning errors are passed through.
+ */
+export async function handleBranchProvisioningError(err: unknown, json: boolean): Promise<void> {
+  if (!isProvisioningError(err)) return;
+
+  let branchName: string | undefined;
+  let config: ProjectConfig | undefined;
+  try {
+    config = getProjectConfig() ?? undefined;
+    branchName = config?.project_name;
+  } catch {
+    handleError(err, json);
+    return;
+  }
+  if (!config) return;
+
+  // Verify the branch is actually still provisioning — if the health endpoint
+  // responds healthy, this is a genuine network outage, not provisioning.
+  if (config.oss_host && config.api_key) {
+    try {
+      const healthUrl = `${config.oss_host.replace(/\/+$/, '')}/api/health`;
+      const res = await fetch(healthUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5_000),
+        headers: { Authorization: `Bearer ${config.api_key}` },
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.status === 'healthy' || data.status === 'ok') {
+          return;
+        }
+      }
+    } catch {
+      // Can't reach the health endpoint either — branch is likely provisioning
+    }
+  }
+
+  const msg = buildProvisioningErrorMessage(branchName);
+  if (json) {
+    console.error(JSON.stringify({ error: msg, code: 'BRANCH_PROVISIONING' }));
+  } else {
+    console.error(`Error: ${msg}`);
+  }
+  process.exit(1);
+}
+
+/**
+=======
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
  * Unified OSS API fetch. Uses API key as Bearer token for all requests,
  * which grants superadmin access (SQL execution, bucket management, etc.).
  */
