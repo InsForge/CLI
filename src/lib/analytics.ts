@@ -1,14 +1,39 @@
 import { PostHog } from 'posthog-node';
 import type { ProjectConfig } from '../types.js';
-import { FAKE_PROJECT_ID } from './config.js';
+import { FAKE_PROJECT_ID, getGlobalConfig } from './config.js';
 
 const POSTHOG_API_KEY = process.env.POSTHOG_API_KEY;
 const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
+/** True when the env var is set to anything except an explicit falsy value. */
+function envFlag(value: string | undefined): boolean {
+  if (value === undefined || value === '') return false;
+  return value !== '0' && value.toLowerCase() !== 'false';
+}
+
+/**
+ * Usage-tracking kill switch, honored by every telemetry emitter (PostHog
+ * here, `reportCliUsage` in skills.ts). Resolution order:
+ *   1. `DO_NOT_TRACK` — the cross-tool convention (consoledonottrack.com)
+ *   2. `INSFORGE_TELEMETRY_DISABLED` — per-run / CI override
+ *   3. `telemetry_disabled` in ~/.insforge/config.json — persistent opt-out
+ *      managed by `insforge telemetry enable|disable|status`
+ * A corrupt config file must never break the CLI, so it reads as "enabled".
+ */
+export function isTelemetryDisabled(): boolean {
+  if (envFlag(process.env.DO_NOT_TRACK)) return true;
+  if (envFlag(process.env.INSFORGE_TELEMETRY_DISABLED)) return true;
+  try {
+    return getGlobalConfig().telemetry_disabled === true;
+  } catch {
+    return false;
+  }
+}
+
 let client: PostHog | null = null;
 
 function getClient(): PostHog | null {
-  if (!POSTHOG_API_KEY) return null;
+  if (!POSTHOG_API_KEY || isTelemetryDisabled()) return null;
   if (!client) {
     client = new PostHog(POSTHOG_API_KEY, { host: POSTHOG_HOST });
   }

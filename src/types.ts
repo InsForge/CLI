@@ -114,6 +114,8 @@ export interface GlobalConfig {
   default_org_id?: string;
   platform_api_url: string;
   oauth_client_id?: string;
+  /** Persistent opt-out from anonymous usage analytics, set via `insforge telemetry disable`. */
+  telemetry_disabled?: boolean;
 }
 
 // Project config (local .insforge/project.json)
