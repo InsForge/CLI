@@ -36,26 +36,41 @@ export function registerFunctionsDeployCommand(functionsCmd: Command): void {
         const name = opts.name ?? slug;
         const description = opts.description ?? '';
 
-        // Check if function exists
+        // Check if function exists. Only a 404 means "not found" — any other
+        // failure (auth, network, 5xx) must surface instead of being misread
+        // as "create new", which would end in a confusing POST conflict.
         let exists = false;
         try {
           await ossFetch(`/api/functions/${encodeURIComponent(slug)}`);
           exists = true;
-        } catch {
+        } catch (err) {
+          if (!(err instanceof CLIError) || err.statusCode !== 404) throw err;
           exists = false;
         }
 
-        let res: Response;
-        if (exists) {
-          res = await ossFetch(`/api/functions/${encodeURIComponent(slug)}`, {
+        const updateFunction = (): Promise<Response> =>
+          ossFetch(`/api/functions/${encodeURIComponent(slug)}`, {
             method: 'PUT',
             body: JSON.stringify({ name, description, code }),
           });
+
+        let res: Response;
+        if (exists) {
+          res = await updateFunction();
         } else {
-          res = await ossFetch('/api/functions', {
-            method: 'POST',
-            body: JSON.stringify({ slug, name, description, code }),
-          });
+          try {
+            res = await ossFetch('/api/functions', {
+              method: 'POST',
+              body: JSON.stringify({ slug, name, description, code }),
+            });
+          } catch (err) {
+            // The backend can still report the slug as taken (409) — e.g. the
+            // existence check raced a concurrent create. Fall back to update,
+            // per the command's create-or-update contract.
+            if (!(err instanceof CLIError) || err.statusCode !== 409) throw err;
+            exists = true;
+            res = await updateFunction();
+          }
         }
 
         const result = await res.json() as FunctionResponse;
