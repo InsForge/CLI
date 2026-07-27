@@ -18,11 +18,16 @@ export function registerContextCommand(program: Command): void {
         await trackTopLevelUsage('current', true);
 
         if (json) {
+          // Strip the privileged api_key — identity output must not leak
+          // credentials (the human-readable branch already omits it).
+          const project = projectConfig
+            ? (({ api_key: _api_key, ...rest }) => rest)(projectConfig)
+            : null;
           outputJson({
             authenticated: !!creds,
             user: creds?.user ?? null,
             default_org_id: globalConfig.default_org_id ?? null,
-            project: projectConfig,
+            project,
           });
           return;
         }
