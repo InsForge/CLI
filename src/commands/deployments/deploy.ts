@@ -277,7 +277,7 @@ async function startDirectDeployment(
   await response.json();
 }
 
-async function pollDeployment(
+export async function pollDeployment(
   deploymentId: string,
   spinner: ReturnType<typeof clack.spinner> | null | undefined,
   syncBeforeRead: boolean,
@@ -310,7 +310,13 @@ async function pollDeployment(
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       spinner?.message(`Building and deploying... (${elapsed}s, status: ${deployment.status})`);
     } catch (err) {
-      if (err instanceof CLIError) throw err;
+      // Deployment-failure errors (thrown above, no statusCode) and 4xx
+      // responses are terminal. Gateway 5xx responses on the status endpoint
+      // are transient — the deployment itself may still succeed — so keep
+      // polling, same as network-level fetch errors.
+      if (err instanceof CLIError && (err.statusCode === undefined || err.statusCode < 500)) {
+        throw err;
+      }
       // Ignore transient fetch errors during polling
     }
   }
