@@ -53,6 +53,22 @@ Prompts for email and password interactively, or reads from environment variable
 INSFORGE_EMAIL=user@example.com INSFORGE_PASSWORD=secret npx @insforge/cli login --email --json
 ```
 
+### User API Key Login
+
+For a durable machine credential — CI pipelines, agents, or any headless context — authenticate with a `uak_` user API key instead of short-lived session tokens:
+
+```bash
+npx @insforge/cli login --user-api-key uak_xxxxxxxx --json
+```
+
+Create the key in the dashboard (Profile → API Keys). Keys default to a 90-day expiry, or can be created with no expiry for a permanent credential. The key is sent directly as the bearer credential on every request — there is no hourly token expiry or refresh-token rotation to manage, and it works for accounts that sign in via OAuth providers (e.g. Google), where email/password login does not apply.
+
+Alternatively, skip the login step entirely and pass the key per-invocation via the environment:
+
+```bash
+INSFORGE_ACCESS_TOKEN=uak_xxxxxxxx npx @insforge/cli db query "SELECT 1" --json
+```
+
 ### Logout
 
 ```bash
@@ -1187,7 +1203,7 @@ If you build the CLI from source without setting `POSTHOG_API_KEY` at build time
 
 | Variable                | Description                        |
 | ----------------------- | ---------------------------------- |
-| `INSFORGE_ACCESS_TOKEN` | Override the stored access token   |
+| `INSFORGE_ACCESS_TOKEN` | Override the stored access token (JWT or `uak_` user API key) |
 | `INSFORGE_PROJECT_ID`   | Override the linked project ID     |
 | `INSFORGE_API_URL`      | Override the Platform API URL      |
 | `INSFORGE_EMAIL`        | Email for non-interactive login    |
@@ -1198,7 +1214,13 @@ If you build the CLI from source without setting `POSTHOG_API_KEY` at build time
 All commands support `--json` for structured output and `-y` to skip confirmation prompts:
 
 ```bash
-# Login in CI
+# Login in CI with a user API key (durable, no hourly expiry; works for OAuth/Google accounts)
+npx @insforge/cli login --user-api-key "$INSFORGE_USER_API_KEY" --json
+
+# Or pass the key per-invocation without a login step
+INSFORGE_ACCESS_TOKEN=$INSFORGE_USER_API_KEY npx @insforge/cli db query "SELECT 1" --json
+
+# Login in CI with email/password (email accounts only)
 INSFORGE_EMAIL=$EMAIL INSFORGE_PASSWORD=$PASSWORD npx @insforge/cli login --email --json
 
 # Link a project
