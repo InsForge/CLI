@@ -14,6 +14,13 @@ const DEFAULT_FRONTEND_URL = 'https://insforge.dev';
 export const FAKE_PROJECT_ID = 'fa4e0000-1234-5678-90ab-cd1234567890';
 export const FAKE_ORG_ID = 'fa4e0001-1234-5678-90ab-cd1234567890';
 
+/** OSS sentinel IDs written by older CLI builds (≤0.1.47): first
+ *  'oss-project'/'oss-org', then interim fake UUIDs, before the
+ *  FAKE_PROJECT_ID/FAKE_ORG_ID constants above landed. Healed by
+ *  getProjectConfig so requireAuth's OSS bypass keeps matching. */
+const LEGACY_OSS_PROJECT_IDS = new Set(['oss-project', 'fa4e0000-1234-5678-90ab-0e02b2c3d479']);
+const LEGACY_OSS_ORG_IDS = new Set(['oss-org', 'fa4e0001-1234-5678-90ab-0e02b2c3d479']);
+
 function ensureGlobalDir(): void {
   if (!existsSync(GLOBAL_DIR)) {
     mkdirSync(GLOBAL_DIR, { recursive: true });
@@ -121,6 +128,17 @@ export function getProjectConfig(): ProjectConfig | null {
   // the next `saveProjectConfig` call persists the fix to disk.
   if (config.oss_host && !/^https?:\/\//.test(config.oss_host) && config.appkey && config.region) {
     config.oss_host = buildOssHost(config.appkey, config.region);
+  }
+  // Heal legacy OSS sentinel IDs written by `link --api-base-url` in CLI
+  // ≤0.1.47 — requireAuth's OSS bypass only matches FAKE_PROJECT_ID, so
+  // without this, self-hosted links from those builds redirect db/functions
+  // commands to cloud OAuth. Normalize in-memory so existing links keep
+  // working; the next `saveProjectConfig` call persists the fix to disk.
+  if (LEGACY_OSS_PROJECT_IDS.has(config.project_id)) {
+    config.project_id = FAKE_PROJECT_ID;
+  }
+  if (LEGACY_OSS_ORG_IDS.has(config.org_id)) {
+    config.org_id = FAKE_ORG_ID;
   }
   return config;
 }
