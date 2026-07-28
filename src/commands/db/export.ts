@@ -71,7 +71,7 @@ export function registerDbExportCommand(dbCmd: Command): void {
         }
 
         if (json) {
-          outputJson(meta ?? { content });
+          outputJson(meta ? { ...meta, content } : { content });
           await trackCommandUsage('db', 'export', true);
           return;
         }

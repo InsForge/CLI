@@ -104,3 +104,24 @@ describe('db export -o', () => {
     expect(readFileSync(outFile, 'utf-8')).toBe(raw);
   });
 });
+
+describe('db export --json', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('includes SQL content when the backend returns a { format, data } envelope', async () => {
+    const sql = 'CREATE TABLE users (id uuid PRIMARY KEY);';
+    mockExportResponse(JSON.stringify({ format: 'sql', data: sql, timestamp: '2026-07-28' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await makeProgram().parseAsync(
+      ['--json', 'db', 'export', '--format', 'sql'],
+      { from: 'user' },
+    );
+
+    expect(log).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toEqual({ format: 'sql', content: sql });
+    log.mockRestore();
+  });
+});
