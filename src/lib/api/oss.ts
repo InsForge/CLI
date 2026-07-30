@@ -55,6 +55,33 @@ export async function getJwtSecret(): Promise<string | null> {
   }
 }
 
+export type McpConnectionStatus = 'connected' | 'disconnected';
+
+export async function updateMcpConnectionStatus(
+  status: McpConnectionStatus,
+  opts?: { apiKey: string; apiBaseUrl: string }
+): Promise<void> {
+  if (opts) {
+    const res = await fetch(`${opts.apiBaseUrl.replace(/\/$/, '')}/api/usage/mcp/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { message?: string };
+      throw new CLIError(err.message ?? `Failed to update MCP status: ${res.status}`);
+    }
+    return;
+  }
+  await ossFetch('/api/usage/mcp/status', {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
 // Splice the real password into a masked Postgres URL like
 // `postgresql://postgres:********@host:5432/db?sslmode=require`. Replaces
 // the segment between the first `://<user>:` and the next `@`. Exported
