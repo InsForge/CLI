@@ -25,16 +25,7 @@ import { loadDeployIgnore, IGNORE_FILE_NAME, type DeployIgnore } from './ignore-
 
 export const POLL_INTERVAL_MS = 5_000;
 export const POLL_TIMEOUT_MS = 300_000;
-export const POLL_TIMEOUT_MINUTES = Math.round(POLL_TIMEOUT_MS / 60_000);
 const DIRECT_UPLOAD_CONCURRENCY = 8;
-
-// HTTP statuses worth retrying while a deployment is in flight. Gateway and
-// proxy failures (502/503/504) are routinely transient, an app-layer 500 on a
-// read-only status poll usually is too, and 408/429 are explicitly retryable —
-// polling every 5s is exactly the shape that trips a rate limit. 501 is
-// deliberately excluded: a route this backend does not implement will not
-// start working mid-poll, so failing fast beats waiting out the whole window.
-const TRANSIENT_POLL_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
 const EXCLUDE_PATTERNS = [
   'node_modules',
@@ -318,35 +309,22 @@ export async function pollDeployment(
       }
 
       // This read succeeded, so an earlier transient failure is no longer the
-      // reason we might time out — drop it.
+      // reason we might time out.
       lastTransientError = null;
       const elapsed = Math.round((Date.now() - startTime) / 1000);
       spinner?.message(`Building and deploying... (${elapsed}s, status: ${deployment.status})`);
     } catch (err) {
-      // A CLIError is terminal unless its status says otherwise: the failures
-      // thrown just above (deployment ERROR/CANCELED) plus auth and
-      // project-not-linked carry no statusCode at all, and a 4xx or 501 will
-      // not start working mid-poll. Everything else is transient — gateway
-      // 5xx, 408/429, and network-level fetch errors, which are not CLIErrors
-      // — because the deployment keeps running server-side regardless. Keep
-      // polling, but remember why the read failed so a full-window outage is
-      // not reported as an ordinary "still building" timeout.
-      const isTransient =
-        !(err instanceof CLIError) ||
-        (err.statusCode !== undefined && TRANSIENT_POLL_STATUSES.has(err.statusCode));
-      if (!isTransient) {
+      // Deployment-failure errors (thrown above, no statusCode) and 4xx
+      // responses are terminal. Gateway 5xx responses on the status endpoint
+      // are transient — the deployment itself may still succeed — so keep
+      // polling, same as network-level fetch errors.
+      if (err instanceof CLIError && (err.statusCode === undefined || err.statusCode < 500)) {
         throw err;
       }
-
+      // Transient: keep polling, but remember why the read failed so that an
+      // outage lasting the whole window is not reported as a plain timeout.
       lastTransientError =
-        err instanceof CLIError
-          ? err.message
-          : formatFetchError(err, 'the deployment status endpoint');
-
-      // Keep the elapsed counter moving; otherwise a run of failed reads looks
-      // like a hung command for the rest of the poll window.
-      const elapsed = Math.round((Date.now() - startTime) / 1000);
-      spinner?.message(`Building and deploying... (${elapsed}s, status check failed, retrying)`);
+        err instanceof CLIError ? err.message : formatFetchError(err, 'the deployment API');
     }
   }
 
@@ -455,8 +433,7 @@ export interface DeployProjectResult {
   /**
    * When the poll window closed without READY: why the most recent status read
    * failed, or null if it succeeded and the deployment was simply still
-   * building. Lets callers tell "slow build" apart from "we never managed to
-   * reach the status endpoint", which otherwise look identical.
+   * building. Distinguishes "slow build" from "never reached the backend".
    */
   lastError: string | null;
 }
@@ -577,7 +554,7 @@ export function registerDeploymentsDeployCommand(deploymentsCmd: Command): void 
             });
           } else {
             clack.log.info(`Deployment ID: ${result.deploymentId}`);
-            clack.log.warn(`Deployment did not finish within ${POLL_TIMEOUT_MINUTES} minutes.`);
+            clack.log.warn('Deployment did not finish within 5 minutes.');
             if (result.lastError) {
               clack.log.warn(`Could not read the deployment status: ${result.lastError}`);
             }
