@@ -32,7 +32,9 @@ const DB_CHECKS: Record<string, DbCheck> = {
       ORDER BY query_start ASC`,
     format(rows) {
       if (rows.length === 0) {
-        console.log('  None');
+        console.log(
+          '  None currently running (point-in-time check; for past slow queries see postgres.logs or `diagnose advisor`)'
+        );
         return;
       }
       const headers = ['PID', 'Duration', 'Query'];
