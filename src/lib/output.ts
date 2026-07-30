@@ -20,7 +20,8 @@ function toonEscapeValue(v: unknown): string {
     /^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$/.test(s) ||
     /^[ \t]|[ \t]$/.test(s) ||
     /^[-#]/.test(s) ||
-    /[:,"\\{}\[\]]/.test(s) ||
+    /[:,"\\{}[\\]]/.test(s) ||
+    // eslint-disable-next-line no-control-regex
     /[\x00-\x1f]/.test(s);
   if (!needsQuoting) return s;
   return '"' + s
@@ -29,6 +30,7 @@ function toonEscapeValue(v: unknown): string {
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t')
+    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')) + '"';
 }
 
