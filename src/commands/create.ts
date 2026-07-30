@@ -21,7 +21,7 @@ import { outputJson } from '../lib/output.js';
 import { readEnvFile } from '../lib/env.js';
 import { installSkills, reportCliUsage } from '../lib/skills.js';
 import { captureEvent, trackCommand, shutdownAnalytics } from '../lib/analytics.js';
-import { deployProject } from './deployments/deploy.js';
+import { deployProject, POLL_TIMEOUT_MINUTES } from './deployments/deploy.js';
 import type { ProjectConfig } from '../types.js';
 
 const execAsync = promisify(exec);
@@ -493,7 +493,10 @@ export function registerCreateCommand(program: Command): void {
               } else {
                 deploySpinner.stop('Deployment is still building');
                 clack.log.info(`Deployment ID: ${result.deploymentId}`);
-                clack.log.warn('Deployment did not finish within 2 minutes.');
+                clack.log.warn(`Deployment did not finish within ${POLL_TIMEOUT_MINUTES} minutes.`);
+                if (result.lastError) {
+                  clack.log.warn(`Could not read the deployment status: ${result.lastError}`);
+                }
                 clack.log.info(`Check status with: npx @insforge/cli deployments status ${result.deploymentId}`);
               }
             } catch (err) {
