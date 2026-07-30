@@ -27,6 +27,12 @@ export const POLL_INTERVAL_MS = 5_000;
 export const POLL_TIMEOUT_MS = 300_000;
 const DIRECT_UPLOAD_CONCURRENCY = 8;
 
+// 4xx statuses that are retryable while a deployment is in flight. A rate limit
+// or request timeout on the status endpoint says nothing about the deployment,
+// which keeps running server-side — and polling every 5s is exactly the shape
+// that trips a rate limit. Every other 4xx stays terminal.
+const TRANSIENT_4XX_STATUSES = new Set([408, 429]);
+
 const EXCLUDE_PATTERNS = [
   'node_modules',
   '.git',
@@ -315,10 +321,14 @@ export async function pollDeployment(
       spinner?.message(`Building and deploying... (${elapsed}s, status: ${deployment.status})`);
     } catch (err) {
       // Deployment-failure errors (thrown above, no statusCode) and 4xx
-      // responses are terminal. Gateway 5xx responses on the status endpoint
-      // are transient — the deployment itself may still succeed — so keep
-      // polling, same as network-level fetch errors.
-      if (err instanceof CLIError && (err.statusCode === undefined || err.statusCode < 500)) {
+      // responses other than the retryable ones are terminal. Gateway 5xx
+      // responses on the status endpoint are transient — the deployment itself
+      // may still succeed — so keep polling, same as network-level fetch errors.
+      const isTerminal =
+        err instanceof CLIError &&
+        (err.statusCode === undefined ||
+          (err.statusCode < 500 && !TRANSIENT_4XX_STATUSES.has(err.statusCode)));
+      if (isTerminal) {
         throw err;
       }
       // Transient: keep polling, but remember why the read failed so that an

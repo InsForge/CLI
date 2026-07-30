@@ -44,6 +44,23 @@ describe('pollDeployment', () => {
     expect(ossMock.ossFetch).toHaveBeenCalledTimes(3);
   });
 
+  // A rate limit or request timeout mid-poll says nothing about the deployment,
+  // so these 4xx are retried alongside 5xx rather than aborting the command.
+  it.each([408, 429])('keeps polling through a transient %i and resolves once READY', async (status) => {
+    ossMock.ossFetch
+      .mockRejectedValueOnce(new CLIError(`OSS request failed: ${status}`, 1, undefined, status))
+      .mockResolvedValueOnce(deploymentResponse('READY', { url: 'https://app.vercel.app' }));
+
+    const promise = pollDeployment('dep_1', null, false);
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
+
+    const result = await promise;
+    expect(result.isReady).toBe(true);
+    expect(result.liveUrl).toBe('https://app.vercel.app');
+    expect(result.lastError).toBeNull();
+    expect(ossMock.ossFetch).toHaveBeenCalledTimes(2);
+  });
+
   it('still fails fast on 4xx status responses', async () => {
     ossMock.ossFetch.mockRejectedValueOnce(new CLIError('Deployment not found.', 1, 'NOT_FOUND', 404));
 
