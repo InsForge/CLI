@@ -210,7 +210,7 @@ export async function ossFetch(
     }
 
     if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/webscraper')) {
-      message = 'The web scraper is not available on this backend.\nThe Apify web scraper is cloud-only. Self-hosted: this feature is not supported. Cloud: contact your InsForge admin to enable it.';
+      message = 'The web scraper is not available on this backend.\nUpgrade your InsForge instance to a version with web scraper support, then run `insforge webscraper apify connect --token <token>` to connect your Apify account.';
     }
 
     // Safe to treat any 404 on /api/advisor/* as a route-level miss: the OSS
