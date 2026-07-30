@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import * as clack from '@clack/prompts';
 import * as prompts from './lib/prompts.js';
 import { getCredentials, getProjectConfig } from './lib/config.js';
-import { outputJson } from './lib/output.js';
+import { outputJson, setToonMode } from './lib/output.js';
 import { registerLoginCommand } from './commands/login.js';
 import { registerLogoutCommand } from './commands/logout.js';
 import { registerWhoamiCommand } from './commands/whoami.js';
@@ -116,6 +116,7 @@ program
 // Global options
 program
   .option('--json', 'Output in JSON format')
+  .option('--toon', 'Output in TOON format (token-optimized notation, see toonformat.dev)')
   .option('--forger', 'Play the Forger animation (root command only) and return to the interactive menu')
   .option('--api-url <url>', 'Override Platform API URL')
   .option('-y, --yes', 'Skip confirmation prompts')
@@ -152,6 +153,12 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 // operations for human approval. Lives in the CLI so it protects every caller
 // (Claude Code, Cursor, scripts, CI, humans) automatically.
 program.hook('preAction', guardHook);
+
+// TOON output format: set module-level flag before any action runs
+program.hook('preAction', (thisCommand: Command, actionCommand: Command) => {
+  const opts = actionCommand.optsWithGlobals() as { toon?: boolean };
+  setToonMode(!!opts.toon);
+});
 
 // Top-level commands
 registerLoginCommand(program);
