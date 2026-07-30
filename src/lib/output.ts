@@ -34,20 +34,12 @@ export function outputTable(headers: string[], rows: string[][]): void {
 }
 
 export function outputSuccess(message: string): void {
-  if (toonMode) {
-    // Emit structured TOON instead of suppressing
-    console.log(encode({ type: 'success', message }));
-    return;
-  }
+  if (toonMode) return;
   console.log(`✓ ${message}`);
 }
 
 export function outputInfo(message: string): void {
-  if (toonMode) {
-    // Emit structured TOON instead of suppressing
-    console.log(encode({ type: 'info', message }));
-    return;
-  }
+  if (toonMode) return;
   console.log(message);
 }
 
@@ -74,7 +66,7 @@ function toonEscapeValue(v: unknown): string {
     /^[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$/.test(s) ||
     /^[ \t]|[ \t]$/.test(s) ||
     /^[-#]/.test(s) ||
-    /[:,\\"{}\\[\\]]/.test(s) ||
+    /[\]:,"\\{}[]/.test(s) ||
     // eslint-disable-next-line no-control-regex
     /[\x00-\x1f]/.test(s);
   if (!needsQuoting) return s;
