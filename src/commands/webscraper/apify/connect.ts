@@ -95,7 +95,16 @@ async function runConnect(opts: RunConnectOpts): Promise<ConnectResult> {
   // token below nor any of the OAuth / auth-bridge flow further down. Short-
   // circuits before any OAuth work; everything below is unreachable and thus
   // unchanged when --token is absent.
-  if (opts.token) {
+  //
+  // Branch on the option being *supplied*, not on its truthiness: `--token ""`
+  // must not silently fall through to the OAuth flow below (which would print
+  // a confusing "not logged in" error in CI when an env var expands to empty).
+  // Reject it locally instead — the backend's zod message for this case
+  // ("String must contain at least 1 character(s)") is far less clear.
+  if (opts.token !== undefined) {
+    if (opts.token.trim().length === 0) {
+      throw new CLIError('--token requires a non-empty Apify API token.');
+    }
     trackGroupCommand('apify', 'connect', proj);
     const status = await storeApifyToken(opts.token);
     if (!opts.json) {

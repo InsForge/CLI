@@ -150,6 +150,14 @@ export interface ApifyTokenStatus {
  * is bad — or that this is a cloud project, where the connection is made by OAuth
  * instead. Both arrive as a CLIError from ossFetch carrying the backend's message,
  * so they are left to propagate unchanged.
+ *
+ * A 2xx response is not itself proof the token was stored: an empty/non-JSON
+ * body is treated the same as a missing `token` object (APIFY_CONFIG_MALFORMED
+ * — the endpoint's response shape can't be trusted), while a well-formed body
+ * with `configured: false` is a distinct condition — the write may have
+ * succeeded but the read-back didn't find the secret — surfaced under its own
+ * APIFY_TOKEN_NOT_STORED code so callers can tell "can't parse the response"
+ * apart from "parsed fine, but nothing was actually stored".
  */
 export async function storeApifyToken(apiToken: string): Promise<ApifyTokenStatus> {
   const res = await ossFetch('/api/webscraper/apify/config', {
@@ -157,15 +165,39 @@ export async function storeApifyToken(apiToken: string): Promise<ApifyTokenStatu
     body: JSON.stringify({ apiToken }),
   });
 
-  const data = (await res.json()) as { token?: ApifyTokenStatus };
-  if (!data.token) {
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (typeof data !== 'object' || data === null) {
     throw new CLIError(
       'Apify config endpoint returned no token status; try again.',
       1,
       'APIFY_CONFIG_MALFORMED',
     );
   }
-  return data.token;
+
+  const token = (data as { token?: ApifyTokenStatus }).token;
+  if (!token) {
+    throw new CLIError(
+      'Apify config endpoint returned no token status; try again.',
+      1,
+      'APIFY_CONFIG_MALFORMED',
+    );
+  }
+
+  if (token.configured !== true) {
+    throw new CLIError(
+      'Apify did not report the token as stored; try again.',
+      1,
+      'APIFY_TOKEN_NOT_STORED',
+    );
+  }
+
+  return token;
 }
 
 export interface PollOptions {

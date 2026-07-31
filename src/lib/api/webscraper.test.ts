@@ -210,4 +210,65 @@ describe('storeApifyToken', () => {
       /no token status/i,
     );
   });
+
+  it('throws rather than resolving when the backend reports configured: false', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response(JSON.stringify({ token: { configured: false, maskedKey: null } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).message).toMatch(/did not report the token as stored/i);
+    expect((err as CLIError).code).toBe('APIFY_TOKEN_NOT_STORED');
+  });
+
+  it('raises APIFY_CONFIG_MALFORMED instead of a raw parser error on a non-JSON 2xx body', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response('not json', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).code).toBe('APIFY_CONFIG_MALFORMED');
+  });
+
+  it('raises APIFY_CONFIG_MALFORMED on an empty 2xx body', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response('', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).code).toBe('APIFY_CONFIG_MALFORMED');
+  });
+
+  it('raises APIFY_CONFIG_MALFORMED when the 2xx body parses to null', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response('null', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).code).toBe('APIFY_CONFIG_MALFORMED');
+  });
 });

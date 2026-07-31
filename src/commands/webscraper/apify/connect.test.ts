@@ -177,6 +177,26 @@ describe('apify connect', () => {
 
       expect(r.exitCode).toBe(1);
     });
+
+    it('rejects an empty --token locally instead of falling through to OAuth', async () => {
+      const r = await runConnect(['--token', '']);
+
+      expect(r.exitCode).toBe(1);
+      expect(apifyConfigMock.storeApifyToken).not.toHaveBeenCalled();
+      expect(apiMock.startApifyCliFlow).not.toHaveBeenCalled();
+      expect(apiMock.pollApifyConnection).not.toHaveBeenCalled();
+      expect(apiMock.fetchApifyConnection).not.toHaveBeenCalled();
+      expect(bridgeMock.runApifyAuthBridge).not.toHaveBeenCalled();
+    });
+
+    it('rejects a whitespace-only --token locally instead of falling through to OAuth', async () => {
+      const r = await runConnect(['--token', '   ']);
+
+      expect(r.exitCode).toBe(1);
+      expect(apifyConfigMock.storeApifyToken).not.toHaveBeenCalled();
+      expect(apiMock.startApifyCliFlow).not.toHaveBeenCalled();
+      expect(bridgeMock.runApifyAuthBridge).not.toHaveBeenCalled();
+    });
   });
 
   describe('OAuth path (--token absent) is unchanged', () => {
