@@ -14,9 +14,10 @@ import {
   fetchApifyConnection,
   pollApifyConnection,
   startApifyCliFlow,
+  storeApifyToken,
   type ApifyConnectionResponse,
-} from '../../../lib/api/apify.js';
-import { storeApifyToken, type ApifyTokenStatus } from '../../../lib/api/apify-config.js';
+  type ApifyTokenStatus,
+} from '../../../lib/api/webscraper.js';
 import { outputJson, outputSuccess } from '../../../lib/output.js';
 import { trackGroupCommand, shutdownAnalytics } from '../../../lib/analytics.js';
 import { runApifyAuthBridge } from '../../../lib/apify-bridge.js';

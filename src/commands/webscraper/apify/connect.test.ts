@@ -6,12 +6,10 @@ const apiMock = vi.hoisted(() => ({
   pollApifyConnection: vi.fn(),
   fetchApifyConnection: vi.fn(),
 }));
-vi.mock('../../../lib/api/apify.js', () => apiMock);
-
 const apifyConfigMock = vi.hoisted(() => ({
   storeApifyToken: vi.fn(),
 }));
-vi.mock('../../../lib/api/apify-config.js', () => apifyConfigMock);
+vi.mock('../../../lib/api/webscraper.js', () => ({ ...apiMock, ...apifyConfigMock }));
 
 const configMock = vi.hoisted(() => ({
   getProjectConfig: vi.fn(() => ({ project_id: 'p1', project_name: 'Test Project' })),
