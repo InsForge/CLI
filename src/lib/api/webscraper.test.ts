@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as oss from './oss.js';
 import { CLIError } from '../errors.js';
-import { fetchApifyConnection, pollApifyConnection } from './apify.js';
+import { fetchApifyConnection, pollApifyConnection } from './webscraper.js';
 
 const API = 'https://platform.test';
 
@@ -151,5 +152,123 @@ describe('pollApifyConnection', () => {
     await expect(
       pollApifyConnection('p1', 'jwt', { ...fastOpts, signal: ac.signal }, API),
     ).rejects.toThrow(/cancelled/i);
+  });
+});
+
+describe('storeApifyToken', () => {
+  it('PUTs the token to the OSS host and returns the masked status', async () => {
+    const spy = vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ token: { configured: true, maskedKey: 'apify_ap••••••••mnop' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    await expect(storeApifyToken('apify_api_tok1234567890')).resolves.toEqual({
+      configured: true,
+      maskedKey: 'apify_ap••••••••mnop',
+    });
+    expect(spy).toHaveBeenCalledWith('/api/webscraper/apify/config', {
+      method: 'PUT',
+      body: JSON.stringify({ apiToken: 'apify_api_tok1234567890' }),
+    });
+  });
+
+  it('propagates the backend message when Apify rejects the token', async () => {
+    vi.spyOn(oss, 'ossFetch').mockRejectedValue(
+      new CLIError('Apify rejected this API token.', 1, 'INVALID_INPUT', 400),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    await expect(storeApifyToken('bogus')).rejects.toThrow(/Apify rejected this API token/);
+  });
+
+  it('propagates the cloud-managed message on a cloud project', async () => {
+    vi.spyOn(oss, 'ossFetch').mockRejectedValue(
+      new CLIError('The Apify connection is managed by InsForge Cloud.', 1, 'INVALID_INPUT', 400),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    await expect(storeApifyToken('apify_api_tok1234567890')).rejects.toThrow(/InsForge Cloud/);
+  });
+
+  it('fails loudly when the response carries no token status', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    await expect(storeApifyToken('apify_api_tok1234567890')).rejects.toThrow(
+      /no token status/i,
+    );
+  });
+
+  it('throws rather than resolving when the backend reports configured: false', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response(JSON.stringify({ token: { configured: false, maskedKey: null } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).message).toMatch(/did not report the token as stored/i);
+    expect((err as CLIError).code).toBe('APIFY_TOKEN_NOT_STORED');
+  });
+
+  it('raises APIFY_CONFIG_MALFORMED instead of a raw parser error on a non-JSON 2xx body', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response('not json', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).code).toBe('APIFY_CONFIG_MALFORMED');
+  });
+
+  it('raises APIFY_CONFIG_MALFORMED on an empty 2xx body', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response('', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).code).toBe('APIFY_CONFIG_MALFORMED');
+  });
+
+  it('raises APIFY_CONFIG_MALFORMED when the 2xx body parses to null', async () => {
+    vi.spyOn(oss, 'ossFetch').mockResolvedValue(
+      new Response('null', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { storeApifyToken } = await import('./webscraper.js');
+
+    const err = await storeApifyToken('apify_api_tok1234567890').catch((e) => e as CLIError);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).code).toBe('APIFY_CONFIG_MALFORMED');
   });
 });
