@@ -13,6 +13,7 @@ import { isInteractive } from '../../lib/prompts.js';
 import {
   fetchOssPosthogConnection,
   fetchPosthogConnection,
+  readOssPosthogConnection,
   pollPosthogConnection,
   startPosthogCliFlow,
   storePosthogKey,
@@ -225,7 +226,9 @@ async function connectOss(opts: RunSetupOpts): Promise<PosthogConnectionResponse
     );
   }
 
-  const connection = await fetchOssPosthogConnection();
+  // Strict read, not the best-effort probe: the key is stored at this point,
+  // so a failing read must surface its real error rather than a generic miss.
+  const connection = await readOssPosthogConnection();
   if (!connection) {
     throw new CLIError(
       'The key was stored but the backend returned no connection; check the Analytics page in your dashboard.',

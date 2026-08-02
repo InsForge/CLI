@@ -88,21 +88,48 @@ export async function storePosthogKey(input: {
   return config;
 }
 
+// The probe is an optimization in front of the OAuth flow; a hung backend
+// must not hold it hostage.
+const OSS_PROBE_TIMEOUT_MS = 3000;
+
 // GET /api/analytics/connection with the project api_key (no cloud login);
-// answers in both host modes. Null means "nothing to hand off".
-export async function fetchOssPosthogConnection(): Promise<PosthogConnectionResponse | null> {
+// answers in both host modes. Null strictly means "no connection there"
+// (not_connected, or a backend without the route) — real failures propagate,
+// so the post-store read surfaces its actual error.
+export async function readOssPosthogConnection(
+  options: RequestInit = {},
+): Promise<PosthogConnectionResponse | null> {
   let res: Response;
   try {
-    res = await ossFetch('/api/analytics/connection');
-  } catch {
-    // Best-effort probe: any failure falls through to the pre-existing flows
-    // instead of becoming a new hard failure (cloud never needed this endpoint).
-    return null;
+    res = await ossFetch('/api/analytics/connection', options);
+  } catch (err) {
+    if (
+      err instanceof CLIError &&
+      (err.message.includes('not_connected') || err.message.includes('404'))
+    ) {
+      return null;
+    }
+    throw err;
   }
   const data = (await res.json().catch(() => null)) as {
     connection?: PosthogConnectionResponse;
   } | null;
   return data?.connection?.apiKey ? data.connection : null;
+}
+
+// Best-effort, time-boxed variant for the bare-command probe: any failure —
+// including a hung oss_host — falls through to the pre-existing flows instead
+// of becoming a new hard failure (cloud never needed this endpoint).
+export async function fetchOssPosthogConnection(): Promise<PosthogConnectionResponse | null> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), OSS_PROBE_TIMEOUT_MS);
+  try {
+    return await readOssPosthogConnection({ signal: ac.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

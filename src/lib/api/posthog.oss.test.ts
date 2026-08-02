@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const ossMock = vi.hoisted(() => ({ ossFetch: vi.fn() }));
 vi.mock('./oss.js', () => ossMock);
 
-import { fetchOssPosthogConnection, storePosthogKey } from './posthog.js';
+import { fetchOssPosthogConnection, readOssPosthogConnection, storePosthogKey } from './posthog.js';
+import { CLIError } from '../errors.js';
 
 function jsonResponse(body: unknown): Response {
   return { json: async () => body } as unknown as Response;
@@ -35,6 +36,42 @@ describe('fetchOssPosthogConnection', () => {
   it('resolves null when the body carries no usable connection', async () => {
     ossMock.ossFetch.mockResolvedValue(jsonResponse({ connection: {} }));
     await expect(fetchOssPosthogConnection()).resolves.toBeNull();
+  });
+});
+
+describe('readOssPosthogConnection (strict)', () => {
+  it('maps not_connected and route-miss to null', async () => {
+    ossMock.ossFetch.mockRejectedValue(new CLIError('not_connected'));
+    await expect(readOssPosthogConnection()).resolves.toBeNull();
+
+    ossMock.ossFetch.mockRejectedValue(new CLIError('OSS request failed: 404'));
+    await expect(readOssPosthogConnection()).resolves.toBeNull();
+  });
+
+  // Unlike the probe: after a successful store, a real backend failure must
+  // surface its actual error, not a generic "no connection".
+  it('propagates real failures', async () => {
+    ossMock.ossFetch.mockRejectedValue(new CLIError('Internal server error'));
+    await expect(readOssPosthogConnection()).rejects.toThrow(/Internal server error/);
+  });
+});
+
+describe('fetchOssPosthogConnection probe timeout', () => {
+  it('gives up on a hung backend instead of blocking the OAuth flow', async () => {
+    vi.useFakeTimers();
+    // Hangs until the probe's own AbortSignal fires.
+    ossMock.ossFetch.mockImplementation(
+      (_path: string, options?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+
+    const pending = fetchOssPosthogConnection();
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(pending).resolves.toBeNull();
+    vi.useRealTimers();
   });
 });
 

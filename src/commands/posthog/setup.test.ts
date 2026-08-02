@@ -6,6 +6,7 @@ const apiMock = vi.hoisted(() => ({
   pollPosthogConnection: vi.fn(),
   fetchPosthogConnection: vi.fn(),
   fetchOssPosthogConnection: vi.fn(),
+  readOssPosthogConnection: vi.fn(),
   storePosthogKey: vi.fn(),
 }));
 vi.mock('../../lib/api/posthog.js', () => apiMock);
@@ -88,8 +89,10 @@ beforeEach(() => {
   apiMock.pollPosthogConnection.mockReset();
   apiMock.fetchPosthogConnection.mockReset();
   apiMock.fetchOssPosthogConnection.mockReset();
+  apiMock.readOssPosthogConnection.mockReset();
   apiMock.storePosthogKey.mockReset();
   apiMock.fetchOssPosthogConnection.mockResolvedValue(null);
+  apiMock.readOssPosthogConnection.mockResolvedValue(null);
   apiMock.storePosthogKey.mockResolvedValue({
     personalApiKey: { configured: true, maskedKey: 'phx_AaBb••••••••WxYz' },
     host: 'https://us.posthog.com',
@@ -160,7 +163,7 @@ describe('posthog setup', () => {
 
     it('--key stores via the local backend and never needs a cloud login', async () => {
       configMock.getAccessToken.mockReturnValue(null);
-      apiMock.fetchOssPosthogConnection.mockResolvedValue(CONNECTION);
+      apiMock.readOssPosthogConnection.mockResolvedValue(CONNECTION);
 
       const r = await runSetup(['--key', 'phx_secret']);
 
@@ -183,7 +186,7 @@ describe('posthog setup', () => {
     });
 
     it('normalises --region and passes an explicit project id through', async () => {
-      apiMock.fetchOssPosthogConnection.mockResolvedValue(CONNECTION);
+      apiMock.readOssPosthogConnection.mockResolvedValue(CONNECTION);
 
       await runSetup(['--key', 'phx_secret', '--region', 'eu', '--posthog-project-id', '7']);
 
