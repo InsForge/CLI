@@ -122,7 +122,7 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
   // Branch on --key being *supplied*, not truthy: an env var expanding to ""
   // must be rejected here, not fall through to OAuth (mirrors apify connect).
   if (opts.key !== undefined) {
-    connection = await connectSelfHosted(opts);
+    connection = await connectOss(opts);
     dashboardConnection = 'newly-connected';
   } else {
     // An existing connection (made from the dashboard, either host mode) hands
@@ -204,7 +204,7 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
 
 // Store the key via the local backend (validated against PostHog before it is
 // written), then read the connection back for the wizard handoff.
-async function connectSelfHosted(opts: RunSetupOpts): Promise<PosthogConnectionResponse> {
+async function connectOss(opts: RunSetupOpts): Promise<PosthogConnectionResponse> {
   const key = (opts.key ?? '').trim();
   if (!key) {
     throw new CLIError('--key requires a non-empty PostHog personal API key.');

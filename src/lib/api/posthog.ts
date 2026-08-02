@@ -42,7 +42,7 @@ export type ConnectionFetch =
 
 // --- self-hosted (OSS backend) ---
 
-export interface PosthogSelfHostedConfig {
+export interface PosthogOssConfig {
   personalApiKey: { configured: boolean; maskedKey: string | null };
   host: string | null;
   posthogProjectId: string | null;
@@ -57,7 +57,7 @@ export async function storePosthogKey(input: {
   personalApiKey: string;
   region: 'US' | 'EU';
   posthogProjectId?: string;
-}): Promise<PosthogSelfHostedConfig> {
+}): Promise<PosthogOssConfig> {
   const res = await ossFetch('/api/analytics/config', {
     method: 'PUT',
     body: JSON.stringify(input),
@@ -70,7 +70,7 @@ export async function storePosthogKey(input: {
     data = null;
   }
 
-  const config = data as PosthogSelfHostedConfig | null;
+  const config = data as PosthogOssConfig | null;
   if (typeof config !== 'object' || config === null || !config.personalApiKey) {
     throw new CLIError(
       'PostHog config endpoint returned no key status; try again.',
