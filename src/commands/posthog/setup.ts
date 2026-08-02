@@ -11,7 +11,6 @@ import {
 } from '../../lib/errors.js';
 import { isInteractive } from '../../lib/prompts.js';
 import {
-  fetchOssPosthogConnection,
   fetchPosthogConnection,
   readOssPosthogConnection,
   pollPosthogConnection,
@@ -125,39 +124,35 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
   if (opts.key !== undefined) {
     connection = await connectOss(opts);
     dashboardConnection = 'newly-connected';
-  } else {
-    // An existing connection (made from the dashboard, either host mode) hands
-    // off without a cloud login — this is what makes the setup prompt work
-    // self-hosted.
-    const existing = await fetchOssPosthogConnection();
-    if (existing) {
-      if (!opts.json) {
-        outputSuccess('PostHog is already connected to your InsForge dashboard.');
-      }
-      connection = existing;
-      dashboardConnection = 'already-connected';
-    } else {
-      // FAKE_PROJECT_ID marks a direct OSS link — the cloud flow below can do
-      // nothing for it (login is useless, cli-start would 4xx on the sentinel).
-      if (proj.project_id === FAKE_PROJECT_ID) {
-        throw new CLIError(
-          'PostHog is not connected on this self-hosted backend. Connect it from ' +
-            "your dashboard's Analytics page, or re-run with --key <phx_...> " +
-            '(add --region EU if your PostHog is in the EU).',
-        );
-      }
-
-      // 2. Login token — only the cloud OAuth flow needs it.
-      const token = getAccessToken();
-      if (!token) {
-        throw new AuthError('Not logged in. Run `insforge login` first.');
-      }
-
-      // 3. Ensure dashboard connection exists
-      const cloudResult = await ensureDashboardConnection(proj.project_id, token, opts);
-      dashboardConnection = cloudResult.state;
-      connection = cloudResult.connection;
+  } else if (proj.project_id === FAKE_PROJECT_ID) {
+    // Mode first, like every other consumer of the sentinel (analytics,
+    // feedback, diagnose): a direct OSS link never touches the cloud flow.
+    // A connection made from the dashboard's Analytics page hands off without
+    // any login — this is what makes the setup prompt work self-hosted.
+    const existing = await readOssPosthogConnection();
+    if (!existing) {
+      throw new CLIError(
+        'PostHog is not connected on this self-hosted backend. Connect it from ' +
+          "your dashboard's Analytics page, or re-run with --key <phx_...> " +
+          '(add --region EU if your PostHog is in the EU).',
+      );
     }
+    if (!opts.json) {
+      outputSuccess('PostHog is already connected to your InsForge dashboard.');
+    }
+    connection = existing;
+    dashboardConnection = 'already-connected';
+  } else {
+    // 2. Login token
+    const token = getAccessToken();
+    if (!token) {
+      throw new AuthError('Not logged in. Run `insforge login` first.');
+    }
+
+    // 3. Ensure dashboard connection exists
+    const cloudResult = await ensureDashboardConnection(proj.project_id, token, opts);
+    dashboardConnection = cloudResult.state;
+    connection = cloudResult.connection;
   }
 
   // 4. Print the wizard command and exit. The wizard is interactive (browser

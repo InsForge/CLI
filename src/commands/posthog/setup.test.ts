@@ -5,7 +5,6 @@ const apiMock = vi.hoisted(() => ({
   startPosthogCliFlow: vi.fn(),
   pollPosthogConnection: vi.fn(),
   fetchPosthogConnection: vi.fn(),
-  fetchOssPosthogConnection: vi.fn(),
   readOssPosthogConnection: vi.fn(),
   storePosthogKey: vi.fn(),
 }));
@@ -88,10 +87,8 @@ beforeEach(() => {
   apiMock.startPosthogCliFlow.mockReset();
   apiMock.pollPosthogConnection.mockReset();
   apiMock.fetchPosthogConnection.mockReset();
-  apiMock.fetchOssPosthogConnection.mockReset();
   apiMock.readOssPosthogConnection.mockReset();
   apiMock.storePosthogKey.mockReset();
-  apiMock.fetchOssPosthogConnection.mockResolvedValue(null);
   apiMock.readOssPosthogConnection.mockResolvedValue(null);
   apiMock.storePosthogKey.mockResolvedValue({
     personalApiKey: { configured: true, maskedKey: 'phx_AaBb••••••••WxYz' },
@@ -206,8 +203,12 @@ describe('posthog setup', () => {
 
     // The dashboard's setup prompt runs the bare command — no login required.
     it('bare setup hands off an existing local connection without a login', async () => {
+      configMock.getProjectConfig.mockReturnValue({
+        project_id: 'fa4e0000-1234-5678-90ab-cd1234567890',
+        project_name: 'OSS Project',
+      });
       configMock.getAccessToken.mockReturnValue(null);
-      apiMock.fetchOssPosthogConnection.mockResolvedValue(CONNECTION);
+      apiMock.readOssPosthogConnection.mockResolvedValue(CONNECTION);
 
       const r = await runSetup([]);
 
@@ -238,6 +239,8 @@ describe('posthog setup', () => {
 
       expect(r.exitCode).toBeGreaterThan(0);
       expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+      // Mode-first: the cloud path never touches the local backend.
+      expect(apiMock.readOssPosthogConnection).not.toHaveBeenCalled();
     });
   });
 
