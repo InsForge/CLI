@@ -13,6 +13,7 @@ vi.mock('../../lib/api/posthog.js', () => apiMock);
 const configMock = vi.hoisted(() => ({
   getProjectConfig: vi.fn(() => ({ project_id: 'p1', project_name: 'Test Project' })),
   getAccessToken: vi.fn((): string | null => 'tok'),
+  FAKE_PROJECT_ID: 'fa4e0000-1234-5678-90ab-cd1234567890',
 }));
 vi.mock('../../lib/config.js', () => configMock);
 
@@ -213,7 +214,21 @@ describe('posthog setup', () => {
       expect(clackNoteMock).toHaveBeenCalledOnce();
     });
 
-    it('bare setup with no local connection and no login points at both remedies', async () => {
+    // A sentinel-linked project must never reach the cloud flow — even with a
+    // cloud login present on the machine, cli-start would 4xx on the fake id.
+    it('bare setup on an OSS link never falls into the cloud flow', async () => {
+      configMock.getProjectConfig.mockReturnValue({
+        project_id: 'fa4e0000-1234-5678-90ab-cd1234567890',
+        project_name: 'OSS Project',
+      });
+
+      const r = await runSetup([]);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+    });
+
+    it('bare setup on a cloud link without a login still asks for insforge login', async () => {
       configMock.getAccessToken.mockReturnValue(null);
 
       const r = await runSetup([]);

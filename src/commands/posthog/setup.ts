@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
-import { getProjectConfig, getAccessToken } from '../../lib/config.js';
+import { getProjectConfig, getAccessToken, FAKE_PROJECT_ID } from '../../lib/config.js';
 import {
   handleError,
   getRootOpts,
@@ -136,13 +136,19 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
       connection = existing;
       dashboardConnection = 'already-connected';
     } else {
+      // FAKE_PROJECT_ID marks a direct OSS link — the cloud flow below can do
+      // nothing for it (login is useless, cli-start would 4xx on the sentinel).
+      if (proj.project_id === FAKE_PROJECT_ID) {
+        throw new CLIError(
+          'PostHog is not connected on this self-hosted backend. Connect it from ' +
+            "your dashboard's Analytics page, or re-run with --key <phx_...>.",
+        );
+      }
+
       // 2. Login token — only the cloud OAuth flow needs it.
       const token = getAccessToken();
       if (!token) {
-        throw new AuthError(
-          'Not logged in. Run `insforge login` first (InsForge Cloud), or connect from ' +
-            "your dashboard's Analytics page / pass --key <phx_...> (self-hosted).",
-        );
+        throw new AuthError('Not logged in. Run `insforge login` first.');
       }
 
       // 3. Ensure dashboard connection exists
