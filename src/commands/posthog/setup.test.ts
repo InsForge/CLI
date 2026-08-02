@@ -5,12 +5,14 @@ const apiMock = vi.hoisted(() => ({
   startPosthogCliFlow: vi.fn(),
   pollPosthogConnection: vi.fn(),
   fetchPosthogConnection: vi.fn(),
+  fetchOssPosthogConnection: vi.fn(),
+  storePosthogKey: vi.fn(),
 }));
 vi.mock('../../lib/api/posthog.js', () => apiMock);
 
 const configMock = vi.hoisted(() => ({
   getProjectConfig: vi.fn(() => ({ project_id: 'p1', project_name: 'Test Project' })),
-  getAccessToken: vi.fn(() => 'tok'),
+  getAccessToken: vi.fn((): string | null => 'tok'),
 }));
 vi.mock('../../lib/config.js', () => configMock);
 
@@ -84,6 +86,16 @@ beforeEach(() => {
   apiMock.startPosthogCliFlow.mockReset();
   apiMock.pollPosthogConnection.mockReset();
   apiMock.fetchPosthogConnection.mockReset();
+  apiMock.fetchOssPosthogConnection.mockReset();
+  apiMock.storePosthogKey.mockReset();
+  apiMock.fetchOssPosthogConnection.mockResolvedValue(null);
+  apiMock.storePosthogKey.mockResolvedValue({
+    personalApiKey: { configured: true, maskedKey: 'phx_AaBb••••••••WxYz' },
+    host: 'https://us.posthog.com',
+    posthogProjectId: '4242',
+    projectName: 'Web',
+    organizationName: 'Acme',
+  });
   outputMock.outputJson.mockReset();
   outputMock.outputSuccess.mockReset();
   clackNoteMock.mockReset();
@@ -134,6 +146,81 @@ describe('posthog setup', () => {
 
       expect(r.exitCode).toBeGreaterThan(0);
       expect(clackNoteMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('self-hosted', () => {
+    const CONNECTION = {
+      apiKey: 'phc_pub',
+      host: 'https://us.posthog.com',
+      posthogProjectId: '4242',
+      projectName: 'Web',
+    };
+
+    it('--key stores via the local backend and never needs a cloud login', async () => {
+      configMock.getAccessToken.mockReturnValue(null);
+      apiMock.fetchOssPosthogConnection.mockResolvedValue(CONNECTION);
+
+      const r = await runSetup(['--key', 'phx_secret']);
+
+      expect(r.exitCode).toBeUndefined();
+      expect(apiMock.storePosthogKey).toHaveBeenCalledWith({
+        personalApiKey: 'phx_secret',
+        region: 'US',
+      });
+      // The whole cloud flow is bypassed, not just the login check.
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+      expect(clackNoteMock).toHaveBeenCalledOnce();
+    });
+
+    it('--key "" is rejected locally instead of falling through to OAuth', async () => {
+      const r = await runSetup(['--key', '']);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.storePosthogKey).not.toHaveBeenCalled();
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+    });
+
+    it('normalises --region and passes an explicit project id through', async () => {
+      apiMock.fetchOssPosthogConnection.mockResolvedValue(CONNECTION);
+
+      await runSetup(['--key', 'phx_secret', '--region', 'eu', '--posthog-project-id', '7']);
+
+      expect(apiMock.storePosthogKey).toHaveBeenCalledWith({
+        personalApiKey: 'phx_secret',
+        region: 'EU',
+        posthogProjectId: '7',
+      });
+    });
+
+    it('rejects an unknown --region before touching the backend', async () => {
+      const r = await runSetup(['--key', 'phx_secret', '--region', 'APAC']);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.storePosthogKey).not.toHaveBeenCalled();
+    });
+
+    // The dashboard's setup prompt runs the bare command; a connection made
+    // from the Analytics page must be picked up without a login.
+    it('bare setup hands off an existing local connection without a login', async () => {
+      configMock.getAccessToken.mockReturnValue(null);
+      apiMock.fetchOssPosthogConnection.mockResolvedValue(CONNECTION);
+
+      const r = await runSetup([]);
+
+      expect(r.exitCode).toBeUndefined();
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+      expect(apiMock.storePosthogKey).not.toHaveBeenCalled();
+      expect(clackNoteMock).toHaveBeenCalledOnce();
+    });
+
+    it('bare setup with no local connection and no login points at both remedies', async () => {
+      configMock.getAccessToken.mockReturnValue(null);
+
+      const r = await runSetup([]);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
     });
   });
 
