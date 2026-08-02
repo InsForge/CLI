@@ -141,7 +141,8 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
       if (proj.project_id === FAKE_PROJECT_ID) {
         throw new CLIError(
           'PostHog is not connected on this self-hosted backend. Connect it from ' +
-            "your dashboard's Analytics page, or re-run with --key <phx_...>.",
+            "your dashboard's Analytics page, or re-run with --key <phx_...> " +
+            '(add --region EU if your PostHog is in the EU).',
         );
       }
 
