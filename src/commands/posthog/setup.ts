@@ -119,18 +119,15 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
   let dashboardConnection: SetupResult['dashboardConnection'];
   let connection: PosthogConnectionResponse;
 
-  // Self-hosted key path. Branch on the option being *supplied*, not on its
-  // truthiness: `--key ""` (an env var expanding to empty) must not silently
-  // fall through to the OAuth flow below and die on a confusing "not logged
-  // in". Reject it locally instead.
+  // Branch on --key being *supplied*, not truthy: an env var expanding to ""
+  // must be rejected here, not fall through to OAuth (mirrors apify connect).
   if (opts.key !== undefined) {
     connection = await connectSelfHosted(opts);
     dashboardConnection = 'newly-connected';
   } else {
-    // A connection the backend already has — created from the dashboard's
-    // Analytics page in either host mode — needs no cloud login to hand off;
-    // the probe authenticates with the project api_key. This is what lets the
-    // dashboard's setup prompt run the bare command on self-hosted.
+    // An existing connection (made from the dashboard, either host mode) hands
+    // off without a cloud login — this is what makes the setup prompt work
+    // self-hosted.
     const existing = await fetchOssPosthogConnection();
     if (existing) {
       if (!opts.json) {
@@ -198,10 +195,8 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
   };
 }
 
-// Stores the developer's PostHog personal API key on the local backend, which
-// validates it against PostHog before writing (a bad key or an ambiguous
-// multi-project key fails here with the backend's actionable message), then
-// reads the connection back for the wizard handoff.
+// Store the key via the local backend (validated against PostHog before it is
+// written), then read the connection back for the wizard handoff.
 async function connectSelfHosted(opts: RunSetupOpts): Promise<PosthogConnectionResponse> {
   const key = (opts.key ?? '').trim();
   if (!key) {

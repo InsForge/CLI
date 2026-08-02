@@ -50,16 +50,9 @@ export interface PosthogSelfHostedConfig {
   organizationName: string | null;
 }
 
-/**
- * PUT /api/analytics/config on the local backend — the self-hosted counterpart
- * of the OAuth flow. The backend exercises the key against PostHog before
- * storing it, so a rejected key or an ambiguous multi-project key surfaces
- * here as a CLIError carrying the backend's actionable message (which names
- * missing scopes and lists project ids); both are left to propagate unchanged.
- *
- * Mirrors storeApifyToken: a 2xx with an unparseable body is malformed, and a
- * parsed body with `configured: false` means the write did not stick.
- */
+// PUT /api/analytics/config — the backend validates the key against PostHog
+// before storing, so its actionable rejections (missing scopes, ambiguous
+// multi-project key) propagate unchanged. Mirrors storeApifyToken.
 export async function storePosthogKey(input: {
   personalApiKey: string;
   region: 'US' | 'EU';
@@ -95,33 +88,16 @@ export async function storePosthogKey(input: {
   return config;
 }
 
-/**
- * GET /api/analytics/connection on the local backend, authenticated with the
- * project api_key — no InsForge Cloud login involved. The endpoint answers in
- * both host modes (self-hosted reads the local store, cloud proxies), so setup
- * uses it as its first probe: a hit means the wizard handoff can be printed
- * straight away.
- *
- * Returns null when the backend answers "not connected", and also when the
- * route itself is missing (an older backend without the analytics API) — both
- * mean "no local connection to hand off", and the caller falls through to the
- * cloud flow.
- */
+// GET /api/analytics/connection with the project api_key (no cloud login);
+// answers in both host modes. Null means "nothing to hand off".
 export async function fetchOssPosthogConnection(): Promise<PosthogConnectionResponse | null> {
   let res: Response;
   try {
     res = await ossFetch('/api/analytics/connection');
-  } catch (err) {
-    // ossFetch throws on any !ok status with the body's error/message as the
-    // CLIError message; the connection endpoint 404s with `not_connected`, and
-    // a route-level miss surfaces as `OSS request failed: 404`.
-    if (
-      err instanceof CLIError &&
-      (err.message.includes('not_connected') || err.message.includes('404'))
-    ) {
-      return null;
-    }
-    throw err;
+  } catch {
+    // Best-effort probe: any failure falls through to the pre-existing flows
+    // instead of becoming a new hard failure (cloud never needed this endpoint).
+    return null;
   }
   const data = (await res.json().catch(() => null)) as {
     connection?: PosthogConnectionResponse;

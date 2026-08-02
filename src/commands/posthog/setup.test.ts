@@ -200,8 +200,7 @@ describe('posthog setup', () => {
       expect(apiMock.storePosthogKey).not.toHaveBeenCalled();
     });
 
-    // The dashboard's setup prompt runs the bare command; a connection made
-    // from the Analytics page must be picked up without a login.
+    // The dashboard's setup prompt runs the bare command — no login required.
     it('bare setup hands off an existing local connection without a login', async () => {
       configMock.getAccessToken.mockReturnValue(null);
       apiMock.fetchOssPosthogConnection.mockResolvedValue(CONNECTION);
