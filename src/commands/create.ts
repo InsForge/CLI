@@ -710,7 +710,7 @@ export async function downloadGitHubTemplate(
         dbSpinner?.stop('Database migration failed');
         if (!json) {
           clack.log.warn(`Migration failed: ${(err as Error).message}`);
-          clack.log.info('You can run the migration manually: npx @insforge/cli db query --unrestricted "$(cat migrations/db_init.sql)"');
+          clack.log.info('You can run the migration manually: npx @insforge/cli db query "$(cat migrations/db_init.sql)"');
         } else {
           throw err;
         }
