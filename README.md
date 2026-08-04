@@ -306,7 +306,6 @@ Execute a raw SQL query.
 ```bash
 npx @insforge/cli db query "SELECT * FROM users LIMIT 10"
 npx @insforge/cli db query "SELECT count(*) FROM orders" --json
-npx @insforge/cli db query "SELECT * FROM pg_tables" --unrestricted
 ```
 
 #### `npx @insforge/cli db tables`

@@ -704,13 +704,17 @@ export async function downloadGitHubTemplate(
       dbSpinner?.start('Running database migrations...');
       try {
         const sql = await fs.readFile(migrationPath, 'utf-8');
-        await runRawSql(sql, true);
+        // Applied as project_admin, the same privileges the retry hint below
+        // prints. Template init SQL is ordinary `public` schema setup and must
+        // not need the unrestricted (root) endpoint — that is reserved for
+        // operator triage, not for anything a template runs unattended.
+        await runRawSql(sql);
         dbSpinner?.stop('Database migrations applied');
       } catch (err) {
         dbSpinner?.stop('Database migration failed');
         if (!json) {
           clack.log.warn(`Migration failed: ${(err as Error).message}`);
-          clack.log.info('You can run the migration manually: npx @insforge/cli db query --unrestricted "$(cat migrations/db_init.sql)"');
+          clack.log.info('You can run the migration manually: npx @insforge/cli db query "$(cat migrations/db_init.sql)"');
         } else {
           throw err;
         }
