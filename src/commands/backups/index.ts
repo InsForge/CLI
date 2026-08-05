@@ -8,12 +8,19 @@ import {
   deleteBackup,
   restoreBackup,
 } from '../../lib/api/platform.js';
+import {
+  listOssBackups,
+  createOssBackup,
+  renameOssBackup,
+  deleteOssBackup,
+  restoreOssBackup,
+} from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
-import { getProjectId } from '../../lib/config.js';
+import { getProjectId, FAKE_PROJECT_ID } from '../../lib/config.js';
 import { outputJson, outputTable, outputSuccess, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
-import type { Backup } from '../../types.js';
+import type { Backup, OssBackup } from '../../types.js';
 
 function resolveProjectId(opts: { project?: string }): string {
   const id = getProjectId(opts.project);
@@ -21,6 +28,16 @@ function resolveProjectId(opts: { project?: string }): string {
     throw new CLIError('No project specified. Pass --project <id> or run `insforge link` first.');
   }
   return id;
+}
+
+/**
+ * Self-hosted projects (`link --api-key`) carry the FAKE_PROJECT_ID sentinel —
+ * they have no Cloud Platform record, so their backups live on the project's
+ * own OSS backend (`/api/database/backups`). Cloud projects keep using the
+ * Platform API.
+ */
+function isOssProject(projectId: string): boolean {
+  return projectId === FAKE_PROJECT_ID;
 }
 
 function formatBytes(n: number | null): string {
@@ -42,7 +59,50 @@ function backupRow(b: Backup): string[] {
   ];
 }
 
+function ossBackupRow(b: OssBackup): string[] {
+  return [
+    b.id,
+    b.name ?? '-',
+    b.status,
+    b.triggerSource,
+    formatBytes(b.sizeBytes),
+    new Date(b.createdAt).toLocaleString(),
+  ];
+}
+
 const BACKUP_HEADERS = ['ID', 'Name', 'Status', 'Source', 'Size', 'Created'];
+
+/** Newest-first pick; the OSS list endpoint does not guarantee order. */
+function newestOssBackup(backups: OssBackup[]): OssBackup | null {
+  if (!backups.length) return null;
+  return [...backups].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )[0];
+}
+
+const OSS_WAIT_INTERVAL_MS = 2_000;
+const OSS_WAIT_MAX_ATTEMPTS = 300; // 10 minutes
+
+/**
+ * The OSS create endpoint returns immediately with a `running` backup and
+ * dumps in the background, so `--wait` polls the list until it settles.
+ */
+async function waitForOssBackup(backupId: string): Promise<OssBackup> {
+  for (let attempt = 0; attempt < OSS_WAIT_MAX_ATTEMPTS; attempt++) {
+    const backups = await listOssBackups();
+    const backup = backups.find((b) => b.id === backupId);
+    if (!backup) {
+      throw new CLIError(`Backup ${backupId} disappeared while waiting for it to finish.`);
+    }
+    if (backup.status !== 'running') {
+      return backup;
+    }
+    await new Promise((r) => setTimeout(r, OSS_WAIT_INTERVAL_MS));
+  }
+  throw new CLIError(
+    `Timed out waiting for backup ${backupId} to finish. Check it with \`insforge backups list\`.`,
+  );
+}
 
 export function registerBackupsCommands(backupsCmd: Command): void {
   backupsCmd
@@ -54,6 +114,17 @@ export function registerBackupsCommands(backupsCmd: Command): void {
       try {
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        if (isOssProject(projectId)) {
+          const backups = await listOssBackups();
+          if (json) {
+            outputJson(backups);
+          } else if (!backups.length) {
+            outputInfo('No backups found.');
+          } else {
+            outputTable(BACKUP_HEADERS, backups.map(ossBackupRow));
+          }
+          return;
+        }
         const backups = await listBackups(projectId, apiUrl);
         if (json) {
           outputJson(backups);
@@ -76,6 +147,23 @@ export function registerBackupsCommands(backupsCmd: Command): void {
       try {
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        if (isOssProject(projectId)) {
+          // The OSS backend has no /latest route — derive it from the list.
+          const latest = newestOssBackup(await listOssBackups());
+          if (json) {
+            outputJson(latest);
+          } else if (!latest) {
+            outputInfo('No backups found.');
+          } else {
+            outputInfo(`ID:       ${latest.id}`);
+            outputInfo(`Name:     ${latest.name ?? '-'}`);
+            outputInfo(`Status:   ${latest.status}`);
+            outputInfo(`Size:     ${formatBytes(latest.sizeBytes)}`);
+            outputInfo(`Created:  ${new Date(latest.createdAt).toLocaleString()}`);
+            if (latest.errorMessage) outputInfo(`Error:    ${latest.errorMessage}`);
+          }
+          return;
+        }
         const latest = await getLatestBackup(projectId, apiUrl);
         if (json) {
           outputJson(latest);
@@ -102,6 +190,24 @@ export function registerBackupsCommands(backupsCmd: Command): void {
       try {
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        if (isOssProject(projectId)) {
+          let backup = await createOssBackup(opts.name);
+          if (opts.wait) {
+            backup = await waitForOssBackup(backup.id);
+            if (backup.status === 'failed') {
+              throw new CLIError(`Backup ${backup.id} failed: ${backup.errorMessage ?? 'unknown error'}`);
+            }
+          }
+          captureEvent(projectId, 'cli_backup_create', { named: !!opts.name, oss: true });
+          if (json) {
+            outputJson(backup);
+          } else if (backup.status === 'completed') {
+            outputSuccess(`Backup ${backup.id} completed (${formatBytes(backup.sizeBytes)}).`);
+          } else {
+            outputSuccess(`Backup ${backup.id} started. Check progress with \`insforge backups list\`.`);
+          }
+          return;
+        }
         const result = await createBackup(projectId, opts.name, !!opts.wait, apiUrl);
         captureEvent(projectId, 'cli_backup_create', { named: !!opts.name });
         if (json) {
@@ -125,7 +231,10 @@ export function registerBackupsCommands(backupsCmd: Command): void {
       try {
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
-        const result = await renameBackup(projectId, backupId, name === '' ? null : name, apiUrl);
+        const newName = name === '' ? null : name;
+        const result = isOssProject(projectId)
+          ? await renameOssBackup(backupId, newName)
+          : await renameBackup(projectId, backupId, newName, apiUrl);
         if (json) {
           outputJson(result);
         } else {
@@ -158,7 +267,11 @@ export function registerBackupsCommands(backupsCmd: Command): void {
           }
         }
 
-        await deleteBackup(projectId, backupId, apiUrl);
+        if (isOssProject(projectId)) {
+          await deleteOssBackup(backupId);
+        } else {
+          await deleteBackup(projectId, backupId, apiUrl);
+        }
         captureEvent(projectId, 'cli_backup_delete', {});
         if (json) {
           outputJson({ deleted: true, backup_id: backupId });
@@ -190,6 +303,19 @@ export function registerBackupsCommands(backupsCmd: Command): void {
             outputInfo('Cancelled.');
             return;
           }
+        }
+
+        if (isOssProject(projectId)) {
+          // The OSS restore endpoint is synchronous — when it returns, the
+          // database has been restored.
+          await restoreOssBackup(backupId);
+          captureEvent(projectId, 'cli_backup_restore', { oss: true });
+          if (json) {
+            outputJson({ restored: true, backup_id: backupId });
+          } else {
+            outputSuccess(`Database restored from backup ${backupId}.`);
+          }
+          return;
         }
 
         await restoreBackup(projectId, backupId, apiUrl);

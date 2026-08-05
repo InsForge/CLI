@@ -1,6 +1,10 @@
 import { getProjectConfig } from '../config.js';
 import { CLIError, formatFetchError, ProjectNotLinkedError } from '../errors.js';
 import type {
+  AdvisorSuppression,
+  AdvisorSuppressionReason,
+  AdvisorSuppressionScope,
+  OssBackup,
   ProjectConfig,
   RotateKeyResponse,
   S3AccessKey,
@@ -157,6 +161,76 @@ export async function deleteS3AccessKey(id: string): Promise<void> {
   await ossFetch(`/api/storage/s3/access-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// --- Advisor ---
+
+export async function triggerAdvisorScan(): Promise<{ scanId: string; message: string }> {
+  const res = await ossFetch('/api/advisor/scan', { method: 'POST' });
+  return await res.json() as { scanId: string; message: string };
+}
+
+export async function listAdvisorSuppressions(): Promise<AdvisorSuppression[]> {
+  const res = await ossFetch('/api/advisor/suppressions');
+  const data = await res.json() as { suppressions?: AdvisorSuppression[] };
+  return data.suppressions ?? [];
+}
+
+export interface CreateAdvisorSuppressionBody {
+  ruleId: string;
+  scope: AdvisorSuppressionScope;
+  /** Required for `instance` scope — the finding's affected object, verbatim. */
+  affectedObject?: string;
+  reason: AdvisorSuppressionReason;
+  note?: string;
+}
+
+export async function createAdvisorSuppression(
+  body: CreateAdvisorSuppressionBody,
+): Promise<AdvisorSuppression> {
+  const res = await ossFetch('/api/advisor/suppressions', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return await res.json() as AdvisorSuppression;
+}
+
+export async function deleteAdvisorSuppression(id: string): Promise<void> {
+  await ossFetch(`/api/advisor/suppressions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// --- Database backups (self-hosted / OSS route) ---
+
+export async function listOssBackups(): Promise<OssBackup[]> {
+  const res = await ossFetch('/api/database/backups');
+  const data = await res.json() as { backups?: OssBackup[] };
+  return data.backups ?? [];
+}
+
+export async function createOssBackup(name?: string): Promise<OssBackup> {
+  const res = await ossFetch('/api/database/backups', {
+    method: 'POST',
+    body: JSON.stringify(name ? { name } : {}),
+  });
+  return await res.json() as OssBackup;
+}
+
+export async function renameOssBackup(backupId: string, name: string | null): Promise<OssBackup> {
+  const res = await ossFetch(`/api/database/backups/${encodeURIComponent(backupId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+  return await res.json() as OssBackup;
+}
+
+export async function deleteOssBackup(backupId: string): Promise<void> {
+  await ossFetch(`/api/database/backups/${encodeURIComponent(backupId)}`, { method: 'DELETE' });
+}
+
+export async function restoreOssBackup(backupId: string): Promise<void> {
+  await ossFetch(`/api/database/backups/${encodeURIComponent(backupId)}/restore`, {
+    method: 'POST',
+  });
+}
+
 export async function ossFetch(
   path: string,
   options: RequestInit = {},
@@ -199,6 +273,10 @@ export async function ossFetch(
 
     if (res.status === 404 && isRouteLevel404 && path === '/api/database/migrations') {
       message = 'Database migrations are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin about database migration support.';
+    }
+
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/database/backups')) {
+      message = 'Database backups are not available on this backend.\nSelf-hosted: upgrade your InsForge instance to a version with the backups feature.';
     }
 
     if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/ai')) {

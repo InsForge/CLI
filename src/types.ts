@@ -404,3 +404,45 @@ export interface S3AccessKeyWithSecret extends S3AccessKey {
   /** Plaintext secret — returned only at creation, never again. */
   secretAccessKey: string;
 }
+
+// --- Advisor suppressions (OSS backend) ---
+
+export type AdvisorSuppressionScope = 'instance' | 'rule';
+export type AdvisorSuppressionReason = 'false_positive' | 'accepted_risk' | 'wont_fix' | 'other';
+
+export interface AdvisorSuppression {
+  id: string;
+  ruleId: string;
+  /** Set for `instance` scope only — the exact finding this suppresses. */
+  affectedObject?: string;
+  scope: AdvisorSuppressionScope;
+  reason: AdvisorSuppressionReason;
+  note?: string;
+  createdBy?: string;
+  createdAt: string;
+  // Enriched from the latest completed scan when a matching finding exists.
+  title?: string;
+  severity?: 'critical' | 'warning' | 'info';
+  category?: 'security' | 'performance' | 'health';
+}
+
+// --- Database backups (OSS backend) ---
+
+/**
+ * A backup record from the OSS backend (`/api/database/backups`). Distinct
+ * from the Cloud Platform `Backup` shape: camelCase fields and no
+ * project/org/plan metadata.
+ */
+export interface OssBackup {
+  id: string;
+  name: string | null;
+  triggerSource: 'manual' | 'scheduled';
+  status: 'running' | 'completed' | 'failed';
+  sizeBytes: number | null;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  createdBy: string | null;
+  /** When retention will delete this backup; scheduled backups only. */
+  expiresAt: string | null;
+}

@@ -177,10 +177,13 @@ export function registerDiagnoseAdvisorCommand(diagnoseCmd: Command): void {
             return;
           }
 
-          const headers = ['Severity', 'Category', 'Affected Object', 'Title'];
+          // Rule ID is what `insforge advisor suppress <ruleId>` takes, so it
+          // must be visible here — this table is where users find findings.
+          const headers = ['Severity', 'Category', 'Rule', 'Affected Object', 'Title'];
           const rows = issuesData.issues.map((issue) => [
             issue.severity,
             issue.category,
+            issue.ruleId,
             issue.affectedObject,
             issue.title,
           ]);

@@ -554,6 +554,26 @@ export async function updateMemberRole(
   return data.member ?? (data as unknown as Member);
 }
 
+export async function leaveOrganization(
+  orgId: string,
+  apiUrl?: string,
+): Promise<{ message: string }> {
+  const res = await platformFetch(`/organizations/v1/${orgId}/leave`, {
+    method: 'POST',
+  }, apiUrl);
+  return await res.json() as { message: string };
+}
+
+export async function deleteOrganization(
+  orgId: string,
+  apiUrl?: string,
+): Promise<{ message: string; organizationId: string }> {
+  const res = await platformFetch(`/organizations/v1/${orgId}`, {
+    method: 'DELETE',
+  }, apiUrl);
+  return await res.json() as { message: string; organizationId: string };
+}
+
 // --- Backups ---
 
 export async function listBackups(projectId: string, apiUrl?: string): Promise<Backup[]> {

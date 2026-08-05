@@ -84,6 +84,7 @@ import { registerComputeDeployCommand } from './commands/compute/deploy.js';
 import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
+import { registerAdvisorCommands } from './commands/advisor/index.js';
 import { registerPaymentsCommands } from './commands/payments/index.js';
 import { registerPosthogSetupCommand } from './commands/posthog/setup.js';
 import { registerWebscraperCommands } from './commands/webscraper/index.js';
@@ -244,6 +245,10 @@ registerMetadataCommand(program);
 // Diagnose commands
 const diagnoseCmd = program.command('diagnose');
 registerDiagnoseCommands(diagnoseCmd);
+
+// Advisor commands (scan + suppressions; read results with `diagnose advisor`)
+const advisorCmd = program.command('advisor').description('Run advisor scans and manage suppressed findings');
+registerAdvisorCommands(advisorCmd);
 
 // Payments commands
 const paymentsCmd = program.command('payments').description('Manage payments');
