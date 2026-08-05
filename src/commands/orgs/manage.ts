@@ -30,12 +30,7 @@ function assertRole(role: string): MemberRole {
   return role as MemberRole;
 }
 
-/**
- * Destructive org ops (leave/delete) never resolve the org implicitly — a
- * stray linked project, INSFORGE_ORG_ID, or default org must not be able to
- * silently point them at the wrong organization. Mirrors how
- * `projects delete` requires an explicit --project.
- */
+/** Destructive org ops never fall back to an ambient org — --org-id must be explicit. */
 function requireExplicitOrgId(opts: { orgId?: string }, verb: string): string {
   if (!opts.orgId) {
     throw new CLIError(
@@ -158,9 +153,7 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         await requireAuth(apiUrl);
         const orgId = requireExplicitOrgId(opts, 'delete');
 
-        // Deleting an org cascades: the backend cancels its subscription and
-        // permanently deletes every project in it. Surface that blast radius
-        // (and whether the currently linked project is in it) before asking.
+        // Org deletion cascades to every project in it, so surface that before asking.
         const linkedConfig = getProjectConfig();
         const linkedInOrg = linkedConfig?.org_id === orgId;
 

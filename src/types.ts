@@ -428,11 +428,7 @@ export interface AdvisorSuppression {
 
 // --- Database backups (OSS backend) ---
 
-/**
- * A backup record from the OSS backend (`/api/database/backups`). Distinct
- * from the Cloud Platform `Backup` shape: camelCase fields and no
- * project/org/plan metadata.
- */
+/** Backup record from the OSS backend — distinct shape from the Cloud `Backup`. */
 export interface OssBackup {
   id: string;
   name: string | null;

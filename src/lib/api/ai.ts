@@ -6,11 +6,7 @@ export interface OpenRouterKeyResponse {
   maskedKey?: string;
 }
 
-/**
- * Key-level Model Gateway observability (`GET /api/ai/overview`). Usage and
- * limit figures are USD credits on the OpenRouter key. `charts`/`modelUsage`
- * are only populated when the backend has a management key (observability).
- */
+/** Model Gateway key observability; usage/limit figures are USD credits. */
 export interface AiOverview {
   key: {
     label?: string;

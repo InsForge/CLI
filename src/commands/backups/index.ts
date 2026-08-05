@@ -30,12 +30,7 @@ function resolveProjectId(opts: { project?: string }): string {
   return id;
 }
 
-/**
- * Self-hosted projects (`link --api-key`) carry the FAKE_PROJECT_ID sentinel —
- * they have no Cloud Platform record, so their backups live on the project's
- * own OSS backend (`/api/database/backups`). Cloud projects keep using the
- * Platform API.
- */
+/** Self-hosted projects carry the FAKE_PROJECT_ID sentinel and use the OSS backup routes. */
 function isOssProject(projectId: string): boolean {
   return projectId === FAKE_PROJECT_ID;
 }
@@ -83,10 +78,7 @@ function newestOssBackup(backups: OssBackup[]): OssBackup | null {
 const OSS_WAIT_INTERVAL_MS = 2_000;
 const OSS_WAIT_MAX_ATTEMPTS = 300; // 10 minutes
 
-/**
- * The OSS create endpoint returns immediately with a `running` backup and
- * dumps in the background, so `--wait` polls the list until it settles.
- */
+/** OSS create returns a `running` backup immediately, so --wait polls until it settles. */
 async function waitForOssBackup(backupId: string): Promise<OssBackup> {
   for (let attempt = 0; attempt < OSS_WAIT_MAX_ATTEMPTS; attempt++) {
     const backups = await listOssBackups();
@@ -306,8 +298,7 @@ export function registerBackupsCommands(backupsCmd: Command): void {
         }
 
         if (isOssProject(projectId)) {
-          // The OSS restore endpoint is synchronous — when it returns, the
-          // database has been restored.
+          // The OSS restore endpoint is synchronous.
           await restoreOssBackup(backupId);
           captureEvent(projectId, 'cli_backup_restore', { oss: true });
           if (json) {

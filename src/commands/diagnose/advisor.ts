@@ -177,8 +177,7 @@ export function registerDiagnoseAdvisorCommand(diagnoseCmd: Command): void {
             return;
           }
 
-          // Rule ID is what `insforge advisor suppress <ruleId>` takes, so it
-          // must be visible here — this table is where users find findings.
+          // Rule is the id `advisor suppress` takes, so it must be visible here.
           const headers = ['Severity', 'Category', 'Rule', 'Affected Object', 'Title'];
           const rows = issuesData.issues.map((issue) => [
             issue.severity,
