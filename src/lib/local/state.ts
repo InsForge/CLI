@@ -77,6 +77,15 @@ export function localDbInitFile(cwd?: string): string {
   return join(localDir(cwd), 'local-db-init.sql');
 }
 
+/** Edge-function runtime host, mounted into the official Deno image. */
+export function localDenoServerFile(cwd?: string): string {
+  return join(localDir(cwd), 'local-deno-server.ts');
+}
+
+export function localDenoWorkerFile(cwd?: string): string {
+  return join(localDir(cwd), 'local-deno-worker.js');
+}
+
 /**
  * Compose project name for a directory. Docker requires lowercase
  * `[a-z0-9][a-z0-9_-]*`, so the basename is sanitized and suffixed with a hash
@@ -113,7 +122,13 @@ export function writeLocalState(state: LocalState, cwd?: string): void {
 }
 
 export function clearLocalState(cwd?: string): void {
-  for (const file of [localStateFile(cwd), localEnvFile(cwd), localDbInitFile(cwd)]) {
+  for (const file of [
+    localStateFile(cwd),
+    localEnvFile(cwd),
+    localDbInitFile(cwd),
+    localDenoServerFile(cwd),
+    localDenoWorkerFile(cwd),
+  ]) {
     if (existsSync(file)) unlinkSync(file);
   }
 }
@@ -126,7 +141,13 @@ export function clearLocalState(cwd?: string): void {
 export function ensureLocalGitignore(cwd?: string): void {
   const dir = ensureLocalDir(cwd);
   const file = join(dir, '.gitignore');
-  const wanted = ['local.env', 'local.json', 'local-db-init.sql'];
+  const wanted = [
+    'local.env',
+    'local.json',
+    'local-db-init.sql',
+    'local-deno-server.ts',
+    'local-deno-worker.js',
+  ];
   const existing = existsSync(file)
     ? readFileSync(file, 'utf-8').split('\n').map((l) => l.trim())
     : [];

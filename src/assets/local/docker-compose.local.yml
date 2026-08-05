@@ -89,9 +89,32 @@ services:
       # but the CLI needs them.
       ACCESS_API_KEY: ${ACCESS_API_KEY}
       ACCESS_ANON_KEY: ${ACCESS_ANON_KEY}
+      # Where the backend proxies edge-function invocations. The upstream
+      # image-only compose file omits this, so the backend falls back to
+      # http://localhost:7133 — inside its own container, where nothing listens —
+      # and every invoke returns 502 even though deploy succeeds.
+      DENO_RUNTIME_URL: http://deno:7133
       # Telemetry deployment channel — a literal, not a variable, because only
       # this overlay is ever used by the CLI.
       INSFORGE_DEPLOYMENT_METHOD: cli-local
 
   deno:
-    image: ghcr.io/insforge/deno-runtime:${INSFORGE_STACK_TAG:-latest}
+    # Official upstream Deno image, not a hand-built ghcr.io/insforge/deno-runtime.
+    # That image exists only because the upstream image-only compose file has no
+    # checkout to mount functions/server.ts from. The CLI does have somewhere to
+    # put files (.insforge/), so it mounts the runtime host the same way it mounts
+    # db-init.sql, and depends on no hand-built image.
+    image: denoland/deno:alpine-2.0.6
+    working_dir: /app
+    volumes:
+      - ${INSFORGE_DENO_SERVER}:/app/functions/server.ts:ro
+      - ${INSFORGE_DENO_WORKER}:/app/functions/worker-template.js:ro
+      - deno_cache:/deno-dir
+    command:
+      - sh
+      - -c
+      - >-
+        deno cache functions/server.ts &&
+        exec deno run --allow-net --allow-env
+        --allow-read=./functions/worker-template.js
+        --unstable-worker-options functions/server.ts

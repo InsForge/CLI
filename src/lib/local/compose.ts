@@ -58,9 +58,17 @@ export function composeFiles(storage: StorageBackend): string[] {
   return files;
 }
 
-/** Path to the bundled init SQL that `local start` materializes into .insforge/. */
+/** Bundled files `local start` materializes into .insforge/ and mounts. */
 export function bundledDbInitSql(): string {
   return join(assetsDir(), 'db-init.sql');
+}
+
+export function bundledDenoServer(): string {
+  return join(assetsDir(), 'server.ts');
+}
+
+export function bundledDenoWorker(): string {
+  return join(assetsDir(), 'worker-template.js');
 }
 
 export interface ComposeContext {

@@ -18,6 +18,8 @@ import { outputJson } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import {
   bundledDbInitSql,
+  bundledDenoServer,
+  bundledDenoWorker,
   composePs,
   composeRunInherit,
   type ComposeContext,
@@ -28,6 +30,8 @@ import {
   generateSecrets,
   readSecrets,
   writeDbInitSql,
+  writeDenoServer,
+  writeDenoWorker,
   writeEnvFile,
 } from '../../lib/local/secrets.js';
 import {
@@ -205,8 +209,10 @@ export function registerLocalStartCommand(localCmd: Command): void {
         // a cluster that has not initialized yet, which is why an existing
         // instance is unaffected by the rewrite.
         const dbInitSql = writeDbInitSql(readFileSync(bundledDbInitSql(), 'utf-8'));
+        const denoServer = writeDenoServer(readFileSync(bundledDenoServer(), 'utf-8'));
+        const denoWorker = writeDenoWorker(readFileSync(bundledDenoWorker(), 'utf-8'));
 
-        writeEnvFile({ secrets, ports, storage, stackTag, dbInitSql });
+        writeEnvFile({ secrets, ports, storage, stackTag, dbInitSql, denoServer, denoWorker });
 
         const state: LocalState = {
           version: 1,

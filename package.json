@@ -37,7 +37,9 @@
     "dist/assets/local/docker-compose.local.yml",
     "dist/assets/local/docker-compose.minio.yml",
     "dist/assets/local/docker-compose.rustfs.yml",
-    "dist/assets/local/db-init.sql"
+    "dist/assets/local/db-init.sql",
+    "dist/assets/local/server.ts",
+    "dist/assets/local/worker-template.js"
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",

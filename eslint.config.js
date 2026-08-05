@@ -40,6 +40,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'bin/', '*.config.*'],
+    ignores: ['dist/', 'node_modules/', 'bin/', '*.config.*', 'src/assets/local/'],
   },
 );

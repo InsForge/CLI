@@ -43,6 +43,8 @@ export default defineConfig({
             'docker-compose.minio.yml',
             'docker-compose.rustfs.yml',
             'db-init.sql',
+            'server.ts',
+            'worker-template.js',
           ]) {
             copyFileSync(join('src/assets/local', file), join(localDir, file));
           }
