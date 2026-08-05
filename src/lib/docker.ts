@@ -20,6 +20,67 @@ export function ensureDockerAvailable(): void {
   }
 }
 
+const INSTALL_HINT = [
+  '  • Docker Desktop: https://docs.docker.com/get-docker/',
+  '  • Or OrbStack / Colima / Rancher Desktop — any Docker-compatible daemon works.',
+  '  • No Docker? `insforge create` gives you a hosted project in about 30 seconds.',
+].join('\n');
+
+/**
+ * Preflight for local instances. Distinguishes the four ways this fails, since
+ * "Docker is required" tells someone whose daemon is merely asleep nothing
+ * actionable. Called only by `local *` — the rest of the CLI stays Docker-free.
+ */
+export function ensureDockerReady(): void {
+  const cli = spawnSync('docker', ['--version'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (cli.error || cli.status !== 0) {
+    throw new CLIError(`Docker is not installed, or not on your PATH.\n${INSTALL_HINT}`);
+  }
+
+  const daemon = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (daemon.error || daemon.status !== 0) {
+    throw new CLIError(
+      'Docker is installed but the daemon is not responding.\n' +
+        '  • Start Docker Desktop (or `colima start`) and try again.\n' +
+        (daemon.stderr ? `  Detail: ${daemon.stderr.trim().split('\n')[0].slice(0, 200)}` : ''),
+    );
+  }
+
+  const compose = spawnSync('docker', ['compose', 'version', '--short'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (compose.error || compose.status !== 0) {
+    throw new CLIError(
+      'Docker Compose v2 is required (the `docker compose` subcommand).\n' +
+        '  • The standalone `docker-compose` v1 binary will not work.\n' +
+        '  • Update Docker Desktop, or install the compose plugin:\n' +
+        '    https://docs.docker.com/compose/install/',
+    );
+  }
+}
+
+/**
+ * Total memory the Docker daemon can use, in MB, or null when it can't be read.
+ * Four containers need roughly 1.5 GB; below that Postgres and the backend start
+ * getting OOM-killed in ways that look like random failures.
+ */
+export function dockerMemoryMb(): number | null {
+  const r = spawnSync('docker', ['info', '--format', '{{.MemTotal}}'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (r.error || r.status !== 0) return null;
+  const bytes = Number(r.stdout.trim());
+  return Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / 1024 / 1024) : null;
+}
+
 export interface BuildOptions {
   dir: string;
   imageRef: string; // e.g. registry.fly.io/<app>:<tag>

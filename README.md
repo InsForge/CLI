@@ -9,6 +9,9 @@ Requires Node.js >= 18. We recommend running via `npx` so you always get the lat
 ## Quick Start
 
 ```bash
+# Run InsForge on your own machine — no account, no clone (Docker required)
+npx -y @insforge/cli@latest local start
+
 # Login via browser (OAuth)
 npx @insforge/cli login
 
@@ -97,6 +100,93 @@ when you want to link a directory directly to a known project.
 > (`hidden: true` in `src/index.ts`) and are intentionally excluded from this
 > reference. Use `npx @insforge/cli list` instead of `orgs`/`projects`; `records`
 > is internal and not supported for direct use.
+
+### Local Instances
+
+Run a full InsForge backend on your own machine in Docker: Postgres, PostgREST,
+the backend, and the edge-functions runtime. No account and no repository clone —
+the CLI drives a bundled compose file that references only published images.
+
+**One instance per directory.** The compose project name is derived from the
+directory path, so two app folders get separate containers, volumes, and
+databases with no configuration. Two directories sharing a basename still get
+separate instances.
+
+#### `npx @insforge/cli local start`
+
+Starts the stack, waits for it to become healthy, links the directory, and seeds
+`.env.local`.
+
+```bash
+npx @insforge/cli local start
+npx @insforge/cli local start --storage minio     # bundled S3-compatible store
+npx @insforge/cli local start --stack-tag v2.2.9  # pin to a release
+npx @insforge/cli local start --pull              # re-pull images
+npx @insforge/cli local start --port-app 8130     # relocate a port
+npx @insforge/cli local start --json
+```
+
+| Option | Description |
+| --- | --- |
+| `--storage <backend>` | `local` (filesystem, default), `minio`, or `rustfs`. The bundled stores stay on the internal Docker network and enable the S3-compatible gateway at `/storage/v1/s3`. |
+| `--stack-tag <tag>` | Pin to a release tag instead of resolving the newest. |
+| `--pull` | Re-pull images even when present locally. |
+| `--port-app`, `--port-auth`, `--port-deno`, `--port-postgres`, `--port-postgrest` | Host port overrides. Defaults are 7130 / 7131 / 7133 / 5432 / 5430. |
+
+After it finishes, every other command targets the local backend — no login,
+because the directory is linked with the API key the CLI generated:
+
+```bash
+npx @insforge/cli db query "select 1"
+npx @insforge/cli storage create-bucket avatars
+npx @insforge/cli functions deploy
+```
+
+**Versioning.** The first `local start` in a directory resolves the newest
+release present in all three InsForge image repositories, pins each image by
+digest, and records that in `.insforge/local.json`. Later starts reuse the
+recorded versions, so an existing project never moves to a new backend version on
+its own. New directories pick up the newest release automatically. If the
+registry is unreachable, the versions bundled with the CLI are used instead —
+`local start` does not fail on a network problem.
+
+`:latest` is deliberately not used: Docker will not re-pull a tag it already has,
+so it delivers neither reproducibility nor freshness, and the backend runs
+migrations on boot — a mismatched set of images can leave a schema an older image
+cannot read.
+
+#### `npx @insforge/cli local stop`
+
+```bash
+npx @insforge/cli local stop                # stop; data is kept
+npx @insforge/cli local stop --delete-data  # also destroy the volumes
+npx @insforge/cli local stop --unlink       # restore the previous cloud link
+```
+
+`--delete-data` is irreversible and classified `critical` by the human-in-the-loop
+guard, so with the guard enabled it requires approval. A plain `stop` is safe and
+never prompts.
+
+If the directory was linked to a cloud project, `local start` saves that link to
+`.insforge/project.cloud.json` rather than overwriting it, and `local stop
+--unlink` puts it back.
+
+#### `npx @insforge/cli local status`
+
+```bash
+npx @insforge/cli local status
+npx @insforge/cli local status --show-keys   # print keys in full
+npx @insforge/cli local status --json
+```
+
+Shows health, ports, the resolved version, the compose project name, and
+per-container state. Keys are masked by default, and `--json` omits them unless
+`--show-keys` is passed — so its output is safe to paste into an issue.
+
+**Requirements.** Docker with Compose v2, and roughly 1.5 GB available to the
+daemon for four containers. Any Docker-compatible runtime works (Docker Desktop,
+OrbStack, Colima, Rancher Desktop). Without Docker, use `insforge create` for a
+hosted project instead.
 
 ### Top-Level
 
@@ -1121,6 +1211,20 @@ Running `npx @insforge/cli link` creates a `.insforge/` directory in your projec
 ```
 
 Add `.insforge/` to your `.gitignore` — it contains your project API key.
+
+`local start` adds two more files and writes a `.insforge/.gitignore` covering
+them, so the generated keys cannot be committed even by `git add -A`:
+
+```
+.insforge/
+├── local.json          # ports, resolved image digests, compose project name
+├── local.env           # generated secrets, mode 0600 — fed to docker compose
+└── project.cloud.json  # only when a cloud link was displaced
+```
+
+`local.env` is written once and re-read on every later start. Deleting it loses
+the keys for the running instance; regenerating them would rotate the API key
+away from the `.env.local` your app already holds.
 
 ### Declarative project config — `insforge.toml`
 

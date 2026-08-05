@@ -32,7 +32,10 @@
   "files": [
     "dist/index.js",
     "dist/index.d.ts",
-    "dist/assets/forger.json"
+    "dist/assets/forger.json",
+    "dist/assets/local/docker-compose.yml",
+    "dist/assets/local/docker-compose.minio.yml",
+    "dist/assets/local/docker-compose.rustfs.yml"
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",
