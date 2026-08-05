@@ -2,17 +2,12 @@
 # mounts anything from this repo, so this file runs standalone from any
 # directory. `insforge local start` bundles a copy and drives it directly.
 #
-# Image tags are overridable so a caller can pin the whole stack to one release:
+# Images default to :latest so this file doesn't need editing every release. Pin
+# the whole stack to one release when you want a fixed deployment:
 #   INSFORGE_STACK_TAG=v2.3.0 docker compose up -d
-# The three InsForge images are built from the same commit by CI on a `v*` tag,
-# so a single tag names a combination that was built and tested together.
-#
-# INSFORGE_IMAGE_{INSFORGE,POSTGRES,DENO} override the full image reference, which
-# is how a caller pins by digest (`repo@sha256:...`) rather than by tag. That is
-# what `insforge local start` records so a directory's stack never moves.
 services:
   postgres:
-    image: ${INSFORGE_IMAGE_POSTGRES:-ghcr.io/insforge/postgres-all:${INSFORGE_STACK_TAG:-latest}}
+    image: ghcr.io/insforge/postgres-all:${INSFORGE_STACK_TAG:-latest}
 
     command: postgres -c app.encryption_key='${ENCRYPTION_KEY:-${JWT_SECRET:-dev-secret-please-change-in-production}}'
     environment:
@@ -60,7 +55,7 @@ services:
       - insforge-network
 
   insforge:
-    image: ${INSFORGE_IMAGE_INSFORGE:-ghcr.io/insforge/insforge-oss:${INSFORGE_STACK_TAG:-v2.2.9}}
+    image: ghcr.io/insforge/insforge-oss:${INSFORGE_STACK_TAG:-latest}
 
     working_dir: /app
     depends_on:
@@ -82,13 +77,6 @@ services:
       - ROOT_ADMIN_PASSWORD=${ROOT_ADMIN_PASSWORD:-${ADMIN_PASSWORD:-change-this-password}}
       - ADMIN_EMAIL=${ROOT_ADMIN_USERNAME:-${ADMIN_EMAIL:-admin}}
       - ADMIN_PASSWORD=${ROOT_ADMIN_PASSWORD:-${ADMIN_PASSWORD:-change-this-password}}
-      # Seed the project API key and anon key on first boot. Both are seeded
-      # only when the database has no stored key yet, and the backend normalizes
-      # the prefixes (`ik_` / `anon_`). Leave empty to let the backend generate
-      # them — set them when the caller needs to know the keys before boot, as
-      # `insforge local start` does to link the directory without a round trip.
-      - ACCESS_API_KEY=${ACCESS_API_KEY:-}
-      - ACCESS_ANON_KEY=${ACCESS_ANON_KEY:-}
       # PostgreSQL connection
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -125,10 +113,6 @@ services:
       - LOGS_DIR=/insforge-logs
       # Anonymous telemetry (set INSFORGE_TELEMETRY_DISABLED=1 to opt out)
       - INSFORGE_TELEMETRY_DISABLED=${INSFORGE_TELEMETRY_DISABLED:-}
-      # Deployment channel. Defaults to the plain docker-compose value; the CLI
-      # sets INSFORGE_DEPLOYMENT_METHOD=cli-local so CLI-managed local instances
-      # are distinguishable from hand-run compose deployments.
-      - INSFORGE_DEPLOYMENT_METHOD=${INSFORGE_DEPLOYMENT_METHOD:-docker-compose}
       # Storage directory (for local file storage when S3 is not configured)
       - STORAGE_DIR=/insforge-storage
       # S3-compatible storage (AWS S3, MinIO, RustFS, Wasabi, R2, Tencent COS ...).
@@ -153,7 +137,7 @@ services:
 
   # Deno serverless runtime for edge functions
   deno:
-    image: ${INSFORGE_IMAGE_DENO:-ghcr.io/insforge/deno-runtime:${INSFORGE_STACK_TAG:-latest}}
+    image: ghcr.io/insforge/deno-runtime:${INSFORGE_STACK_TAG:-latest}
 
     working_dir: /app
     depends_on:

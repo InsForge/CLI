@@ -44,11 +44,23 @@ const OVERLAYS: Record<Exclude<StorageBackend, 'local'>, string> = {
   rustfs: 'docker-compose.rustfs.yml',
 };
 
+/**
+ * Base file, then the Postgres overlay, then the storage overlay if any.
+ *
+ * The base file is a byte-identical copy of the InsForge repo's image-only
+ * compose file, so it can be diff-checked against upstream. Every local-only
+ * difference lives in an overlay instead of being edited into the copy.
+ */
 export function composeFiles(storage: StorageBackend): string[] {
   const dir = assetsDir();
-  const files = [join(dir, 'docker-compose.yml')];
+  const files = [join(dir, 'docker-compose.yml'), join(dir, 'docker-compose.local.yml')];
   if (storage !== 'local') files.push(join(dir, OVERLAYS[storage]));
   return files;
+}
+
+/** Path to the bundled init SQL that `local start` materializes into .insforge/. */
+export function bundledDbInitSql(): string {
+  return join(assetsDir(), 'db-init.sql');
 }
 
 export interface ComposeContext {
@@ -89,19 +101,11 @@ export function composeRun(ctx: ComposeContext, args: string[]): RunResult {
 
 /**
  * Run a compose subcommand, streaming output straight through (pulls, logs).
- *
- * `env` is merged over the parent environment. Compose resolves variables from
- * the process environment ahead of `--env-file`, which is how digest-pinned
- * INSFORGE_IMAGE_* refs override the tag defaults in the compose file.
  */
-export function composeRunInherit(
-  ctx: ComposeContext,
-  args: string[],
-  env?: NodeJS.ProcessEnv,
-): number {
+export function composeRunInherit(ctx: ComposeContext, args: string[]): number {
   const r = spawnSync('docker', composeArgs(ctx, args), {
     stdio: 'inherit',
-    env: env ? { ...process.env, ...env } : process.env,
+    env: process.env,
   });
   if (r.error) {
     throw new CLIError(`docker compose could not start: ${r.error.message}`);

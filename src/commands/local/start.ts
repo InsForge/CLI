@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { existsSync, copyFileSync } from 'node:fs';
+import { existsSync, copyFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
@@ -16,10 +16,20 @@ import { upsertEnvFile } from '../../lib/env-writer.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
-import { composePs, composeRunInherit, type ComposeContext } from '../../lib/local/compose.js';
+import {
+  bundledDbInitSql,
+  composePs,
+  composeRunInherit,
+  type ComposeContext,
+} from '../../lib/local/compose.js';
 import { ensurePortsAvailable, resolvePorts } from '../../lib/local/ports.js';
-import { resolveStack } from '../../lib/local/registry.js';
-import { generateSecrets, readSecrets, writeEnvFile } from '../../lib/local/secrets.js';
+import { resolveStackTag } from '../../lib/local/registry.js';
+import {
+  generateSecrets,
+  readSecrets,
+  writeDbInitSql,
+  writeEnvFile,
+} from '../../lib/local/secrets.js';
 import {
   composeProjectName,
   readLocalState,
@@ -72,15 +82,6 @@ function portOverrides(opts: StartOptions): Partial<LocalPorts> {
   if (postgres !== undefined) out.postgres = postgres;
   if (postgrest !== undefined) out.postgrest = postgrest;
   return out;
-}
-
-/** Map recorded image refs onto the compose file's INSFORGE_IMAGE_* overrides. */
-export function buildImageEnv(images: Record<string, string>): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  if (images.insforge) env.INSFORGE_IMAGE_INSFORGE = images.insforge;
-  if (images.postgres) env.INSFORGE_IMAGE_POSTGRES = images.postgres;
-  if (images.deno) env.INSFORGE_IMAGE_DENO = images.deno;
-  return env;
 }
 
 function resolveStorage(opts: StartOptions, previous: StorageBackend | undefined): StorageBackend {
@@ -170,50 +171,48 @@ export function registerLocalStartCommand(localCmd: Command): void {
         // API key out from under an app that already has it in .env.local.
         const secrets = readSecrets() ?? generateSecrets();
 
-        // Resolve the stack once per directory; later starts reuse what was
+        // Resolve the version once per directory; later starts reuse what was
         // recorded so nothing moves under the developer. --stack-tag forces it.
         let stackTag = opts.stackTag ?? previous?.stackTag ?? null;
-        let images = previous?.images ?? {};
-        if (opts.stackTag) {
-          images = {};
-        } else if (!previous) {
+        if (!opts.stackTag && !previous) {
           const spinner = json ? null : clack.spinner();
           spinner?.start('Resolving the newest InsForge release...');
-          const resolved = await resolveStack();
-          if (resolved) {
-            stackTag = resolved.tag;
-            images = resolved.images;
-            spinner?.stop(`Using InsForge ${resolved.tag} (pinned by digest)`);
-          } else {
-            // No tag present in all three image repos, or the registry was
-            // unreachable. The compose file's own defaults are the fallback.
-            spinner?.stop('Using the versions bundled with this CLI');
-          }
+          stackTag = await resolveStackTag();
+          spinner?.stop(
+            stackTag
+              ? `Using InsForge ${stackTag}`
+              : // No release tag common to the images, or the registry was
+                // unreachable. The compose file's :latest defaults are the fallback.
+                'Using the current published images',
+          );
         }
 
-        writeEnvFile({ secrets, ports, storage, stackTag });
+        // Materialize the init SQL the postgres overlay mounts. Rewritten on
+        // every start so a CLI upgrade ships an updated script, and so a user who
+        // edited or deleted it gets the bundled one back. It only takes effect on
+        // a cluster that has not initialized yet, which is why an existing
+        // instance is unaffected by the rewrite.
+        const dbInitSql = writeDbInitSql(readFileSync(bundledDbInitSql(), 'utf-8'));
+
+        writeEnvFile({ secrets, ports, storage, stackTag, dbInitSql });
 
         const state: LocalState = {
           version: 1,
           projectName,
           stackTag,
-          images,
           storage,
           ports,
           createdAt: previous?.createdAt ?? new Date().toISOString(),
         };
         writeLocalState(state);
 
-        // Digest-pinned refs are passed as environment, which the compose file
-        // reads via INSFORGE_IMAGE_*. Compose prefers the process environment
-        // over --env-file, so the recorded digests win over the tag defaults.
-        const imageEnv = buildImageEnv(images);
-
-        if (opts.pull && composeRunInherit(ctx, ['pull'], imageEnv) !== 0) {
+        // The recorded version reaches compose through INSFORGE_STACK_TAG in the
+        // generated env file — the same variable a hand-run compose uses.
+        if (opts.pull && composeRunInherit(ctx, ['pull']) !== 0) {
           throw new CLIError('docker compose pull failed. See the output above.');
         }
         if (!json) clack.log.step('Starting containers...');
-        if (composeRunInherit(ctx, ['up', '-d'], imageEnv) !== 0) {
+        if (composeRunInherit(ctx, ['up', '-d']) !== 0) {
           throw new CLIError('docker compose up failed. See the output above.');
         }
 
@@ -264,7 +263,6 @@ export function registerLocalStartCommand(localCmd: Command): void {
             ports,
             storage,
             stackTag,
-            images,
             composeProject: projectName,
             envLocal: envResult,
           });
@@ -280,7 +278,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
             `${pc.dim('anon key    ')} ${secrets.anonKey} ${pc.dim('(safe for browsers)')}`,
             `${pc.dim('Admin login ')} ${secrets.adminUsername} / ${secrets.adminPassword}`,
             `${pc.dim('Storage     ')} ${storage === 'local' ? 'local filesystem' : `${storage} (S3 gateway enabled)`}`,
-            `${pc.dim('Version     ')} ${stackTag ?? 'compose defaults'}`,
+            `${pc.dim('Version     ')} ${stackTag ?? 'latest published'}`,
           ].join('\n'),
           'Local InsForge is running',
         );

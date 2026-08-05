@@ -28,7 +28,6 @@ const STATE: LocalState = {
   version: 1,
   projectName: 'insforge-app-abc12345',
   stackTag: 'v2.2.9',
-  images: { insforge: 'ghcr.io/insforge/insforge-oss@sha256:aaa' },
   storage: 'local',
   ports: { app: 7130, auth: 7131, deno: 7133, postgres: 5432, postgrest: 5430 },
   createdAt: '2026-08-05T00:00:00.000Z',
@@ -98,7 +97,7 @@ describe('ensureLocalGitignore', () => {
     const lines = readFileSync(join(cwd, '.insforge', '.gitignore'), 'utf-8')
       .split('\n')
       .filter(Boolean);
-    expect(lines).toEqual(['something-else', 'local.env', 'local.json']);
+    expect(lines).toEqual(['something-else', 'local.env', 'local.json', 'local-db-init.sql']);
   });
 
   // project.json holds a cloud api_key and is not ours to start ignoring.

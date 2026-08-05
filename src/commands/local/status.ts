@@ -43,7 +43,6 @@ export function registerLocalStatusCommand(localCmd: Command): void {
             ports: state.ports,
             storage: state.storage,
             stackTag: state.stackTag,
-            images: state.images,
             composeProject: state.projectName,
             createdAt: state.createdAt,
             services,
@@ -66,7 +65,7 @@ export function registerLocalStatusCommand(localCmd: Command): void {
         outputInfo('');
         outputInfo(
           `  ${health.reachable ? pc.green('● healthy') : pc.yellow('○ not responding')}  ` +
-            `${pc.dim('InsForge')} ${state.stackTag ?? 'compose defaults'}`,
+            `${pc.dim('InsForge')} ${state.stackTag ?? 'latest published'}`,
         );
         outputInfo('');
         outputInfo(`  ${pc.dim('API URL   ')} ${pc.cyan(baseUrl)}`);

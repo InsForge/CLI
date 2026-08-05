@@ -1,46 +1,32 @@
 /**
- * Resolve the newest InsForge stack from GHCR, by digest.
+ * Resolve the newest InsForge release tag from GHCR.
  *
- * Why not just use `:latest` in the compose file: Docker won't re-pull a tag it
+ * Why not just leave the compose file on `:latest`: Docker won't re-pull a tag it
  * already has locally, so `latest` gives neither reproducibility (two users get
  * different images) nor freshness (a months-old local copy is never refreshed).
- * And the three images move independently, so latest+latest+latest is an
- * untested combination — while the backend runs `migrate:up` on boot, which can
+ * And the backend runs `migrate:up` on boot, so an unannounced version change can
  * leave a schema an older image can't read.
  *
- * So: pick the newest release tag that exists in ALL THREE repos (same tag ⇒
- * built from the same commit by the same CI run ⇒ a combination that was tested
- * together), pin each image to its digest, and record it. A directory resolves
- * once at first start and never moves again.
+ * So: pick the newest release tag present in every image on the release train and
+ * record it, via the same INSFORGE_STACK_TAG the compose file already reads. A
+ * directory resolves once at first start and never moves again.
  *
- * Every failure path returns null and the caller falls back to the tags baked
- * into the bundled compose file — a network problem must not break `local start`.
+ * Postgres is deliberately not on this train — the local overlay uses the base
+ * ghcr.io/insforge/postgres image, which carries its own upstream versioning.
+ *
+ * Every failure path returns null and the caller leaves the compose file on its
+ * `:latest` defaults — a network problem must not break `local start`.
  */
 
 const GHCR = 'https://ghcr.io';
 const OWNER = 'insforge';
 
-/** Compose service name → GHCR repository name, for images we publish. */
-export const STACK_REPOS: Record<string, string> = {
-  insforge: 'insforge-oss',
-  postgres: 'postgres-all',
-  deno: 'deno-runtime',
-};
-
-const MANIFEST_ACCEPT = [
-  'application/vnd.oci.image.index.v1+json',
-  'application/vnd.docker.distribution.manifest.list.v2+json',
-  'application/vnd.oci.image.manifest.v1+json',
-  'application/vnd.docker.distribution.manifest.v2+json',
-].join(', ');
+/** Images pinned together by one release tag. */
+export const STACK_REPOS = ['insforge-oss', 'deno-runtime'];
 
 const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 
-export interface ResolvedStack {
-  tag: string;
-  /** Service name → `ghcr.io/insforge/<repo>@sha256:…`. */
-  images: Record<string, string>;
-}
+
 
 /** Descending semver sort. Prereleases are excluded by RELEASE_TAG. */
 export function sortReleaseTagsDesc(tags: string[]): string[] {
@@ -109,48 +95,20 @@ async function listTags(repo: string, signal: AbortSignal): Promise<string[]> {
   return tags;
 }
 
-async function manifestDigest(
-  repo: string,
-  tag: string,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const token = await anonymousToken(repo, signal);
-  if (!token) return null;
-  const res = await fetch(`${GHCR}/v2/${OWNER}/${repo}/manifests/${tag}`, {
-    method: 'HEAD',
-    headers: { Authorization: `Bearer ${token}`, Accept: MANIFEST_ACCEPT },
-    signal,
-  });
-  if (!res.ok) return null;
-  return res.headers.get('docker-content-digest');
-}
-
 /**
- * Resolve the stack. `timeoutMs` bounds the whole operation, not each request,
- * so a slow registry delays the first start by at most that much before we fall
- * back to the compose defaults.
+ * Resolve the newest release tag common to every image on the train, or null.
+ *
+ * `timeoutMs` bounds the whole operation rather than each request, so a slow
+ * registry delays the first start by at most that much before falling back.
  */
-export async function resolveStack(timeoutMs = 8_000): Promise<ResolvedStack | null> {
+export async function resolveStackTag(timeoutMs = 8_000): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const services = Object.keys(STACK_REPOS);
     const tagLists = await Promise.all(
-      services.map((s) => listTags(STACK_REPOS[s], controller.signal)),
+      STACK_REPOS.map((repo) => listTags(repo, controller.signal)),
     );
-    const tag = newestCommonTag(tagLists);
-    if (!tag) return null;
-
-    const digests = await Promise.all(
-      services.map((s) => manifestDigest(STACK_REPOS[s], tag, controller.signal)),
-    );
-    if (digests.some((d) => !d)) return null;
-
-    const images: Record<string, string> = {};
-    services.forEach((service, i) => {
-      images[service] = `${GHCR.replace('https://', '')}/${OWNER}/${STACK_REPOS[service]}@${digests[i]}`;
-    });
-    return { tag, images };
+    return newestCommonTag(tagLists);
   } catch {
     // Offline, DNS failure, registry outage, abort — all mean "use the defaults".
     return null;

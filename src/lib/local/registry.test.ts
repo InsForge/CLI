@@ -42,9 +42,9 @@ describe('newestCommonTag', () => {
   });
 
   it('returns null when the repos share no release tag', () => {
-    // Today's real state: postgres-all and deno-runtime have only :latest, so
-    // resolution must decline and let the compose defaults stand.
-    expect(newestCommonTag([['v2.2.9', 'v2.3.0'], ['latest'], ['latest']])).toBeNull();
+    // Today's real state: deno-runtime has only :latest, so resolution must
+    // decline and let the compose file's :latest defaults stand.
+    expect(newestCommonTag([['v2.2.9', 'v2.3.0'], ['latest']])).toBeNull();
   });
 
   it('returns null for no repos at all', () => {

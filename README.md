@@ -142,18 +142,26 @@ npx @insforge/cli storage create-bucket avatars
 npx @insforge/cli functions deploy
 ```
 
-**Versioning.** The first `local start` in a directory resolves the newest
-release present in all three InsForge image repositories, pins each image by
-digest, and records that in `.insforge/local.json`. Later starts reuse the
-recorded versions, so an existing project never moves to a new backend version on
-its own. New directories pick up the newest release automatically. If the
-registry is unreachable, the versions bundled with the CLI are used instead —
-`local start` does not fail on a network problem.
+**Versioning.** The first `local start` in a directory resolves the newest release
+tag published for the InsForge images and records it in `.insforge/local.json`.
+Later starts reuse it, so an existing project never moves to a new backend version
+on its own; new directories pick up the newest release automatically. If the
+registry is unreachable, or no release tag is common to the images yet, the
+published `:latest` images are used — `local start` never fails on a network
+problem.
 
-`:latest` is deliberately not used: Docker will not re-pull a tag it already has,
-so it delivers neither reproducibility nor freshness, and the backend runs
-migrations on boot — a mismatched set of images can leave a schema an older image
-cannot read.
+Leaving it on `:latest` permanently is deliberately avoided: Docker will not
+re-pull a tag it already has, so `latest` delivers neither reproducibility nor
+freshness, and the backend runs migrations on boot — an unannounced version change
+can leave a schema an older image cannot read.
+
+**Postgres.** Local instances run the base `ghcr.io/insforge/postgres` image
+rather than `postgres-all`. The two are the same image plus three text files, and
+the base one is the one with CI behind it. The CLI supplies those files itself —
+`postgresql.conf` as `-c` flags, and `db-init.sql` written into `.insforge/` and
+mounted read-only — so the settings your local Postgres runs with are versioned
+with the CLI instead of baked into an image. `jwt.sql` is dropped; nothing reads
+the settings it sets.
 
 #### `npx @insforge/cli local stop`
 
@@ -1217,9 +1225,10 @@ them, so the generated keys cannot be committed even by `git add -A`:
 
 ```
 .insforge/
-├── local.json          # ports, resolved image digests, compose project name
-├── local.env           # generated secrets, mode 0600 — fed to docker compose
-└── project.cloud.json  # only when a cloud link was displaced
+├── local.json           # ports, resolved version, compose project name
+├── local.env            # generated secrets, mode 0600 — fed to docker compose
+├── local-db-init.sql    # cluster-init SQL, mounted into Postgres read-only
+└── project.cloud.json   # only when a cloud link was displaced
 ```
 
 `local.env` is written once and re-read on every later start. Deleting it loses

@@ -6,7 +6,7 @@
  * databases without any configuration.
  *
  * Two files, split by what they hold:
- *   .insforge/local.json — non-secret machine state (ports, resolved images)
+ *   .insforge/local.json — non-secret machine state (ports, resolved version)
  *   .insforge/local.env  — generated secrets, mode 0600, fed to `--env-file`
  * Both are gitignored via .insforge/.gitignore so a `git add -A` can't commit
  * the keys.
@@ -32,11 +32,9 @@ export interface LocalState {
   /** `docker compose -p` value. Derived from the directory, stored so a later
    *  `local stop` targets the same containers even if the directory moved. */
   projectName: string;
-  /** Resolved release tag, or null when the compose file's defaults were used
-   *  (registry unreachable, or no tag present in all three image repos). */
+  /** Resolved release tag, or null when the compose file's `:latest` defaults
+   *  were used (registry unreachable, or no tag common to the image repos). */
   stackTag: string | null;
-  /** Fully-qualified image refs, digest-pinned when resolution succeeded. */
-  images: Record<string, string>;
   storage: StorageBackend;
   ports: LocalPorts;
   createdAt: string;
@@ -67,6 +65,16 @@ export function localStateFile(cwd?: string): string {
 
 export function localEnvFile(cwd?: string): string {
   return join(localDir(cwd), 'local.env');
+}
+
+/**
+ * Where the bundled db-init.sql is materialized. Written into the user's own
+ * project rather than mounted from the npx cache: a project path is far likelier
+ * to be shared with Docker Desktop, and the user can read the SQL that is about
+ * to run against their database.
+ */
+export function localDbInitFile(cwd?: string): string {
+  return join(localDir(cwd), 'local-db-init.sql');
 }
 
 /**
@@ -105,7 +113,7 @@ export function writeLocalState(state: LocalState, cwd?: string): void {
 }
 
 export function clearLocalState(cwd?: string): void {
-  for (const file of [localStateFile(cwd), localEnvFile(cwd)]) {
+  for (const file of [localStateFile(cwd), localEnvFile(cwd), localDbInitFile(cwd)]) {
     if (existsSync(file)) unlinkSync(file);
   }
 }
@@ -118,7 +126,7 @@ export function clearLocalState(cwd?: string): void {
 export function ensureLocalGitignore(cwd?: string): void {
   const dir = ensureLocalDir(cwd);
   const file = join(dir, '.gitignore');
-  const wanted = ['local.env', 'local.json'];
+  const wanted = ['local.env', 'local.json', 'local-db-init.sql'];
   const existing = existsSync(file)
     ? readFileSync(file, 'utf-8').split('\n').map((l) => l.trim())
     : [];
