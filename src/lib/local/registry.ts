@@ -116,3 +116,33 @@ export async function resolveStackTag(timeoutMs = 8_000): Promise<string | null>
     clearTimeout(timer);
   }
 }
+
+/**
+ * Which release-train repos do NOT publish `tag`. Empty means the tag is usable.
+ *
+ * Called before honoring `--stack-tag`, because compose would otherwise fail deep
+ * in a pull with a bare "not found" that doesn't say which image is missing or
+ * why. Returns empty on a registry error so a network problem can't block an
+ * otherwise valid pin — the pull is the backstop.
+ */
+export async function missingStackTagRepos(
+  tag: string,
+  timeoutMs = 8_000,
+): Promise<string[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const results = await Promise.all(
+      STACK_REPOS.map(async (repo) => ({
+        repo,
+        tags: await listTags(repo, controller.signal),
+      })),
+    );
+    // An empty list means the lookup itself failed; don't report that as missing.
+    return results.filter((r) => r.tags.length > 0 && !r.tags.includes(tag)).map((r) => r.repo);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}

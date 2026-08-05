@@ -2,12 +2,11 @@
 # mounts anything from this repo, so this file runs standalone from any
 # directory. `insforge local start` bundles a copy and drives it directly.
 #
-# Images default to :latest so this file doesn't need editing every release. Pin
-# the whole stack to one release when you want a fixed deployment:
-#   INSFORGE_STACK_TAG=v2.3.0 docker compose up -d
+# Images track :latest, which is the current release. To pin a deployment to a
+# fixed version, replace a tag below with a release tag (e.g. v2.3.0).
 services:
   postgres:
-    image: ghcr.io/insforge/postgres-all:${INSFORGE_STACK_TAG:-latest}
+    image: ghcr.io/insforge/postgres-all:latest
 
     command: postgres -c app.encryption_key='${ENCRYPTION_KEY:-${JWT_SECRET:-dev-secret-please-change-in-production}}'
     environment:
@@ -55,7 +54,7 @@ services:
       - insforge-network
 
   insforge:
-    image: ghcr.io/insforge/insforge-oss:${INSFORGE_STACK_TAG:-latest}
+    image: ghcr.io/insforge/insforge-oss:latest
 
     working_dir: /app
     depends_on:
@@ -137,7 +136,7 @@ services:
 
   # Deno serverless runtime for edge functions
   deno:
-    image: ghcr.io/insforge/deno-runtime:${INSFORGE_STACK_TAG:-latest}
+    image: ghcr.io/insforge/deno-runtime:latest
 
     working_dir: /app
     depends_on:

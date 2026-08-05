@@ -5,6 +5,14 @@
 # local-only behavior lives here instead of being edited into that copy — which
 # also means the OSS file needs no variables that only the CLI would ever set.
 #
+# --- Version pinning ----------------------------------------------------------
+#
+# The base file tracks :latest. INSFORGE_STACK_TAG lives here, not upstream,
+# because the CLI is the only thing that sets it: `local start` resolves the
+# newest release tag once per directory and records it, so an existing project
+# never moves to a new backend version on its own. Unset (nothing resolved yet)
+# leaves both images on :latest, matching the base file.
+#
 # --- Postgres -----------------------------------------------------------------
 #
 # Replaces ghcr.io/insforge/postgres-all with the base ghcr.io/insforge/postgres,
@@ -38,6 +46,8 @@
 
 services:
   postgres:
+    # Not on the InsForge release train — the base image carries its own upstream
+    # versioning, built multi-arch by insforge-db on every `v*` tag.
     image: ghcr.io/insforge/postgres:v15.13.4
 
     # Replaces the base file's command. Mirrors deploy/docker-init/db/postgresql.conf
@@ -69,6 +79,8 @@ services:
       - ${INSFORGE_DB_INIT_SQL}:/docker-entrypoint-initdb.d/01-init.sql:ro
 
   insforge:
+    image: ghcr.io/insforge/insforge-oss:${INSFORGE_STACK_TAG:-latest}
+
     environment:
       # Seed the API key and anon key on first boot, so the CLI knows them before
       # the container starts and can link the directory without a round trip. The
@@ -80,3 +92,6 @@ services:
       # Telemetry deployment channel — a literal, not a variable, because only
       # this overlay is ever used by the CLI.
       INSFORGE_DEPLOYMENT_METHOD: cli-local
+
+  deno:
+    image: ghcr.io/insforge/deno-runtime:${INSFORGE_STACK_TAG:-latest}

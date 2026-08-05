@@ -23,7 +23,7 @@ import {
   type ComposeContext,
 } from '../../lib/local/compose.js';
 import { ensurePortsAvailable, resolvePorts } from '../../lib/local/ports.js';
-import { resolveStackTag } from '../../lib/local/registry.js';
+import { missingStackTagRepos, resolveStackTag } from '../../lib/local/registry.js';
 import {
   generateSecrets,
   readSecrets,
@@ -174,7 +174,19 @@ export function registerLocalStartCommand(localCmd: Command): void {
         // Resolve the version once per directory; later starts reuse what was
         // recorded so nothing moves under the developer. --stack-tag forces it.
         let stackTag = opts.stackTag ?? previous?.stackTag ?? null;
-        if (!opts.stackTag && !previous) {
+        if (opts.stackTag) {
+          // One tag has to name every image on the train, so check before compose
+          // hits a bare "not found" mid-pull that names neither the image nor why.
+          const missing = await missingStackTagRepos(opts.stackTag);
+          if (missing.length > 0) {
+            throw new CLIError(
+              `No image published for --stack-tag ${opts.stackTag}: ` +
+                `${missing.join(', ')}.\n` +
+                'Pick a tag that exists for every InsForge image, or omit --stack-tag to\n' +
+                'use the current published images.',
+            );
+          }
+        } else if (!previous) {
           const spinner = json ? null : clack.spinner();
           spinner?.start('Resolving the newest InsForge release...');
           stackTag = await resolveStackTag();

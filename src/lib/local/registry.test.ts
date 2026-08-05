@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { newestCommonTag, parseNextLink, sortReleaseTagsDesc } from './registry.js';
+import { STACK_REPOS, newestCommonTag, parseNextLink, sortReleaseTagsDesc } from './registry.js';
 
 describe('sortReleaseTagsDesc', () => {
   it('orders numerically, not lexicographically', () => {
@@ -75,5 +75,17 @@ describe('parseNextLink', () => {
     expect(parseNextLink(null)).toBeNull();
     expect(parseNextLink('')).toBeNull();
     expect(parseNextLink('</v2/x>; rel="prev"')).toBeNull();
+  });
+});
+
+describe('STACK_REPOS', () => {
+  it('covers the images one release tag has to name', () => {
+    expect(STACK_REPOS).toEqual(['insforge-oss', 'deno-runtime']);
+  });
+
+  // Postgres uses the base ghcr.io/insforge/postgres image, versioned upstream by
+  // insforge-db — pinning it to an InsForge release tag would never resolve.
+  it('excludes postgres', () => {
+    expect(STACK_REPOS.some((r) => r.includes('postgres'))).toBe(false);
   });
 });

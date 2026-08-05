@@ -129,7 +129,7 @@ npx @insforge/cli local start --json
 | Option | Description |
 | --- | --- |
 | `--storage <backend>` | `local` (filesystem, default), `minio`, or `rustfs`. The bundled stores stay on the internal Docker network and enable the S3-compatible gateway at `/storage/v1/s3`. |
-| `--stack-tag <tag>` | Pin to a release tag instead of resolving the newest. |
+| `--stack-tag <tag>` | Pin to a release tag instead of resolving the newest. Validated against the registry first, so a tag that isn't published for every image fails with a clear message rather than a bare pull error. |
 | `--pull` | Re-pull images even when present locally. |
 | `--port-app`, `--port-auth`, `--port-deno`, `--port-postgres`, `--port-postgrest` | Host port overrides. Defaults are 7130 / 7131 / 7133 / 5432 / 5430. |
 
@@ -142,8 +142,9 @@ npx @insforge/cli storage create-bucket avatars
 npx @insforge/cli functions deploy
 ```
 
-**Versioning.** The first `local start` in a directory resolves the newest release
-tag published for the InsForge images and records it in `.insforge/local.json`.
+**Versioning.** The base compose file tracks `:latest`. The first `local start` in
+a directory resolves the newest release tag published for the InsForge images and
+records it in `.insforge/local.json`.
 Later starts reuse it, so an existing project never moves to a new backend version
 on its own; new directories pick up the newest release automatically. If the
 registry is unreachable, or no release tag is common to the images yet, the
