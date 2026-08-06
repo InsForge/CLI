@@ -98,7 +98,9 @@ export function registerAdvisorCommands(advisorCmd: Command): void {
         await requireAuth(apiUrl);
         // The guard's global --reason on the root command wins Commander's
         // parse, so the local option never receives the value — read the
-        // merged view instead.
+        // merged view instead. If this command is ever added to the guard
+        // registry, the guard's intent text would share this flag; the enum
+        // check below rejects such free text loudly.
         const reason = assertReason(opts.reason ?? (cmd.optsWithGlobals().reason as string | undefined));
         // The backend matches affectedObject verbatim against scan findings,
         // so pass it through untrimmed — but a blank value is always a mistake.

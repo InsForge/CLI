@@ -35,6 +35,10 @@ vi.mock('../../lib/command-telemetry.js', () => ({
   trackCommandUsage: vi.fn(async () => {}),
 }));
 
+vi.mock('../../lib/credentials.js', () => ({
+  requireAuth: vi.fn(async () => ({ accessToken: 'tok' })),
+}));
+
 function makeProgram() {
   const program = new Command().exitOverride();
   program.option('--json').option('--api-url <url>');
