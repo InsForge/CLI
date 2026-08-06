@@ -34,7 +34,9 @@ vi.mock('../../lib/credentials.js', () => ({
 
 function makeProgram() {
   const program = new Command().exitOverride();
-  program.option('--json').option('--api-url <url>');
+  // --reason mirrors the real root program's global guard flag — it shadows
+  // the suppress command's local --reason in Commander's parse.
+  program.option('--json').option('--api-url <url>').option('--reason <text>');
   const advisorCmd = program.command('advisor');
   registerAdvisorCommands(advisorCmd);
   return program;

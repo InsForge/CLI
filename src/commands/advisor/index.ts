@@ -96,7 +96,10 @@ export function registerAdvisorCommands(advisorCmd: Command): void {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
-        const reason = assertReason(opts.reason);
+        // The guard's global --reason on the root command wins Commander's
+        // parse, so the local option never receives the value — read the
+        // merged view instead.
+        const reason = assertReason(opts.reason ?? (cmd.optsWithGlobals().reason as string | undefined));
         // The backend matches affectedObject verbatim against scan findings,
         // so pass it through untrimmed — but a blank value is always a mistake.
         if (opts.object !== undefined && opts.object.trim() === '') {
