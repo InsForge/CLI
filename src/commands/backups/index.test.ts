@@ -108,6 +108,28 @@ describe('backups — OSS (self-hosted) mode', () => {
     expect((JSON.parse(logs.join('\n')) as { status: string }).status).toBe('completed');
   });
 
+  it('create surfaces an immediately failed backup even without --wait', async () => {
+    const { createOssBackup } = await import('../../lib/api/oss.js');
+    (createOssBackup as Mock).mockResolvedValueOnce({
+      ...ossBackup,
+      id: 'oss-b3',
+      status: 'failed',
+      errorMessage: 'pg_dump exploded',
+    });
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(
+        runWithCapturedLog(makeProgram(), ['backups', 'create', '--json']),
+      ).rejects.toThrow('process.exit');
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it('restore --yes hits the OSS restore route', async () => {
     const { restoreOssBackup } = await import('../../lib/api/oss.js');
     const { restoreBackup } = await import('../../lib/api/platform.js');

@@ -37,6 +37,11 @@ vi.mock('../../lib/command-telemetry.js', () => ({
   trackCommandUsage: vi.fn(async () => {}),
 }));
 
+vi.mock('@clack/prompts', () => ({
+  confirm: vi.fn(async () => false),
+  isCancel: vi.fn(() => false),
+}));
+
 function makeProgram() {
   const program = new Command().exitOverride();
   program.option('--json').option('--api-url <url>').option('-y, --yes');
@@ -116,13 +121,42 @@ describe('orgs leave / delete', () => {
     expect(deleteOrganization).not.toHaveBeenCalled();
   });
 
-  it('delete --org-id --json deletes the org', async () => {
+  it('delete --org-id --json deletes the org and reports the linked-project fact', async () => {
     const { deleteOrganization } = await import('../../lib/api/platform.js');
     const logs = await runWithCapturedLog(makeProgram(), [
       'orgs', 'delete', '--org-id', 'org-1', '--json',
     ]);
     expect(deleteOrganization).toHaveBeenCalledWith('org-1', undefined);
-    expect(JSON.parse(logs.join('\n'))).toEqual({ deleted: true, org_id: 'org-1' });
+    expect(JSON.parse(logs.join('\n'))).toEqual({
+      deleted: true,
+      org_id: 'org-1',
+      linked_project_deleted: false,
+    });
+  });
+
+  it('interactive delete lists the projects that will be destroyed and honors a declined confirm', async () => {
+    const { deleteOrganization, listProjects } = await import('../../lib/api/platform.js');
+    const clack = await import('@clack/prompts');
+    (listProjects as Mock).mockResolvedValueOnce([
+      { id: 'p1', name: 'app-one' },
+      { id: 'p2', name: 'app-two' },
+    ]);
+    const logs = await runWithCapturedLog(makeProgram(), ['orgs', 'delete', '--org-id', 'org-1']);
+    expect(clack.confirm).toHaveBeenCalled();
+    expect(deleteOrganization).not.toHaveBeenCalled();
+    const out = logs.join('\n');
+    expect(out).toContain('app-one');
+    expect(out).toContain('PERMANENTLY deleted');
+    expect(out).toContain('Cancelled.');
+  });
+
+  it('interactive delete aborts when the project inventory cannot be fetched', async () => {
+    const { deleteOrganization, listProjects } = await import('../../lib/api/platform.js');
+    (listProjects as Mock).mockRejectedValueOnce(new CLIError('network down'));
+    await expect(
+      runWithCapturedLog(makeProgram(), ['orgs', 'delete', '--org-id', 'org-1']),
+    ).rejects.toThrow('process.exit');
+    expect(deleteOrganization).not.toHaveBeenCalled();
   });
 
   it('delete with --yes warns about the linked project after deleting its org', async () => {

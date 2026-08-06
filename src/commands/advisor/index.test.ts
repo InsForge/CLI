@@ -28,6 +28,10 @@ vi.mock('../../lib/command-telemetry.js', () => ({
   trackCommandUsage: vi.fn(async () => {}),
 }));
 
+vi.mock('../../lib/credentials.js', () => ({
+  requireAuth: vi.fn(async () => ({ accessToken: 'tok' })),
+}));
+
 function makeProgram() {
   const program = new Command().exitOverride();
   program.option('--json').option('--api-url <url>');
@@ -51,6 +55,7 @@ async function runWithCapturedLog(program: Command, argv: string[]): Promise<str
 
 describe('advisor commands', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
+  let errors: string[];
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -58,7 +63,10 @@ describe('advisor commands', () => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
       throw new Error(`process.exit(${code})`);
     }) as never);
-    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    errors = [];
+    errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    });
   });
 
   afterEach(() => {
@@ -101,12 +109,15 @@ describe('advisor commands', () => {
 
   it('suppress rejects an invalid --reason without calling the API', async () => {
     const { createAdvisorSuppression } = await import('../../lib/api/oss.js');
+    const { trackCommandUsage } = await import('../../lib/command-telemetry.js');
     await expect(
       runWithCapturedLog(makeProgram(), [
         'advisor', 'suppress', 'rls_disabled', '--reason', 'nope', '--json',
       ]),
     ).rejects.toThrow('process.exit');
     expect(createAdvisorSuppression).not.toHaveBeenCalled();
+    expect(errors.join('\n')).toContain('Invalid --reason');
+    expect((trackCommandUsage as Mock).mock.calls[0].slice(0, 3)).toEqual(['advisor', 'suppress', false]);
   });
 
   it('suppress requires --note when --reason is "other"', async () => {
@@ -117,6 +128,18 @@ describe('advisor commands', () => {
       ]),
     ).rejects.toThrow('process.exit');
     expect(createAdvisorSuppression).not.toHaveBeenCalled();
+    expect(errors.join('\n')).toContain('--note is required');
+  });
+
+  it('suppress rejects an explicitly empty --object instead of widening to rule scope', async () => {
+    const { createAdvisorSuppression } = await import('../../lib/api/oss.js');
+    await expect(
+      runWithCapturedLog(makeProgram(), [
+        'advisor', 'suppress', 'rls_disabled', '--object', '', '--reason', 'accepted_risk', '--json',
+      ]),
+    ).rejects.toThrow('process.exit');
+    expect(createAdvisorSuppression).not.toHaveBeenCalled();
+    expect(errors.join('\n')).toContain('--object cannot be empty');
   });
 
   it('suppressions --json lists suppressions', async () => {
@@ -124,6 +147,21 @@ describe('advisor commands', () => {
     const data = JSON.parse(logs.join('\n')) as { id: string }[];
     expect(data).toHaveLength(1);
     expect(data[0].id).toBe('sup-1');
+  });
+
+  it('suppressions renders a human-readable table', async () => {
+    const logs = await runWithCapturedLog(makeProgram(), ['advisor', 'suppressions']);
+    const out = logs.join('\n');
+    expect(out).toContain('rls_disabled');
+    expect(out).toContain('public.todos');
+    expect(out).toContain('accepted_risk');
+  });
+
+  it('suppressions reports the empty state', async () => {
+    const { listAdvisorSuppressions } = await import('../../lib/api/oss.js');
+    (listAdvisorSuppressions as Mock).mockResolvedValueOnce([]);
+    const logs = await runWithCapturedLog(makeProgram(), ['advisor', 'suppressions']);
+    expect(logs.join('\n')).toContain('No suppressions found.');
   });
 
   it('unsuppress --json deletes by id', async () => {

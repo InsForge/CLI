@@ -275,7 +275,8 @@ export async function ossFetch(
       message = 'Database migrations are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin about database migration support.';
     }
 
-    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/database/backups')) {
+    // Exact match only: per-id backup routes 404 for a missing backup id.
+    if (res.status === 404 && isRouteLevel404 && path === '/api/database/backups') {
       message = 'Database backups are not available on this backend.\nSelf-hosted: upgrade your InsForge instance to a version with the backups feature.';
     }
 
@@ -291,12 +292,9 @@ export async function ossFetch(
       message = 'The web scraper is not available on this backend.\nUpgrade your InsForge instance to a version with web scraper support, then run `insforge webscraper apify connect --token <token>` to connect your Apify account.';
     }
 
-    // Safe to treat any 404 on /api/advisor/* as a route-level miss: the OSS
-    // advisor endpoints return 200 with a null/empty body when no scan exists
-    // (a resource-level "no data" state), so they never emit a 404 for a
-    // present-but-empty resource. A 404 here therefore means the route itself
-    // is absent (backend older than the advisor feature).
-    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/advisor')) {
+    // Excludes per-id suppression routes: deleting a missing suppression 404s
+    // with the code NOT_FOUND, which must keep its real message.
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/advisor') && !path.startsWith('/api/advisor/suppressions/')) {
       message = 'Backend Advisor is not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: update the project to a newer version.';
     }
 

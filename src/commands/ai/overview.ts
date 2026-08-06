@@ -49,6 +49,8 @@ export function registerAiOverviewCommand(aiCmd: Command): void {
           );
         } else if (!k.observabilityAvailable && k.observabilityError) {
           outputInfo(`\nPer-model activity unavailable: ${k.observabilityError}`);
+        } else if (k.observabilityAvailable) {
+          outputInfo('\nNo per-model activity yet.');
         }
       } catch (err) {
         await trackCommandUsage('ai', 'overview', false, {}, err);

@@ -23,7 +23,8 @@ import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import type { Backup, OssBackup } from '../../types.js';
 
 function resolveProjectId(opts: { project?: string }): string {
-  const id = getProjectId(opts.project);
+  // An explicit --project must beat INSFORGE_PROJECT_ID — it also picks the backend route.
+  const id = opts.project ?? getProjectId();
   if (!id) {
     throw new CLIError('No project specified. Pass --project <id> or run `insforge link` first.');
   }
@@ -104,8 +105,10 @@ export function registerBackupsCommands(backupsCmd: Command): void {
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        // OSS bypass only when the OSS route is actually the target — an
+        // explicit cloud --project from a self-hosted link needs a real login.
+        await requireAuth(apiUrl, isOssProject(projectId));
         if (isOssProject(projectId)) {
           const backups = await listOssBackups();
           if (json) {
@@ -137,8 +140,8 @@ export function registerBackupsCommands(backupsCmd: Command): void {
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        await requireAuth(apiUrl, isOssProject(projectId));
         if (isOssProject(projectId)) {
           // The OSS backend has no /latest route — derive it from the list.
           const latest = newestOssBackup(await listOssBackups());
@@ -180,15 +183,15 @@ export function registerBackupsCommands(backupsCmd: Command): void {
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        await requireAuth(apiUrl, isOssProject(projectId));
         if (isOssProject(projectId)) {
           let backup = await createOssBackup(opts.name);
           if (opts.wait) {
             backup = await waitForOssBackup(backup.id);
-            if (backup.status === 'failed') {
-              throw new CLIError(`Backup ${backup.id} failed: ${backup.errorMessage ?? 'unknown error'}`);
-            }
+          }
+          if (backup.status === 'failed') {
+            throw new CLIError(`Backup ${backup.id} failed: ${backup.errorMessage ?? 'unknown error'}`);
           }
           captureEvent(projectId, 'cli_backup_create', { named: !!opts.name, oss: true });
           if (json) {
@@ -221,8 +224,8 @@ export function registerBackupsCommands(backupsCmd: Command): void {
     .action(async (backupId: string, name: string, opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        await requireAuth(apiUrl, isOssProject(projectId));
         const newName = name === '' ? null : name;
         const result = isOssProject(projectId)
           ? await renameOssBackup(backupId, newName)
@@ -248,8 +251,9 @@ export function registerBackupsCommands(backupsCmd: Command): void {
     .action(async (backupId: string, opts, cmd) => {
       const { json, apiUrl, yes } = getRootOpts(cmd);
       try {
-        await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        const oss = isOssProject(projectId);
+        await requireAuth(apiUrl, oss);
 
         if (!yes && !json) {
           const confirmed = await clack.confirm({ message: `Delete backup ${backupId}?` });
@@ -259,12 +263,12 @@ export function registerBackupsCommands(backupsCmd: Command): void {
           }
         }
 
-        if (isOssProject(projectId)) {
+        if (oss) {
           await deleteOssBackup(backupId);
         } else {
           await deleteBackup(projectId, backupId, apiUrl);
         }
-        captureEvent(projectId, 'cli_backup_delete', {});
+        captureEvent(projectId, 'cli_backup_delete', oss ? { oss: true } : {});
         if (json) {
           outputJson({ deleted: true, backup_id: backupId });
         } else {
@@ -284,12 +288,17 @@ export function registerBackupsCommands(backupsCmd: Command): void {
     .action(async (backupId: string, opts, cmd) => {
       const { json, apiUrl, yes } = getRootOpts(cmd);
       try {
-        await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
+        const oss = isOssProject(projectId);
+        await requireAuth(apiUrl, oss);
 
         if (!yes && !json) {
+          // OSS backups are database dumps; only cloud restores also cover storage.
+          const blastRadius = oss
+            ? "This OVERWRITES the project's current database."
+            : "This OVERWRITES the project's current database and storage.";
           const confirmed = await clack.confirm({
-            message: `Restore from backup ${backupId}? This OVERWRITES the project's current database and storage.`,
+            message: `Restore from backup ${backupId}? ${blastRadius}`,
           });
           if (clack.isCancel(confirmed) || !confirmed) {
             outputInfo('Cancelled.');
@@ -297,7 +306,7 @@ export function registerBackupsCommands(backupsCmd: Command): void {
           }
         }
 
-        if (isOssProject(projectId)) {
+        if (oss) {
           // The OSS restore endpoint is synchronous.
           await restoreOssBackup(backupId);
           captureEvent(projectId, 'cli_backup_restore', { oss: true });

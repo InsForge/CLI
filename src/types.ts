@@ -408,7 +408,14 @@ export interface S3AccessKeyWithSecret extends S3AccessKey {
 // --- Advisor suppressions (OSS backend) ---
 
 export type AdvisorSuppressionScope = 'instance' | 'rule';
-export type AdvisorSuppressionReason = 'false_positive' | 'accepted_risk' | 'wont_fix' | 'other';
+
+export const ADVISOR_SUPPRESSION_REASONS = [
+  'false_positive',
+  'accepted_risk',
+  'wont_fix',
+  'other',
+] as const;
+export type AdvisorSuppressionReason = (typeof ADVISOR_SUPPRESSION_REASONS)[number];
 
 export interface AdvisorSuppression {
   id: string;

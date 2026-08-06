@@ -159,8 +159,9 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
 
         if (!yes && !json) {
           const label = await orgLabel(orgId, apiUrl);
-          const projects = await listProjects(orgId, apiUrl).catch(() => null);
-          if (projects && projects.length > 0) {
+          // Fail closed: without the project inventory the user can't judge the blast radius.
+          const projects = await listProjects(orgId, apiUrl);
+          if (projects.length > 0) {
             outputInfo(`This organization has ${projects.length} project(s) that will be PERMANENTLY deleted with it:`);
             for (const p of projects.slice(0, 10)) {
               outputInfo(`  - ${p.name} (${p.id})`);
@@ -186,7 +187,7 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         const result = await deleteOrganization(orgId, apiUrl);
         await trackCommandUsage('orgs', 'delete', true);
         if (json) {
-          outputJson({ deleted: true, org_id: orgId });
+          outputJson({ deleted: true, org_id: orgId, linked_project_deleted: linkedInOrg });
         } else {
           outputSuccess(result.message || `Organization ${orgId} deleted.`);
           if (linkedInOrg) {

@@ -5,27 +5,22 @@ import {
   createAdvisorSuppression,
   deleteAdvisorSuppression,
 } from '../../lib/api/oss.js';
+import { requireAuth } from '../../lib/credentials.js';
 import { CLIError, handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable, outputSuccess, outputInfo } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
+import { ADVISOR_SUPPRESSION_REASONS } from '../../types.js';
 import type { AdvisorSuppressionReason, AdvisorSuppressionScope } from '../../types.js';
-
-const SUPPRESSION_REASONS: AdvisorSuppressionReason[] = [
-  'false_positive',
-  'accepted_risk',
-  'wont_fix',
-  'other',
-];
 
 function assertReason(reason: string | undefined): AdvisorSuppressionReason {
   if (!reason) {
     throw new CLIError(
-      `Missing --reason. Valid reasons: ${SUPPRESSION_REASONS.join(', ')}.`,
+      `Missing --reason. Valid reasons: ${ADVISOR_SUPPRESSION_REASONS.join(', ')}.`,
     );
   }
-  if (!SUPPRESSION_REASONS.includes(reason as AdvisorSuppressionReason)) {
+  if (!(ADVISOR_SUPPRESSION_REASONS as readonly string[]).includes(reason)) {
     throw new CLIError(
-      `Invalid --reason "${reason}". Valid reasons: ${SUPPRESSION_REASONS.join(', ')}.`,
+      `Invalid --reason "${reason}". Valid reasons: ${ADVISOR_SUPPRESSION_REASONS.join(', ')}.`,
     );
   }
   return reason as AdvisorSuppressionReason;
@@ -36,8 +31,9 @@ export function registerAdvisorCommands(advisorCmd: Command): void {
     .command('scan')
     .description('Trigger an advisor scan now (instead of waiting for the schedule)')
     .action(async (_opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
+        await requireAuth(apiUrl);
         const result = await triggerAdvisorScan();
         await trackCommandUsage('advisor', 'scan', true);
         if (json) {
@@ -57,8 +53,9 @@ export function registerAdvisorCommands(advisorCmd: Command): void {
     .command('suppressions')
     .description('List suppressed advisor findings')
     .action(async (_opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
+        await requireAuth(apiUrl);
         const suppressions = await listAdvisorSuppressions();
         await trackCommandUsage('advisor', 'suppressions', true, {
           result_count: suppressions.length,
@@ -93,22 +90,29 @@ export function registerAdvisorCommands(advisorCmd: Command): void {
       '--object <affectedObject>',
       'Suppress only the finding for this affected object (default: the whole rule)',
     )
-    .option('--reason <reason>', `Why it is suppressed (${SUPPRESSION_REASONS.join(' | ')})`)
+    .option('--reason <reason>', `Why it is suppressed (${ADVISOR_SUPPRESSION_REASONS.join(' | ')})`)
     .option('--note <note>', 'Free-form note (required when --reason is "other")')
     .action(async (ruleId: string, opts: { object?: string; reason?: string; note?: string }, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
+        await requireAuth(apiUrl);
         const reason = assertReason(opts.reason);
-        if (reason === 'other' && !opts.note?.trim()) {
+        // The backend matches affectedObject verbatim against scan findings,
+        // so pass it through untrimmed — but a blank value is always a mistake.
+        if (opts.object !== undefined && opts.object.trim() === '') {
+          throw new CLIError('--object cannot be empty. Pass the finding\'s Affected Object exactly, or omit --object to suppress the whole rule.');
+        }
+        const note = opts.note?.trim();
+        if (reason === 'other' && !note) {
           throw new CLIError('--note is required when --reason is "other".');
         }
-        const scope: AdvisorSuppressionScope = opts.object ? 'instance' : 'rule';
+        const scope: AdvisorSuppressionScope = opts.object !== undefined ? 'instance' : 'rule';
         const suppression = await createAdvisorSuppression({
           ruleId,
           scope,
-          ...(opts.object ? { affectedObject: opts.object } : {}),
+          ...(opts.object !== undefined ? { affectedObject: opts.object } : {}),
           reason,
-          ...(opts.note ? { note: opts.note } : {}),
+          ...(note ? { note } : {}),
         });
         await trackCommandUsage('advisor', 'suppress', true, { scope, reason });
         if (json) {
@@ -129,8 +133,9 @@ export function registerAdvisorCommands(advisorCmd: Command): void {
     .command('unsuppress <suppressionId>')
     .description('Remove a suppression so the finding shows up again')
     .action(async (suppressionId: string, _opts, cmd) => {
-      const { json } = getRootOpts(cmd);
+      const { json, apiUrl } = getRootOpts(cmd);
       try {
+        await requireAuth(apiUrl);
         await deleteAdvisorSuppression(suppressionId);
         await trackCommandUsage('advisor', 'unsuppress', true);
         if (json) {

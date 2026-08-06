@@ -558,7 +558,7 @@ export async function leaveOrganization(
   orgId: string,
   apiUrl?: string,
 ): Promise<{ message: string }> {
-  const res = await platformFetch(`/organizations/v1/${orgId}/leave`, {
+  const res = await platformFetch(`/organizations/v1/${encodeURIComponent(orgId)}/leave`, {
     method: 'POST',
   }, apiUrl);
   return await res.json() as { message: string };
@@ -568,7 +568,7 @@ export async function deleteOrganization(
   orgId: string,
   apiUrl?: string,
 ): Promise<{ message: string; organizationId: string }> {
-  const res = await platformFetch(`/organizations/v1/${orgId}`, {
+  const res = await platformFetch(`/organizations/v1/${encodeURIComponent(orgId)}`, {
     method: 'DELETE',
   }, apiUrl);
   return await res.json() as { message: string; organizationId: string };
