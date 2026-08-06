@@ -172,7 +172,7 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
           }
           if (linkedInOrg) {
             outputInfo(
-              `⚠ The project this directory is linked to (${linkedConfig?.project_name}) belongs to this organization and will be deleted too.`,
+              `The linked project "${linkedConfig?.project_name}" belongs to this organization and will be deleted with it.`,
             );
           }
           const confirmed = await clack.confirm({
