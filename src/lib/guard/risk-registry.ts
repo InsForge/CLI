@@ -309,6 +309,24 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     risk: 'They must be re-invited to regain access.',
   }),
 
+  'orgs leave': (ctx) => ({
+    severity: 'high',
+    kind: 'org.leave',
+    title: 'Leave an organization',
+    whatHappens: `Removes you from organization "${(ctx.opts.orgId as string) ?? '?'}".`,
+    blastRadius: 'You lose access to every project in the organization.',
+    risk: 'You must be re-invited by an administrator to regain access.',
+  }),
+
+  'orgs delete': (ctx) => ({
+    severity: 'critical',
+    kind: 'org.delete',
+    title: 'Delete an organization',
+    whatHappens: `Permanently deletes organization "${(ctx.opts.orgId as string) ?? '?'}" and every project in it.`,
+    blastRadius: 'All of the org\'s projects (databases, storage, functions), members, and its subscription are destroyed.',
+    risk: 'Irreversible. Every app pointing at any project in this organization breaks immediately.',
+  }),
+
   'secrets rotate': (ctx) => ({
     severity: 'high',
     kind: 'secrets.rotate',

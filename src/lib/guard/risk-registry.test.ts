@@ -141,6 +141,18 @@ describe('assess — command-path classification', () => {
     expect(risk.whatHappens).toContain('live');
   });
 
+  it('flags org lifecycle commands (leave high, delete critical)', () => {
+    const leave = assess({ path: 'orgs leave', args: [], opts: { orgId: 'org-1' } });
+    expect(leave.severity).toBe('high');
+    expect(leave.kind).toBe('org.leave');
+    expect(leave.whatHappens).toContain('org-1');
+
+    const del = assess({ path: 'orgs delete', args: [], opts: { orgId: 'org-1' } });
+    expect(del.severity).toBe('critical');
+    expect(del.kind).toBe('org.delete');
+    expect(del.whatHappens).toContain('org-1');
+  });
+
   it('catches unregistered destructive verbs (defense in depth)', () => {
     const r = assess(cmd('widgets destroy', ['x']));
     expect(r.severity).toBe('high');

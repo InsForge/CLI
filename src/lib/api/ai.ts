@@ -6,6 +6,44 @@ export interface OpenRouterKeyResponse {
   maskedKey?: string;
 }
 
+/** Model Gateway key observability; usage/limit figures are USD credits. */
+export interface AiOverview {
+  key: {
+    label?: string;
+    limit: number | null;
+    limitRemaining: number | null;
+    limitReset?: string | null;
+    usage: number;
+    usageDaily: number;
+    usageWeekly: number;
+    usageMonthly: number;
+    isFreeTier?: boolean;
+    observabilityAvailable: boolean;
+    observabilityError?: string;
+  };
+  charts: {
+    spend: { label: string; value: number }[];
+    requests: { label: string; value: number }[];
+    tokens: { label: string; value: number }[];
+  };
+  modelUsage?: {
+    model: string;
+    providers: string[];
+    requests: number;
+    promptTokens: number;
+    completionTokens: number;
+    reasoningTokens: number;
+    totalTokens: number;
+    spend: number;
+    byokSpend: number;
+  }[];
+}
+
+export async function getAiOverview(): Promise<AiOverview> {
+  const res = await ossFetch('/api/ai/overview');
+  return await res.json() as AiOverview;
+}
+
 export async function getOpenRouterApiKey(): Promise<OpenRouterKeyResponse> {
   const res = await ossFetch('/api/ai/openrouter/api-key');
   const data = await res.json() as Partial<OpenRouterKeyResponse>;
