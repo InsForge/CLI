@@ -20,44 +20,62 @@ describe('bundledDbInitSql', () => {
 });
 
 describe('composeFiles', () => {
-  it('always applies the local overlay', () => {
+  it('is the CLI\u2019s own single file for filesystem storage', () => {
     const files = composeFiles('local');
-    expect(files).toHaveLength(2);
+    expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/docker-compose\.yml$/);
-    expect(files[1]).toMatch(/docker-compose\.local\.yml$/);
-    expect(existsSync(files[1])).toBe(true);
   });
 
-  it('puts the storage overlay last so it wins the merge', () => {
+  it('appends the storage overlay so it wins the merge', () => {
     for (const [backend, suffix] of [
       ['minio', 'docker-compose.minio.yml'],
       ['rustfs', 'docker-compose.rustfs.yml'],
     ] as const) {
       const files = composeFiles(backend);
-      expect(files).toHaveLength(3);
+      expect(files).toHaveLength(2);
       expect(files[0]).toMatch(/docker-compose\.yml$/);
-      expect(files[1]).toMatch(/docker-compose\.local\.yml$/);
-      expect(files[2].endsWith(suffix)).toBe(true);
-      expect(existsSync(files[2])).toBe(true);
+      expect(files[1].endsWith(suffix)).toBe(true);
+      expect(existsSync(files[1])).toBe(true);
     }
   });
 
-  it('the local overlay uses the CI-built base postgres image, not postgres-all', () => {
-    const overlay = readFileSync(composeFiles('local')[1], 'utf-8');
-    // Assert on the image line specifically — the file's comments discuss
-    // postgres-all, so a whole-file substring check would be meaningless.
-    const imageLine = overlay.split('\n').find((l) => l.trim().startsWith('image:')) ?? '';
-    expect(imageLine).toContain('ghcr.io/insforge/postgres:v15.13.4');
-    expect(imageLine).not.toContain('postgres-all');
-    // Seeding the keys and the telemetry channel are local-only concerns, so they
-    // live here rather than as variables in the upstream compose file.
-    expect(overlay).toContain('ACCESS_API_KEY:');
-    expect(overlay).toContain('INSFORGE_DEPLOYMENT_METHOD: cli-local');
-    // The settings postgres-all's hand-built conf had lost.
-    expect(overlay).toContain('insforge_pg_utils');
-    expect(overlay).toContain('insforge.internal_schemas=');
-    expect(overlay).toContain('insforge.policy_grant_role=');
-    expect(overlay).toContain('insforge.policy_grant_tables=');
+  it('mounts nothing relative to itself', () => {
+    // The bug that killed the previous upstream-copy approach: `../docker-init/db/x`
+    // resolves next to this file, inside the npm package, where it does not exist.
+    const body = readFileSync(composeFiles('local')[0], 'utf-8');
+    const relative = body
+      .split('\n')
+      .filter((l) => /^\s+- (\.|\.\.)\//.test(l));
+    expect(relative).toEqual([]);
+  });
+
+  it('carries the settings and images local instances need', () => {
+    const body = readFileSync(composeFiles('local')[0], 'utf-8');
+    const images = body.split('\n').filter((l) => l.trim().startsWith('image:')).join('\n');
+    expect(images).toContain('ghcr.io/insforge/postgres:v15.13.4');
+    expect(images).not.toContain('postgres-all');
+    // Official Deno image, not a hand-built ghcr.io/insforge/deno-runtime.
+    expect(images).toContain('denoland/deno:');
+    expect(images).not.toContain('deno-runtime');
+    // Edge functions 502 without this; it was missing upstream.
+    expect(body).toContain('DENO_RUNTIME_URL: http://deno:7133');
+    expect(body).toContain('INSFORGE_DEPLOYMENT_METHOD: cli-local');
+    expect(body).toContain('ACCESS_API_KEY:');
+    // Postgres settings that postgres-all's baked conf had lost.
+    expect(body).toContain('insforge_pg_utils');
+    expect(body).toContain('insforge.internal_schemas=');
+    expect(body).toContain('insforge.policy_grant_role=');
+    expect(body).toContain('insforge.extension_grant_role=');
+    // Pinned before the first release; changing it later would initdb an empty
+    // cluster beside the real one.
+    expect(body).toContain('PGDATA: /var/lib/postgresql/data/pgdata');
+  });
+
+  it('publishes every port on loopback only', () => {
+    const body = readFileSync(composeFiles('local')[0], 'utf-8');
+    const published = body.split('\n').filter((l) => /^\s+- "\S+:\d+"$/.test(l.trimEnd()));
+    expect(published.length).toBeGreaterThan(0);
+    for (const line of published) expect(line).toContain('127.0.0.1:');
   });
 });
 

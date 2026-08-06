@@ -45,15 +45,15 @@ const OVERLAYS: Record<Exclude<StorageBackend, 'local'>, string> = {
 };
 
 /**
- * Base file, then the Postgres overlay, then the storage overlay if any.
+ * The CLI's own compose file, plus a storage overlay if one was selected.
  *
- * The base file is a byte-identical copy of the InsForge repo's image-only
- * compose file, so it can be diff-checked against upstream. Every local-only
- * difference lives in an overlay instead of being edited into the copy.
+ * This used to be an upstream copy plus a local overlay. The copy broke once the
+ * upstream file started mounting paths relative to itself (../docker-init/db/*),
+ * which do not exist inside the npm package — so the file is now ours outright.
  */
 export function composeFiles(storage: StorageBackend): string[] {
   const dir = assetsDir();
-  const files = [join(dir, 'docker-compose.yml'), join(dir, 'docker-compose.local.yml')];
+  const files = [join(dir, 'docker-compose.yml')];
   if (storage !== 'local') files.push(join(dir, OVERLAYS[storage]));
   return files;
 }

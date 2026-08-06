@@ -156,13 +156,14 @@ re-pull a tag it already has, so `latest` delivers neither reproducibility nor
 freshness, and the backend runs migrations on boot — an unannounced version change
 can leave a schema an older image cannot read.
 
-**Postgres.** Local instances run the base `ghcr.io/insforge/postgres` image
-rather than `postgres-all`. The two are the same image plus three text files, and
-the base one is the one with CI behind it. The CLI supplies those files itself —
-`postgresql.conf` as `-c` flags, and `db-init.sql` written into `.insforge/` and
-mounted read-only — so the settings your local Postgres runs with are versioned
-with the CLI instead of baked into an image. `jwt.sql` is dropped; nothing reads
-the settings it sets.
+**Images.** Local instances use `ghcr.io/insforge/postgres` and the official
+`denoland/deno` — no hand-built image carries baked-in config. Postgres settings
+are passed as `-c` flags; `db-init.sql` and the edge-function runtime host are
+written into `.insforge/` and mounted read-only, so what your local stack runs is
+versioned with the CLI rather than with an image someone rebuilt by hand.
+
+**Ports.** Everything binds to `127.0.0.1` only. A local backend has no business
+being reachable from the rest of the network.
 
 #### `npx @insforge/cli local stop`
 
