@@ -1,5 +1,11 @@
-# Compose file for `insforge local start`. Self-contained: the CLI owns it, and
-# it is not a copy of anything in the InsForge repo.
+# Compose template for `insforge local start`. The CLI renders it into
+# .insforge/local-compose.yml, substituting a marker line for a `configs:` block
+# that inlines db-init.sql, server.ts and worker-template.js.
+#
+# Nothing is bind-mounted from the host — the same conclusion Supabase's CLI
+# reaches by embedding its SQL in the binary and writing it in with a heredoc. It
+# avoids Docker Desktop file-sharing prompts on Windows and SELinux relabelling on
+# RHEL-family hosts entirely.
 #
 # It used to be a byte-identical copy of deploy/docker-compose/docker-compose.yml
 # plus an overlay. That broke as soon as the upstream file started mounting
@@ -16,6 +22,8 @@
 # listed here still reach the containers if set in the caller's environment,
 # because Compose resolves from the process environment too:
 #   GOOGLE_CLIENT_ID=... insforge local start
+
+__INSFORGE_CONFIGS__
 
 services:
   postgres:
@@ -61,11 +69,12 @@ services:
 
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    configs:
       # Creates the anon / authenticated / project_admin roles. Has to run at
       # cluster init: PostgREST starts with PGRST_DB_ANON_ROLE=anon before the
       # backend migrates, so a migration cannot cover it.
-      # :z relabels for SELinux hosts, where an unlabelled bind mount is denied.
-      - ${INSFORGE_DB_INIT_SQL}:/docker-entrypoint-initdb.d/01-init.sql:ro,z
+      - source: db_init
+        target: /docker-entrypoint-initdb.d/01-init.sql
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     networks:
@@ -217,9 +226,12 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-${JWT_SECRET:-dev-secret-please-change-in-production}}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-please-change-in-production}
     volumes:
-      - ${INSFORGE_DENO_SERVER}:/app/functions/server.ts:ro,z
-      - ${INSFORGE_DENO_WORKER}:/app/functions/worker-template.js:ro,z
       - deno_cache:/deno-dir
+    configs:
+      - source: deno_server
+        target: /app/functions/server.ts
+      - source: deno_worker
+        target: /app/functions/worker-template.js
     command:
       - sh
       - -c

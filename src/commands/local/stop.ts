@@ -7,8 +7,8 @@ import { ensureDockerReady } from '../../lib/docker.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
-import { composeRunInherit, type ComposeContext } from '../../lib/local/compose.js';
-import { clearLocalState, readLocalState } from '../../lib/local/state.js';
+import { composeRunInherit, writeRenderedCompose, type ComposeContext } from '../../lib/local/compose.js';
+import { clearLocalState, localComposeFile, readLocalState } from '../../lib/local/state.js';
 
 interface StopOptions {
   deleteData?: boolean;
@@ -42,6 +42,11 @@ export function registerLocalStopCommand(localCmd: Command): void {
               'Run `insforge local start` here first, or `docker ps` to find instances started elsewhere.',
           );
         }
+
+        // Re-render if the file is gone (deleted by hand, or by a previous
+        // --delete-data). Every compose call needs it, and without this the only
+        // way to stop the containers would be raw `docker`.
+        if (!existsSync(localComposeFile())) writeRenderedCompose();
 
         const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage };
         const args = opts.deleteData ? ['down', '-v'] : ['down'];

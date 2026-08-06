@@ -38,7 +38,7 @@ export default defineConfig({
           const localDir = join(assetsDir, 'local');
           mkdirSync(localDir, { recursive: true });
           for (const file of [
-            'docker-compose.yml',
+            'docker-compose.template.yml',
             'docker-compose.minio.yml',
             'docker-compose.rustfs.yml',
             'db-init.sql',

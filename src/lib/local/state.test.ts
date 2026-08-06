@@ -97,14 +97,7 @@ describe('ensureLocalGitignore', () => {
     const lines = readFileSync(join(cwd, '.insforge', '.gitignore'), 'utf-8')
       .split('\n')
       .filter(Boolean);
-    expect(lines).toEqual([
-      'something-else',
-      'local.env',
-      'local.json',
-      'local-db-init.sql',
-      'local-deno-server.ts',
-      'local-deno-worker.js',
-    ]);
+    expect(lines).toEqual(['something-else', 'local.env', 'local.json', 'local-compose.yml']);
   });
 
   // project.json holds a cloud api_key and is not ours to start ignoring.

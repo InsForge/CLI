@@ -9,11 +9,12 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLIError } from '../errors.js';
-import { localEnvFile } from './state.js';
+import { ensureLocalDir, ensureLocalGitignore, localComposeFile, localEnvFile } from './state.js';
+import { renderComposeFile, type ConfigSource } from './render.js';
 import type { StorageBackend } from './state.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -31,7 +32,7 @@ export function assetsDir(): string {
     join(__dirname, '..', '..', 'src', 'assets', 'local'),
   ];
   for (const dir of candidates) {
-    if (existsSync(join(dir, 'docker-compose.yml'))) return dir;
+    if (existsSync(join(dir, 'docker-compose.template.yml'))) return dir;
   }
   throw new CLIError(
     'Bundled compose files are missing from this CLI installation.\n' +
@@ -45,30 +46,39 @@ const OVERLAYS: Record<Exclude<StorageBackend, 'local'>, string> = {
 };
 
 /**
- * The CLI's own compose file, plus a storage overlay if one was selected.
+ * The rendered compose file, plus a storage overlay if one was selected.
  *
- * This used to be an upstream copy plus a local overlay. The copy broke once the
- * upstream file started mounting paths relative to itself (../docker-init/db/*),
- * which do not exist inside the npm package — so the file is now ours outright.
+ * The rendered file lives in .insforge/ rather than in the package, so a user can
+ * read exactly what ran. Neither it nor the overlays reference a relative path —
+ * that is what broke the previous approach of bundling a copy of the upstream
+ * compose file, whose ../docker-init/db/* mounts resolved inside the npm package.
  */
-export function composeFiles(storage: StorageBackend): string[] {
-  const dir = assetsDir();
-  const files = [join(dir, 'docker-compose.yml')];
-  if (storage !== 'local') files.push(join(dir, OVERLAYS[storage]));
+export function composeFiles(storage: StorageBackend, cwd?: string): string[] {
+  const files = [localComposeFile(cwd)];
+  if (storage !== 'local') files.push(join(assetsDir(), OVERLAYS[storage]));
   return files;
 }
 
-/** Bundled files `local start` materializes into .insforge/ and mounts. */
-export function bundledDbInitSql(): string {
-  return join(assetsDir(), 'db-init.sql');
-}
+/** Files whose contents are inlined into the rendered compose as configs. */
+const CONFIG_ASSETS: { name: string; file: string }[] = [
+  { name: 'db_init', file: 'db-init.sql' },
+  { name: 'deno_server', file: 'server.ts' },
+  { name: 'deno_worker', file: 'worker-template.js' },
+];
 
-export function bundledDenoServer(): string {
-  return join(assetsDir(), 'server.ts');
-}
-
-export function bundledDenoWorker(): string {
-  return join(assetsDir(), 'worker-template.js');
+/** Render the template into .insforge/local-compose.yml and return its path. */
+export function writeRenderedCompose(cwd?: string): string {
+  const dir = assetsDir();
+  const template = readFileSync(join(dir, 'docker-compose.template.yml'), 'utf-8');
+  const sources: ConfigSource[] = CONFIG_ASSETS.map(({ name, file }) => ({
+    name,
+    content: readFileSync(join(dir, file), 'utf-8'),
+  }));
+  ensureLocalDir(cwd);
+  ensureLocalGitignore(cwd);
+  const target = localComposeFile(cwd);
+  writeFileSync(target, renderComposeFile(template, sources));
+  return target;
 }
 
 export interface ComposeContext {
@@ -79,7 +89,7 @@ export interface ComposeContext {
 }
 
 export function composeArgs(ctx: ComposeContext, args: string[]): string[] {
-  const fileArgs = composeFiles(ctx.storage).flatMap((f) => ['-f', f]);
+  const fileArgs = composeFiles(ctx.storage, ctx.cwd).flatMap((f) => ['-f', f]);
   return [
     'compose',
     ...fileArgs,

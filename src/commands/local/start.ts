@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { existsSync, copyFileSync, readFileSync } from 'node:fs';
+import { existsSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
@@ -17,23 +17,14 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import {
-  bundledDbInitSql,
-  bundledDenoServer,
-  bundledDenoWorker,
   composePs,
   composeRunInherit,
+  writeRenderedCompose,
   type ComposeContext,
 } from '../../lib/local/compose.js';
 import { ensurePortsAvailable, resolvePorts } from '../../lib/local/ports.js';
 import { missingStackTagRepos, resolveStackTag } from '../../lib/local/registry.js';
-import {
-  generateSecrets,
-  readSecrets,
-  writeDbInitSql,
-  writeDenoServer,
-  writeDenoWorker,
-  writeEnvFile,
-} from '../../lib/local/secrets.js';
+import { generateSecrets, readSecrets, writeEnvFile } from '../../lib/local/secrets.js';
 import {
   composeProjectName,
   readLocalState,
@@ -163,6 +154,13 @@ export function registerLocalStartCommand(localCmd: Command): void {
         const projectName = previous?.projectName ?? composeProjectName();
         const ctx: ComposeContext = { projectName, storage };
 
+        // Render before any compose call — every one of them needs the file, and
+        // on a first run it does not exist yet. Re-rendered on every start so a
+        // CLI upgrade always runs its own spec; the init SQL inside only takes
+        // effect on an uninitialized cluster, so this never disturbs an existing
+        // instance.
+        writeRenderedCompose();
+
         // On a restart our own containers already hold these ports, which is not
         // a conflict. Only check when nothing of ours is running; if there is a
         // genuine clash after that, `docker compose up` reports it.
@@ -203,16 +201,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
           );
         }
 
-        // Materialize the init SQL the postgres overlay mounts. Rewritten on
-        // every start so a CLI upgrade ships an updated script, and so a user who
-        // edited or deleted it gets the bundled one back. It only takes effect on
-        // a cluster that has not initialized yet, which is why an existing
-        // instance is unaffected by the rewrite.
-        const dbInitSql = writeDbInitSql(readFileSync(bundledDbInitSql(), 'utf-8'));
-        const denoServer = writeDenoServer(readFileSync(bundledDenoServer(), 'utf-8'));
-        const denoWorker = writeDenoWorker(readFileSync(bundledDenoWorker(), 'utf-8'));
-
-        writeEnvFile({ secrets, ports, storage, stackTag, dbInitSql, denoServer, denoWorker });
+        writeEnvFile({ secrets, ports, storage, stackTag });
 
         const state: LocalState = {
           version: 1,

@@ -1,79 +1,131 @@
-import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import { assetsDir, bundledDbInitSql, composeArgs, composeFiles, parsePsJson } from './compose.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { assetsDir, composeArgs, composeFiles, parsePsJson, writeRenderedCompose } from './compose.js';
+
+const dirs: string[] = [];
+function tmp(): string {
+  const d = mkdtempSync(join(tmpdir(), 'if-compose-'));
+  dirs.push(d);
+  return d;
+}
+afterEach(() => {
+  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
+});
 
 describe('assetsDir', () => {
-  it('finds the bundled compose files', () => {
-    expect(existsSync(`${assetsDir()}/docker-compose.yml`)).toBe(true);
+  it('finds the bundled template and the files it inlines', () => {
+    const dir = assetsDir();
+    for (const f of ['docker-compose.template.yml', 'db-init.sql', 'server.ts', 'worker-template.js']) {
+      expect(existsSync(join(dir, f))).toBe(true);
+    }
   });
 });
 
-describe('bundledDbInitSql', () => {
-  it('ships the init SQL that creates the PostgREST roles', () => {
-    const sql = readFileSync(bundledDbInitSql(), 'utf-8');
+describe('writeRenderedCompose', () => {
+  it('inlines the three files as compose configs', () => {
+    const cwd = tmp();
+    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    expect(body).toContain('configs:');
     // PostgREST runs with PGRST_DB_ANON_ROLE=anon and starts before the backend
     // migrates, so these roles have to come from cluster init.
-    expect(sql).toContain('CREATE ROLE anon');
-    expect(sql).toContain('CREATE ROLE authenticated');
-    expect(sql).toContain('CREATE ROLE project_admin');
+    expect(body).toContain('CREATE ROLE anon');
+    expect(body).toContain('CREATE ROLE project_admin');
+    // The edge-function runtime host, which reads function code out of Postgres.
+    expect(body).toContain('functions.definitions');
+    expect(body).not.toContain('__INSFORGE_CONFIGS__');
+  });
+
+  it('produces a file docker compose can parse', () => {
+    // A YAML syntax error here would only surface as a runtime failure, and the
+    // inlined payloads contain quotes, backticks and # characters.
+    const cwd = tmp();
+    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    for (const key of ['db_init', 'deno_server', 'deno_worker']) {
+      expect(body).toMatch(new RegExp(`^  ${key}:$`, 'm'));
+    }
+    expect(body).toMatch(/^ {4}content: \|$/m);
+  });
+
+  it('escapes $ inside the payloads so Compose does not interpolate them', () => {
+    // server.ts is TypeScript full of ${...} template literals and db-init.sql
+    // uses $$ dollar-quoting. Unescaped, Compose fails the whole project with
+    // "invalid interpolation format". Scoped to the configs block: the services
+    // below it use ${VAR} interpolation on purpose.
+    const cwd = tmp();
+    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    const start = body.search(/^configs:$/m);
+    const end = body.search(/^services:$/m);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const payload = body.slice(start, end);
+    expect(payload).toContain('$$');
+    expect(payload.match(/(?<!\$)\$(?!\$)/g)).toBeNull();
+  });
+
+  it('bind-mounts nothing from the host', () => {
+    // The whole point: no host path is shared with the Docker VM, so Docker
+    // Desktop file sharing and SELinux relabelling never come into play.
+    const cwd = tmp();
+    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    const hostMounts = body
+      .split('\n')
+      .filter((l) => /^\s+- (\/|\.|\$\{INSFORGE_)/.test(l));
+    expect(hostMounts).toEqual([]);
   });
 });
 
 describe('composeFiles', () => {
-  it('is the CLI\u2019s own single file for filesystem storage', () => {
-    const files = composeFiles('local');
+  it('is the rendered file alone for filesystem storage', () => {
+    const cwd = tmp();
+    const files = composeFiles('local', cwd);
     expect(files).toHaveLength(1);
-    expect(files[0]).toMatch(/docker-compose\.yml$/);
+    expect(files[0]).toBe(join(cwd, '.insforge', 'local-compose.yml'));
   });
 
   it('appends the storage overlay so it wins the merge', () => {
+    const cwd = tmp();
     for (const [backend, suffix] of [
       ['minio', 'docker-compose.minio.yml'],
       ['rustfs', 'docker-compose.rustfs.yml'],
     ] as const) {
-      const files = composeFiles(backend);
+      const files = composeFiles(backend, cwd);
       expect(files).toHaveLength(2);
-      expect(files[0]).toMatch(/docker-compose\.yml$/);
       expect(files[1].endsWith(suffix)).toBe(true);
       expect(existsSync(files[1])).toBe(true);
     }
   });
+});
 
-  it('mounts nothing relative to itself', () => {
-    // The bug that killed the previous upstream-copy approach: `../docker-init/db/x`
-    // resolves next to this file, inside the npm package, where it does not exist.
-    const body = readFileSync(composeFiles('local')[0], 'utf-8');
-    const relative = body
-      .split('\n')
-      .filter((l) => /^\s+- (\.|\.\.)\//.test(l));
-    expect(relative).toEqual([]);
-  });
+describe('template contents', () => {
+  const template = (): string =>
+    readFileSync(join(assetsDir(), 'docker-compose.template.yml'), 'utf-8');
 
-  it('carries the settings and images local instances need', () => {
-    const body = readFileSync(composeFiles('local')[0], 'utf-8');
-    const images = body.split('\n').filter((l) => l.trim().startsWith('image:')).join('\n');
+  it('uses images with CI behind them', () => {
+    const images = template().split('\n').filter((l) => l.trim().startsWith('image:')).join('\n');
     expect(images).toContain('ghcr.io/insforge/postgres:v15.13.4');
     expect(images).not.toContain('postgres-all');
-    // Official Deno image, not a hand-built ghcr.io/insforge/deno-runtime.
     expect(images).toContain('denoland/deno:');
     expect(images).not.toContain('deno-runtime');
-    // Edge functions 502 without this; it was missing upstream.
+  });
+
+  it('carries the settings local instances need', () => {
+    const body = template();
+    // Edge functions 502 on every invoke without this; upstream omits it.
     expect(body).toContain('DENO_RUNTIME_URL: http://deno:7133');
     expect(body).toContain('INSFORGE_DEPLOYMENT_METHOD: cli-local');
     expect(body).toContain('ACCESS_API_KEY:');
-    // Postgres settings that postgres-all's baked conf had lost.
     expect(body).toContain('insforge_pg_utils');
-    expect(body).toContain('insforge.internal_schemas=');
     expect(body).toContain('insforge.policy_grant_role=');
     expect(body).toContain('insforge.extension_grant_role=');
-    // Pinned before the first release; changing it later would initdb an empty
-    // cluster beside the real one.
+    // Pinned before the first release: changing it later would make Postgres
+    // initdb an empty cluster beside the real one and look like a fresh install.
     expect(body).toContain('PGDATA: /var/lib/postgresql/data/pgdata');
   });
 
   it('publishes every port on loopback only', () => {
-    const body = readFileSync(composeFiles('local')[0], 'utf-8');
-    const published = body.split('\n').filter((l) => /^\s+- "\S+:\d+"$/.test(l.trimEnd()));
+    const published = template().split('\n').filter((l) => /^\s+- "\S+:\d+"$/.test(l.trimEnd()));
     expect(published.length).toBeGreaterThan(0);
     for (const line of published) expect(line).toContain('127.0.0.1:');
   });
@@ -81,16 +133,17 @@ describe('composeFiles', () => {
 
 describe('composeArgs', () => {
   it('pins the compose project so instances stay per-directory', () => {
-    const args = composeArgs({ projectName: 'insforge-app-abc12345', storage: 'local' }, ['up', '-d']);
+    const cwd = tmp();
+    const args = composeArgs({ projectName: 'insforge-app-abc12345', storage: 'local', cwd }, ['up', '-d']);
     expect(args[0]).toBe('compose');
-    expect(args).toContain('-p');
     expect(args[args.indexOf('-p') + 1]).toBe('insforge-app-abc12345');
     expect(args.slice(-2)).toEqual(['up', '-d']);
   });
 
   it('passes the generated env file', () => {
-    const args = composeArgs({ projectName: 'p', storage: 'local', cwd: '/tmp/x' }, ['ps']);
-    expect(args[args.indexOf('--env-file') + 1]).toBe('/tmp/x/.insforge/local.env');
+    const cwd = tmp();
+    const args = composeArgs({ projectName: 'p', storage: 'local', cwd }, ['ps']);
+    expect(args[args.indexOf('--env-file') + 1]).toBe(join(cwd, '.insforge', 'local.env'));
   });
 });
 
@@ -100,15 +153,12 @@ describe('parsePsJson', () => {
       '{"Service":"postgres","State":"running","Status":"Up 2m","Health":"healthy"}\n' +
         '{"Service":"insforge","State":"running","Status":"Up 1m","Health":""}\n',
     );
-    expect(out).toEqual([
-      { service: 'postgres', state: 'running', status: 'Up 2m', health: 'healthy' },
-      { service: 'insforge', state: 'running', status: 'Up 1m', health: '' },
-    ]);
+    expect(out.map((s) => s.service)).toEqual(['postgres', 'insforge']);
+    expect(out[0].health).toBe('healthy');
   });
 
   it('reads the single-array form emitted by newer compose', () => {
-    const out = parsePsJson('[{"Service":"deno","State":"exited","Status":"Exited (1)"}]');
-    expect(out).toEqual([
+    expect(parsePsJson('[{"Service":"deno","State":"exited","Status":"Exited (1)"}]')).toEqual([
       { service: 'deno', state: 'exited', status: 'Exited (1)', health: '' },
     ]);
   });

@@ -1,13 +1,14 @@
 import type { Command } from 'commander';
+import { existsSync } from 'node:fs';
 import pc from 'picocolors';
 import { probeBackendHealth } from '../../lib/api/oss.js';
 import { ensureDockerReady } from '../../lib/docker.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputInfo, outputJson, outputTable } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
-import { composePs, type ComposeContext } from '../../lib/local/compose.js';
+import { composePs, writeRenderedCompose, type ComposeContext } from '../../lib/local/compose.js';
 import { readSecrets } from '../../lib/local/secrets.js';
-import { readLocalState } from '../../lib/local/state.js';
+import { localComposeFile, readLocalState } from '../../lib/local/state.js';
 
 export function registerLocalStatusCommand(localCmd: Command): void {
   localCmd
@@ -25,6 +26,11 @@ export function registerLocalStatusCommand(localCmd: Command): void {
             'No local instance is recorded for this directory.\nRun `insforge local start` to create one.',
           );
         }
+
+        // Re-render if the file is gone (deleted by hand, or by a previous
+        // --delete-data). Every compose call needs it, and without this the only
+        // way to stop the containers would be raw `docker`.
+        if (!existsSync(localComposeFile())) writeRenderedCompose();
 
         const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage };
         const services = composePs(ctx);

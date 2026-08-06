@@ -68,22 +68,12 @@ export function localEnvFile(cwd?: string): string {
 }
 
 /**
- * Where the bundled db-init.sql is materialized. Written into the user's own
- * project rather than mounted from the npx cache: a project path is far likelier
- * to be shared with Docker Desktop, and the user can read the SQL that is about
- * to run against their database.
+ * The rendered compose file. Generated on every start from the CLI's template so
+ * a CLI upgrade always runs its own spec, and readable on disk so a user can
+ * inspect or hand-run exactly what the CLI ran.
  */
-export function localDbInitFile(cwd?: string): string {
-  return join(localDir(cwd), 'local-db-init.sql');
-}
-
-/** Edge-function runtime host, mounted into the official Deno image. */
-export function localDenoServerFile(cwd?: string): string {
-  return join(localDir(cwd), 'local-deno-server.ts');
-}
-
-export function localDenoWorkerFile(cwd?: string): string {
-  return join(localDir(cwd), 'local-deno-worker.js');
+export function localComposeFile(cwd?: string): string {
+  return join(localDir(cwd), 'local-compose.yml');
 }
 
 /**
@@ -122,13 +112,7 @@ export function writeLocalState(state: LocalState, cwd?: string): void {
 }
 
 export function clearLocalState(cwd?: string): void {
-  for (const file of [
-    localStateFile(cwd),
-    localEnvFile(cwd),
-    localDbInitFile(cwd),
-    localDenoServerFile(cwd),
-    localDenoWorkerFile(cwd),
-  ]) {
+  for (const file of [localStateFile(cwd), localEnvFile(cwd), localComposeFile(cwd)]) {
     if (existsSync(file)) unlinkSync(file);
   }
 }
@@ -141,13 +125,7 @@ export function clearLocalState(cwd?: string): void {
 export function ensureLocalGitignore(cwd?: string): void {
   const dir = ensureLocalDir(cwd);
   const file = join(dir, '.gitignore');
-  const wanted = [
-    'local.env',
-    'local.json',
-    'local-db-init.sql',
-    'local-deno-server.ts',
-    'local-deno-worker.js',
-  ];
+  const wanted = ['local.env', 'local.json', 'local-compose.yml'];
   const existing = existsSync(file)
     ? readFileSync(file, 'utf-8').split('\n').map((l) => l.trim())
     : [];

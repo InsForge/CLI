@@ -158,9 +158,11 @@ can leave a schema an older image cannot read.
 
 **Images.** Local instances use `ghcr.io/insforge/postgres` and the official
 `denoland/deno` — no hand-built image carries baked-in config. Postgres settings
-are passed as `-c` flags; `db-init.sql` and the edge-function runtime host are
-written into `.insforge/` and mounted read-only, so what your local stack runs is
-versioned with the CLI rather than with an image someone rebuilt by hand.
+are passed as `-c` flags, and the init SQL plus the edge-function runtime host are
+inlined into the compose file the CLI renders into `.insforge/local-compose.yml`.
+Nothing is bind-mounted from your filesystem, so Docker Desktop never asks about
+file sharing and SELinux hosts need no relabelling. Read that file any time to see
+exactly what ran.
 
 **Ports.** Everything binds to `127.0.0.1` only. A local backend has no business
 being reachable from the rest of the network.
