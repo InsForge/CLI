@@ -100,4 +100,17 @@ describe('ai overview', () => {
     expect(out).toContain('Limit:            unlimited');
     expect(out).toContain('management key required');
   });
+
+  it('renders missing fields as unknown, not unlimited', async () => {
+    const { getAiOverview } = await import('../../lib/api/ai.js');
+    (getAiOverview as Mock).mockResolvedValueOnce({
+      key: { usage: 5, observabilityAvailable: true },
+      charts: { spend: [], requests: [], tokens: [] },
+    });
+    const logs = await runWithCapturedLog(makeProgram(), ['ai', 'overview']);
+    const out = logs.join('\n');
+    expect(out).toContain('Limit:            unknown');
+    expect(out).toContain('Usage today:      unknown');
+    expect(out).not.toContain('Usage today:      unlimited');
+  });
 });

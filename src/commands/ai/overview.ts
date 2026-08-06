@@ -5,9 +5,10 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputTable, outputInfo } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
-/** OpenRouter usage/limit figures are USD credit amounts; null means no limit. */
+/** OpenRouter USD credit figures: null is the API's "no limit" sentinel; a missing field is unknown. */
 function usd(n: number | null | undefined): string {
-  if (n === null || n === undefined) return 'unlimited';
+  if (n === null) return 'unlimited';
+  if (n === undefined) return 'unknown';
   return `$${n.toFixed(2)}`;
 }
 
@@ -29,14 +30,13 @@ export function registerAiOverviewCommand(aiCmd: Command): void {
 
         const k = overview.key;
         if (k.label) outputInfo(`Key:              ${k.label}`);
-        // Usage fields are unvalidated backend JSON — a missing figure is 0 spend, not "unlimited".
-        outputInfo(`Usage (total):    ${usd(k.usage ?? 0)}`);
+        outputInfo(`Usage (total):    ${usd(k.usage)}`);
         outputInfo(`Limit:            ${usd(k.limit)}`);
         outputInfo(`Remaining:        ${usd(k.limitRemaining)}`);
         if (k.limitReset) outputInfo(`Limit resets:     ${k.limitReset}`);
-        outputInfo(`Usage today:      ${usd(k.usageDaily ?? 0)}`);
-        outputInfo(`Usage this week:  ${usd(k.usageWeekly ?? 0)}`);
-        outputInfo(`Usage this month: ${usd(k.usageMonthly ?? 0)}`);
+        outputInfo(`Usage today:      ${usd(k.usageDaily)}`);
+        outputInfo(`Usage this week:  ${usd(k.usageWeekly)}`);
+        outputInfo(`Usage this month: ${usd(k.usageMonthly)}`);
         if (k.isFreeTier) outputInfo('Tier:             free');
 
         if (overview.modelUsage && overview.modelUsage.length > 0) {
