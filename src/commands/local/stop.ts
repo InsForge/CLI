@@ -7,9 +7,8 @@ import { ensureDockerReady } from '../../lib/docker.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
-import { composeRunInherit, writeRenderedCompose, type ComposeContext } from '../../lib/local/compose.js';
-import { DEFAULT_REF } from '../../lib/local/upstream.js';
-import { clearLocalState, localComposeFile, readLocalState } from '../../lib/local/state.js';
+import { composeRunInherit, type ComposeContext } from '../../lib/local/compose.js';
+import { clearLocalState, readLocalState } from '../../lib/local/state.js';
 
 interface StopOptions {
   deleteData?: boolean;
@@ -47,10 +46,8 @@ export function registerLocalStopCommand(localCmd: Command): void {
         // Re-render if the file is gone (deleted by hand, or by a previous
         // --delete-data). Every compose call needs it, and without this the only
         // way to stop the containers would be raw `docker`.
-        const ref = state.stackTag ?? DEFAULT_REF;
-        if (!existsSync(localComposeFile())) writeRenderedCompose(ref);
 
-        const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage, ref };
+        const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage };
         const args = opts.deleteData ? ['down', '-v'] : ['down'];
         if (composeRunInherit(ctx, args) !== 0) {
           throw new CLIError('docker compose down failed. See the output above.');

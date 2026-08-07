@@ -1,28 +1,25 @@
 /**
  * Thin wrapper around `docker compose` for local instances.
  *
- * The compose template is bundled with the CLI (src/assets/local/); the payloads
- * it inlines and the storage overlays come from the InsForge repository at the
- * pinned ref (see upstream.ts). The result references only published images and
- * named volumes — nothing is mounted from a checkout — so it runs correctly
- * regardless of the user's cwd. Ports, keys, and image tags are supplied through the generated
- * `--env-file` rather than by rewriting YAML.
+ * The compose file is InsForge's own, fetched into `.insforge/checkout/` by its
+ * setup.sh (see checkout.ts) and run unmodified. The CLI adds one overlay, for
+ * the telemetry stamp, and supplies ports and keys through `--env-file`.
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLIError } from '../errors.js';
-import { ensureLocalDir, ensureLocalGitignore, localComposeFile, localEnvFile } from './state.js';
-import { renderComposeFile, type ConfigSource } from './render.js';
-import { DEFAULT_REF, upstreamDir } from './upstream.js';
+import { checkoutDir, checkoutEnvFile, upstreamComposeFile } from './checkout.js';
 import type { StorageBackend } from './state.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const CLI_OVERLAY = 'cli-overlay.yml';
+
 /**
- * Locate the bundled compose assets. `dist/index.js` resolves to
+ * Locate the CLI's own asset directory. `dist/index.js` resolves to
  * `dist/assets/local/`; running from source (tsx src/index.ts) resolves to
  * `src/assets/local/`. Both are checked so `npm run dev` behaves like a build.
  */
@@ -34,10 +31,10 @@ export function assetsDir(): string {
     join(__dirname, '..', '..', 'src', 'assets', 'local'),
   ];
   for (const dir of candidates) {
-    if (existsSync(join(dir, 'docker-compose.template.yml'))) return dir;
+    if (existsSync(join(dir, CLI_OVERLAY))) return dir;
   }
   throw new CLIError(
-    'Bundled compose files are missing from this CLI installation.\n' +
+    `${CLI_OVERLAY} is missing from this CLI installation.\n` +
       'Reinstall with `npm i -g @insforge/cli@latest`, or run via `npx -y @insforge/cli@latest`.',
   );
 }
@@ -48,65 +45,32 @@ const OVERLAYS: Record<Exclude<StorageBackend, 'local'>, string> = {
 };
 
 /**
- * The rendered compose file, plus a storage overlay if one was selected.
+ * Upstream's compose file, the CLI's overlay, and a storage overlay if selected.
  *
- * The rendered file lives in .insforge/ rather than in the package, so a user can
- * read exactly what ran. Neither it nor the overlays reference a relative path —
- * that is what broke the previous approach of bundling a copy of the upstream
- * compose file, whose ../docker-init/db/* mounts resolved inside the npm package.
+ * Order matters: later files win, and the storage overlay has to see the service
+ * definitions it extends. The storage overlays come from the checkout too — they
+ * live in the same repository and setup.sh fetches them.
  */
-export function composeFiles(storage: StorageBackend, cwd?: string, ref?: string): string[] {
-  const files = [localComposeFile(cwd)];
-  if (storage !== 'local') {
-    files.push(join(upstreamDir(ref ?? DEFAULT_REF, cwd), OVERLAYS[storage]));
-  }
+export function composeFiles(storage: StorageBackend, cwd?: string): string[] {
+  const files = [upstreamComposeFile(cwd), join(assetsDir(), CLI_OVERLAY)];
+  if (storage !== 'local') files.push(join(checkoutDir(cwd), OVERLAYS[storage]));
   return files;
-}
-
-/** Files whose contents are inlined into the rendered compose as configs. */
-const CONFIG_ASSETS: { name: string; file: string }[] = [
-  { name: 'db_init', file: 'db-init.sql' },
-  { name: 'deno_server', file: 'server.ts' },
-  { name: 'deno_worker', file: 'worker-template.js' },
-];
-
-/** Render the template into .insforge/local-compose.yml and return its path. */
-export function writeRenderedCompose(ref: string, cwd?: string): string {
-  const template = readFileSync(join(assetsDir(), 'docker-compose.template.yml'), 'utf-8');
-  const upstream = upstreamDir(ref, cwd);
-  const sources: ConfigSource[] = CONFIG_ASSETS.map(({ name, file }) => {
-    const path = join(upstream, file);
-    if (!existsSync(path)) {
-      throw new CLIError(
-        `${file} is missing from ${upstream}.\n` +
-          'Run `insforge local start` to fetch the files this instance needs.',
-      );
-    }
-    return { name, content: readFileSync(path, 'utf-8') };
-  });
-  ensureLocalDir(cwd);
-  ensureLocalGitignore(cwd);
-  const target = localComposeFile(cwd);
-  writeFileSync(target, renderComposeFile(template, sources));
-  return target;
 }
 
 export interface ComposeContext {
   projectName: string;
   storage: StorageBackend;
-  /** Directory holding .insforge/local.env. Defaults to cwd. */
+  /** Directory holding .insforge/. Defaults to cwd. */
   cwd?: string;
-  /** Ref whose upstream files this instance runs. Defaults to main. */
-  ref?: string;
 }
 
 export function composeArgs(ctx: ComposeContext, args: string[]): string[] {
-  const fileArgs = composeFiles(ctx.storage, ctx.cwd, ctx.ref).flatMap((f) => ['-f', f]);
+  const fileArgs = composeFiles(ctx.storage, ctx.cwd).flatMap((f) => ['-f', f]);
   return [
     'compose',
     ...fileArgs,
     '--env-file',
-    localEnvFile(ctx.cwd),
+    checkoutEnvFile(ctx.cwd),
     '-p',
     ctx.projectName,
     ...args,

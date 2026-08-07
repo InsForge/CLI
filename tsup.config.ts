@@ -38,10 +38,10 @@ export default defineConfig({
           const localDir = join(assetsDir, 'local');
           mkdirSync(localDir, { recursive: true });
           for (const file of [
-            // Only the template ships. Everything it inlines, and the storage
-            // overlays, are fetched from the InsForge repository at the pinned
-            // ref — see src/lib/local/upstream.ts.
-            'docker-compose.template.yml',
+              // The stack comes from InsForge's repository via its setup.sh. The
+              // only compose the CLI ships is the overlay carrying the telemetry
+              // stamp — see src/lib/local/checkout.ts.
+              'cli-overlay.yml',
           ]) {
             copyFileSync(join('src/assets/local', file), join(localDir, file));
           }

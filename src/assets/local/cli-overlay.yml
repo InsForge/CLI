@@ -1,0 +1,11 @@
+# The only thing the CLI changes about the upstream compose file.
+#
+# Telemetry reads INSFORGE_DEPLOYMENT_METHOD as an artifact stamp: each way of
+# shipping the stack says what it is, so `local start` can be told apart from a
+# self-hosted docker compose. The upstream file does not reference the variable,
+# and Compose only passes variables a file names — so an env file cannot carry
+# it, and this overlay is the way to add it.
+services:
+  insforge:
+    environment:
+      INSFORGE_DEPLOYMENT_METHOD: cli-local

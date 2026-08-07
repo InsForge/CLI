@@ -19,13 +19,11 @@ import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import {
   composePs,
   composeRunInherit,
-  writeRenderedCompose,
   type ComposeContext,
 } from '../../lib/local/compose.js';
 import { ensurePortsAvailable, resolvePorts } from '../../lib/local/ports.js';
-import { DEFAULT_REF, ensureUpstreamFiles } from '../../lib/local/upstream.js';
-import { missingStackTagRepos, resolveStackTag } from '../../lib/local/registry.js';
-import { generateSecrets, readSecrets, writeEnvFile } from '../../lib/local/secrets.js';
+import { ensureCheckout } from '../../lib/local/checkout.js';
+import { readSecrets, writeEnvDeltas } from '../../lib/local/secrets.js';
 import {
   composeProjectName,
   readLocalState,
@@ -47,7 +45,6 @@ const MIN_DOCKER_MEMORY_MB = 1_500;
 
 interface StartOptions {
   storage?: string;
-  stackTag?: string;
   pull?: boolean;
   portApp?: string;
   portAuth?: string;
@@ -106,12 +103,15 @@ function backupCloudLink(): string | null {
   return existing.project_name;
 }
 
-async function waitForHealth(baseUrl: string, onTick: (elapsedMs: number) => void): Promise<void> {
+async function waitForHealth(
+  baseUrl: string,
+  onTick: (elapsedMs: number) => void,
+): Promise<{ version?: string }> {
   const deadline = Date.now() + HEALTH_TIMEOUT_MS;
   const started = Date.now();
   for (;;) {
     const probe = await probeBackendHealth(baseUrl, 5_000);
-    if (probe.reachable) return;
+    if (probe.reachable) return probe;
     if (Date.now() >= deadline) {
       throw new CLIError(
         `The backend did not become healthy within ${Math.round(HEALTH_TIMEOUT_MS / 1000)}s.\n` +
@@ -129,7 +129,6 @@ export function registerLocalStartCommand(localCmd: Command): void {
     .command('start')
     .description('Start a local InsForge backend in Docker and link this directory')
     .option('--storage <backend>', `Object storage backend: ${STORAGE_BACKENDS.join(', ')}`)
-    .option('--stack-tag <tag>', 'Pin the stack to a release tag (e.g. v2.2.9) instead of resolving the newest')
     .option('--pull', 'Re-pull images even when they are already present locally')
     .option('--port-app <n>', 'Host port for the API and dashboard (default 7130)')
     .option('--port-auth <n>', 'Host port for the auth service (default 7131)')
@@ -153,46 +152,17 @@ export function registerLocalStartCommand(localCmd: Command): void {
         const storage = resolveStorage(opts, previous?.storage);
         const ports = resolvePorts({ ...previous?.ports, ...portOverrides(opts) });
         const projectName = previous?.projectName ?? composeProjectName();
-        // Resolve the version once per directory; later starts reuse what was
-        // recorded so nothing moves under the developer. --stack-tag forces it.
-        let stackTag = opts.stackTag ?? previous?.stackTag ?? null;
-        if (opts.stackTag) {
-          // One tag has to name every image on the train, so check before compose
-          // hits a bare "not found" mid-pull that names neither the image nor why.
-          const missing = await missingStackTagRepos(opts.stackTag);
-          if (missing.length > 0) {
-            throw new CLIError(
-              `No image published for --stack-tag ${opts.stackTag}: ` +
-                `${missing.join(', ')}.\n` +
-                'Pick a tag that exists for every InsForge image, or omit --stack-tag to\n' +
-                'use the current published images.',
-            );
-          }
-        } else if (!previous) {
-          const spinner = json ? null : clack.spinner();
-          spinner?.start('Resolving the newest InsForge release...');
-          stackTag = await resolveStackTag();
-          spinner?.stop(
-            stackTag
-              ? `Using InsForge ${stackTag}`
-              : // No release tag common to the images, or the registry was
-                // unreachable. The compose file's :latest defaults are the fallback.
-                'Using the current published images',
-          );
-        }
+        const ctx: ComposeContext = { projectName, storage };
 
-        // The payloads the compose file inlines come from the InsForge repository
-        // at this ref, so they have to be settled before anything renders.
-        const ref = stackTag ?? DEFAULT_REF;
-        const ctx: ComposeContext = { projectName, storage, ref };
-        await ensureUpstreamFiles(ref);
-
-        // Render before any compose call — every one of them needs the file, and
-        // on a first run it does not exist yet. Re-rendered on every start so a
-        // CLI upgrade always runs its own spec; the init SQL inside only takes
-        // effect on an uninitialized cluster, so this never disturbs an existing
-        // instance.
-        writeRenderedCompose(ref);
+        // The stack is defined in InsForge's repository, not here: this fetches
+        // its setup.sh and runs it, which lands the compose file, the files it
+        // mounts, and an .env holding the secrets it generates. Re-run on every
+        // start so a release that adds a file is picked up; it leaves an existing
+        // .env alone, so nothing rotates under a running instance.
+        const fetchSpinner = json ? null : clack.spinner();
+        fetchSpinner?.start('Fetching the InsForge stack...');
+        await ensureCheckout();
+        fetchSpinner?.stop('Stack ready');
 
         // On a restart our own containers already hold these ports, which is not
         // a conflict. Only check when nothing of ours is running; if there is a
@@ -202,16 +172,20 @@ export function registerLocalStartCommand(localCmd: Command): void {
           await ensurePortsAvailable(ports);
         }
 
-        // Secrets are generated once. Regenerating on restart would rotate the
-        // API key out from under an app that already has it in .env.local.
-        const secrets = readSecrets() ?? generateSecrets();
+        writeEnvDeltas({ ports, storage });
 
-        writeEnvFile({ secrets, ports, storage, stackTag });
+        const secrets = readSecrets();
+        if (!secrets) {
+          throw new CLIError(
+            "The stack's env file is missing the keys setup.sh generates.\n" +
+              'Delete .insforge/checkout/.env and start again — note that this loses\n' +
+              'the credentials of any instance already running in this directory.',
+          );
+        }
 
         const state: LocalState = {
           version: 1,
           projectName,
-          stackTag,
           storage,
           ports,
           createdAt: previous?.createdAt ?? new Date().toISOString(),
@@ -231,7 +205,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
         const baseUrl = `http://localhost:${ports.app}`;
         const spinner = json ? null : clack.spinner();
         spinner?.start('Waiting for the backend (first boot runs migrations)...');
-        await waitForHealth(baseUrl, (elapsed) => {
+        const health = await waitForHealth(baseUrl, (elapsed) => {
           spinner?.message(
             `Waiting for the backend (first boot runs migrations)... ${Math.round(elapsed / 1000)}s`,
           );
@@ -261,7 +235,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
           VITE_INSFORGE_ANON_KEY: secrets.anonKey,
         });
 
-        await trackCommandUsage('local', 'start', true, { storage, stack_tag: stackTag ?? 'default' });
+        await trackCommandUsage('local', 'start', true, { storage });
 
         if (json) {
           outputJson({
@@ -274,7 +248,6 @@ export function registerLocalStartCommand(localCmd: Command): void {
             admin: { username: secrets.adminUsername, password: secrets.adminPassword },
             ports,
             storage,
-            stackTag,
             composeProject: projectName,
             envLocal: envResult,
           });
@@ -290,7 +263,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
             `${pc.dim('anon key    ')} ${secrets.anonKey} ${pc.dim('(safe for browsers)')}`,
             `${pc.dim('Admin login ')} ${secrets.adminUsername} / ${secrets.adminPassword}`,
             `${pc.dim('Storage     ')} ${storage === 'local' ? 'local filesystem' : `${storage} (S3 gateway enabled)`}`,
-            `${pc.dim('Version     ')} ${stackTag ?? 'latest published'}`,
+            `${pc.dim('Version     ')} ${health.version ?? 'latest published'}`,
           ].join('\n'),
           'Local InsForge is running',
         );

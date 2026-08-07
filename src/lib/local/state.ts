@@ -32,9 +32,6 @@ export interface LocalState {
   /** `docker compose -p` value. Derived from the directory, stored so a later
    *  `local stop` targets the same containers even if the directory moved. */
   projectName: string;
-  /** Resolved release tag, or null when the compose file's `:latest` defaults
-   *  were used (registry unreachable, or no tag common to the image repos). */
-  stackTag: string | null;
   storage: StorageBackend;
   ports: LocalPorts;
   createdAt: string;

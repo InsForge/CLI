@@ -27,7 +27,6 @@ afterEach(() => {
 const STATE: LocalState = {
   version: 1,
   projectName: 'insforge-app-abc12345',
-  stackTag: 'v2.2.9',
   storage: 'local',
   ports: { app: 7130, auth: 7131, deno: 7133, postgres: 5432, postgrest: 5430 },
   createdAt: '2026-08-05T00:00:00.000Z',
