@@ -1,8 +1,31 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assetsDir, composeArgs, composeFiles, parsePsJson, writeRenderedCompose } from './compose.js';
+import { UPSTREAM_FILES, upstreamDir } from './upstream.js';
+
+const REF = 'v9.9.9';
+
+/**
+ * Seed the upstream cache the way a first `local start` would, with stubs rather
+ * than the real files: what belongs here is that the payloads reach the compose
+ * file intact, not what upstream happens to put in them.
+ */
+function seedUpstream(cwd: string): void {
+  const dir = upstreamDir(REF, cwd);
+  mkdirSync(dir, { recursive: true });
+  const stubs: Record<string, string> = {
+    'db-init.sql': "CREATE ROLE anon;\nCREATE ROLE project_admin;\nSELECT $$dollar$$;\n",
+    'server.ts': 'const url = `${base}/functions.definitions`;\n',
+    'worker-template.js': 'self.onmessage = async (e) => {};\n',
+    'docker-compose.minio.yml': 'services:\n  minio:\n    image: minio/minio\n',
+    'docker-compose.rustfs.yml': 'services:\n  rustfs:\n    image: rustfs/rustfs\n',
+  };
+  for (const name of Object.keys(UPSTREAM_FILES)) {
+    writeFileSync(join(dir, name), stubs[name] ?? 'stub\n');
+  }
+}
 
 const dirs: string[] = [];
 function tmp(): string {
@@ -15,10 +38,14 @@ afterEach(() => {
 });
 
 describe('assetsDir', () => {
-  it('finds the bundled template and the files it inlines', () => {
+  it('ships the template and nothing that upstream owns', () => {
     const dir = assetsDir();
-    for (const f of ['docker-compose.template.yml', 'db-init.sql', 'server.ts', 'worker-template.js']) {
-      expect(existsSync(join(dir, f))).toBe(true);
+    expect(existsSync(join(dir, 'docker-compose.template.yml'))).toBe(true);
+    // These used to be bundled copies of files that live in InsForge/InsForge.
+    // They are fetched at the pinned ref now, so a copy reappearing here means
+    // the drift this removed has been reintroduced.
+    for (const f of Object.keys(UPSTREAM_FILES)) {
+      expect(existsSync(join(dir, f))).toBe(false);
     }
   });
 });
@@ -26,7 +53,8 @@ describe('assetsDir', () => {
 describe('writeRenderedCompose', () => {
   it('inlines the three files as compose configs', () => {
     const cwd = tmp();
-    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    seedUpstream(cwd);
+    const body = readFileSync(writeRenderedCompose(REF, cwd), 'utf-8');
     expect(body).toContain('configs:');
     // PostgREST runs with PGRST_DB_ANON_ROLE=anon and starts before the backend
     // migrates, so these roles have to come from cluster init.
@@ -41,7 +69,8 @@ describe('writeRenderedCompose', () => {
     // A YAML syntax error here would only surface as a runtime failure, and the
     // inlined payloads contain quotes, backticks and # characters.
     const cwd = tmp();
-    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    seedUpstream(cwd);
+    const body = readFileSync(writeRenderedCompose(REF, cwd), 'utf-8');
     for (const key of ['db_init', 'deno_server', 'deno_worker']) {
       expect(body).toMatch(new RegExp(`^  ${key}:$`, 'm'));
     }
@@ -54,7 +83,8 @@ describe('writeRenderedCompose', () => {
     // "invalid interpolation format". Scoped to the configs block: the services
     // below it use ${VAR} interpolation on purpose.
     const cwd = tmp();
-    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    seedUpstream(cwd);
+    const body = readFileSync(writeRenderedCompose(REF, cwd), 'utf-8');
     const start = body.search(/^configs:$/m);
     const end = body.search(/^services:$/m);
     expect(start).toBeGreaterThan(-1);
@@ -68,7 +98,8 @@ describe('writeRenderedCompose', () => {
     // The whole point: no host path is shared with the Docker VM, so Docker
     // Desktop file sharing and SELinux relabelling never come into play.
     const cwd = tmp();
-    const body = readFileSync(writeRenderedCompose(cwd), 'utf-8');
+    seedUpstream(cwd);
+    const body = readFileSync(writeRenderedCompose(REF, cwd), 'utf-8');
     const hostMounts = body
       .split('\n')
       .filter((l) => /^\s+- (\/|\.|\$\{INSFORGE_)/.test(l));
@@ -79,7 +110,7 @@ describe('writeRenderedCompose', () => {
 describe('composeFiles', () => {
   it('is the rendered file alone for filesystem storage', () => {
     const cwd = tmp();
-    const files = composeFiles('local', cwd);
+    const files = composeFiles('local', cwd, REF);
     expect(files).toHaveLength(1);
     expect(files[0]).toBe(join(cwd, '.insforge', 'local-compose.yml'));
   });
@@ -90,9 +121,12 @@ describe('composeFiles', () => {
       ['minio', 'docker-compose.minio.yml'],
       ['rustfs', 'docker-compose.rustfs.yml'],
     ] as const) {
-      const files = composeFiles(backend, cwd);
+      seedUpstream(cwd);
+      const files = composeFiles(backend, cwd, REF);
       expect(files).toHaveLength(2);
       expect(files[1].endsWith(suffix)).toBe(true);
+      // Resolved inside this ref's cache, not the package directory.
+      expect(files[1].startsWith(upstreamDir(REF, cwd))).toBe(true);
       expect(existsSync(files[1])).toBe(true);
     }
   });

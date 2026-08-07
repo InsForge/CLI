@@ -7,6 +7,7 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputInfo, outputJson, outputTable } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import { composePs, writeRenderedCompose, type ComposeContext } from '../../lib/local/compose.js';
+import { DEFAULT_REF } from '../../lib/local/upstream.js';
 import { readSecrets } from '../../lib/local/secrets.js';
 import { localComposeFile, readLocalState } from '../../lib/local/state.js';
 
@@ -30,9 +31,10 @@ export function registerLocalStatusCommand(localCmd: Command): void {
         // Re-render if the file is gone (deleted by hand, or by a previous
         // --delete-data). Every compose call needs it, and without this the only
         // way to stop the containers would be raw `docker`.
-        if (!existsSync(localComposeFile())) writeRenderedCompose();
+        const ref = state.stackTag ?? DEFAULT_REF;
+        if (!existsSync(localComposeFile())) writeRenderedCompose(ref);
 
-        const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage };
+        const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage, ref };
         const services = composePs(ctx);
         const baseUrl = `http://localhost:${state.ports.app}`;
         const health = await probeBackendHealth(baseUrl, 3_000);

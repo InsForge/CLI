@@ -33,12 +33,7 @@
     "dist/index.js",
     "dist/index.d.ts",
     "dist/assets/forger.json",
-    "dist/assets/local/docker-compose.template.yml",
-    "dist/assets/local/docker-compose.minio.yml",
-    "dist/assets/local/docker-compose.rustfs.yml",
-    "dist/assets/local/db-init.sql",
-    "dist/assets/local/server.ts",
-    "dist/assets/local/worker-template.js"
+    "dist/assets/local/docker-compose.template.yml"
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",

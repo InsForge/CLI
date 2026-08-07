@@ -23,6 +23,7 @@ import {
   type ComposeContext,
 } from '../../lib/local/compose.js';
 import { ensurePortsAvailable, resolvePorts } from '../../lib/local/ports.js';
+import { DEFAULT_REF, ensureUpstreamFiles } from '../../lib/local/upstream.js';
 import { missingStackTagRepos, resolveStackTag } from '../../lib/local/registry.js';
 import { generateSecrets, readSecrets, writeEnvFile } from '../../lib/local/secrets.js';
 import {
@@ -152,27 +153,6 @@ export function registerLocalStartCommand(localCmd: Command): void {
         const storage = resolveStorage(opts, previous?.storage);
         const ports = resolvePorts({ ...previous?.ports, ...portOverrides(opts) });
         const projectName = previous?.projectName ?? composeProjectName();
-        const ctx: ComposeContext = { projectName, storage };
-
-        // Render before any compose call — every one of them needs the file, and
-        // on a first run it does not exist yet. Re-rendered on every start so a
-        // CLI upgrade always runs its own spec; the init SQL inside only takes
-        // effect on an uninitialized cluster, so this never disturbs an existing
-        // instance.
-        writeRenderedCompose();
-
-        // On a restart our own containers already hold these ports, which is not
-        // a conflict. Only check when nothing of ours is running; if there is a
-        // genuine clash after that, `docker compose up` reports it.
-        const alreadyRunning = composePs(ctx).some((s) => s.state === 'running');
-        if (!alreadyRunning) {
-          await ensurePortsAvailable(ports);
-        }
-
-        // Secrets are generated once. Regenerating on restart would rotate the
-        // API key out from under an app that already has it in .env.local.
-        const secrets = readSecrets() ?? generateSecrets();
-
         // Resolve the version once per directory; later starts reuse what was
         // recorded so nothing moves under the developer. --stack-tag forces it.
         let stackTag = opts.stackTag ?? previous?.stackTag ?? null;
@@ -200,6 +180,31 @@ export function registerLocalStartCommand(localCmd: Command): void {
                 'Using the current published images',
           );
         }
+
+        // The payloads the compose file inlines come from the InsForge repository
+        // at this ref, so they have to be settled before anything renders.
+        const ref = stackTag ?? DEFAULT_REF;
+        const ctx: ComposeContext = { projectName, storage, ref };
+        await ensureUpstreamFiles(ref);
+
+        // Render before any compose call — every one of them needs the file, and
+        // on a first run it does not exist yet. Re-rendered on every start so a
+        // CLI upgrade always runs its own spec; the init SQL inside only takes
+        // effect on an uninitialized cluster, so this never disturbs an existing
+        // instance.
+        writeRenderedCompose(ref);
+
+        // On a restart our own containers already hold these ports, which is not
+        // a conflict. Only check when nothing of ours is running; if there is a
+        // genuine clash after that, `docker compose up` reports it.
+        const alreadyRunning = composePs(ctx).some((s) => s.state === 'running');
+        if (!alreadyRunning) {
+          await ensurePortsAvailable(ports);
+        }
+
+        // Secrets are generated once. Regenerating on restart would rotate the
+        // API key out from under an app that already has it in .env.local.
+        const secrets = readSecrets() ?? generateSecrets();
 
         writeEnvFile({ secrets, ports, storage, stackTag });
 

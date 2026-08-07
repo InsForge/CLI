@@ -38,12 +38,10 @@ export default defineConfig({
           const localDir = join(assetsDir, 'local');
           mkdirSync(localDir, { recursive: true });
           for (const file of [
+            // Only the template ships. Everything it inlines, and the storage
+            // overlays, are fetched from the InsForge repository at the pinned
+            // ref — see src/lib/local/upstream.ts.
             'docker-compose.template.yml',
-            'docker-compose.minio.yml',
-            'docker-compose.rustfs.yml',
-            'db-init.sql',
-            'server.ts',
-            'worker-template.js',
           ]) {
             copyFileSync(join('src/assets/local', file), join(localDir, file));
           }
