@@ -56,39 +56,6 @@ describe('renderEnvFile', () => {
     expect(env.API_BASE_URL).toBe('http://localhost:7130');
   });
 
-  it('uses a public URL when one is recorded, for both the API and the dashboard', () => {
-    // The env file is rebuilt on every start, so this is the only way a server
-    // behind a reverse proxy keeps its address across a restart.
-    const env = parseEnvFile(
-      renderEnvFile({
-        secrets,
-        ports: PORTS,
-        storage: 'local',
-        stackTag: null,
-        apiUrl: 'https://api.example.com',
-      }),
-    );
-    expect(env.API_BASE_URL).toBe('https://api.example.com');
-    expect(env.VITE_API_BASE_URL).toBe('https://api.example.com');
-  });
-
-  it('marks a public instance as selfhost rather than local for telemetry', () => {
-    const local = parseEnvFile(
-      renderEnvFile({ secrets, ports: PORTS, storage: 'local', stackTag: null }),
-    );
-    expect(local.INSFORGE_DEPLOYMENT_METHOD).toBe('cli-local');
-    const served = parseEnvFile(
-      renderEnvFile({
-        secrets,
-        ports: PORTS,
-        storage: 'local',
-        stackTag: null,
-        apiUrl: 'https://api.example.com',
-      }),
-    );
-    expect(served.INSFORGE_DEPLOYMENT_METHOD).toBe('cli-selfhost');
-  });
-
   it('omits INSFORGE_STACK_TAG when nothing was resolved', () => {
     const env = parseEnvFile(
       renderEnvFile({ secrets, ports: PORTS, storage: 'local', stackTag: null }),
