@@ -37,6 +37,10 @@ export interface LocalState {
   stackTag: string | null;
   storage: StorageBackend;
   ports: LocalPorts;
+  /** Public URL browsers reach this instance on, when it is not localhost.
+   *  Recorded because the env file is rebuilt on every start, so a value edited
+   *  by hand there would not survive one. */
+  apiUrl?: string;
   createdAt: string;
 }
 

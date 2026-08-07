@@ -48,6 +48,7 @@ const MIN_DOCKER_MEMORY_MB = 1_500;
 interface StartOptions {
   storage?: string;
   stackTag?: string;
+  publicUrl?: string;
   pull?: boolean;
   portApp?: string;
   portAuth?: string;
@@ -78,6 +79,29 @@ function portOverrides(opts: StartOptions): Partial<LocalPorts> {
   if (postgres !== undefined) out.postgres = postgres;
   if (postgrest !== undefined) out.postgrest = postgrest;
   return out;
+}
+
+/**
+ * A URL that is wrong here is a dashboard calling the wrong origin, which shows
+ * up as CORS errors rather than as anything naming this setting — so reject
+ * what cannot be one rather than writing it into the env file.
+ */
+function resolveApiUrl(opts: StartOptions, previous: string | undefined): string | undefined {
+  if (opts.publicUrl === undefined) return previous;
+  let parsed: URL;
+  try {
+    parsed = new URL(opts.publicUrl);
+  } catch {
+    throw new CLIError(
+      `--public-url must be an absolute URL, got ${opts.publicUrl}.\n` +
+        'For example: --public-url https://api.example.com',
+    );
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new CLIError(`--public-url must be http or https, got ${parsed.protocol}`);
+  }
+  // Trailing slashes end up doubled where the dashboard joins paths onto it.
+  return opts.publicUrl.replace(/\/+$/, '');
 }
 
 function resolveStorage(opts: StartOptions, previous: StorageBackend | undefined): StorageBackend {
@@ -134,6 +158,13 @@ export function registerLocalStartCommand(localCmd: Command): void {
     .option('--port-app <n>', 'Host port for the API and dashboard (default 7130)')
     .option('--port-auth <n>', 'Host port for the auth service (default 7131)')
     .option('--port-deno <n>', 'Host port for the functions runtime (default 7133)')
+    // Not --api-url: the root command already owns that name for overriding the
+    // Platform API URL, so it never reaches this subcommand's options.
+    .option(
+      '--public-url <url>',
+      'URL browsers reach this instance on, when it is not localhost — set this ' +
+        'when running behind a reverse proxy on a server',
+    )
     .option('--port-postgres <n>', 'Host port for Postgres (default 5432)')
     .option('--port-postgrest <n>', 'Host port for PostgREST (default 5430)')
     .action(async (opts: StartOptions, cmd: Command) => {
@@ -151,6 +182,10 @@ export function registerLocalStartCommand(localCmd: Command): void {
 
         const previous = readLocalState();
         const storage = resolveStorage(opts, previous?.storage);
+        // Recorded, because the env file is rebuilt on every start: a value put
+        // there by hand would be gone after the next one, including the restart
+        // that follows a reboot.
+        const apiUrl = resolveApiUrl(opts, previous?.apiUrl);
         const ports = resolvePorts({ ...previous?.ports, ...portOverrides(opts) });
         const projectName = previous?.projectName ?? composeProjectName();
         // Resolve the version once per directory; later starts reuse what was
@@ -206,7 +241,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
         // API key out from under an app that already has it in .env.local.
         const secrets = readSecrets() ?? generateSecrets();
 
-        writeEnvFile({ secrets, ports, storage, stackTag });
+        writeEnvFile({ secrets, ports, storage, stackTag, apiUrl });
 
         const state: LocalState = {
           version: 1,
@@ -214,6 +249,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
           stackTag,
           storage,
           ports,
+          apiUrl,
           createdAt: previous?.createdAt ?? new Date().toISOString(),
         };
         writeLocalState(state);
