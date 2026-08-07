@@ -20,10 +20,17 @@ export function ensureDockerAvailable(): void {
   }
 }
 
+// A local instance needs a container runtime, so getting one comes first — the
+// user asked for local. The other two paths are offered, not chosen for them:
+// nothing here falls back on its own.
 const INSTALL_HINT = [
   '  • Docker Desktop: https://docs.docker.com/get-docker/',
   '  • Or OrbStack / Colima / Rancher Desktop — any Docker-compatible daemon works.',
-  '  • No Docker? `insforge create` gives you a hosted project in about 30 seconds.',
+  '',
+  '  Would rather not run one?',
+  '  • `insforge create` — a hosted project, ready in about 30 seconds.',
+  '  • `insforge link --api-base-url <url> --api-key <key>` — point this directory',
+  '    at a backend you already have. Neither needs Docker.',
 ].join('\n');
 
 /**
