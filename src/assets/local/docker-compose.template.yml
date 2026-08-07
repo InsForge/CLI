@@ -200,9 +200,10 @@ services:
     restart: unless-stopped
 
   deno:
-    # Official upstream image. ghcr.io/insforge/deno-runtime exists only because
-    # the upstream compose file has no checkout to mount functions/server.ts
-    # from; the CLI writes it into .insforge/ instead, so no hand-built image is
+    # Official upstream image, with the function host supplied as a config.
+    # ghcr.io/insforge/deno-runtime is not used: it is built in a third repository
+    # and its copy of the host matches no commit in InsForge — 175 lines behind on
+    # worker-template.js. The upstream compose file stopped using it too. No
     # in the chain. server.ts reads function code out of Postgres at request
     # time, so nothing user-specific is baked in either.
     image: denoland/deno:alpine-2.0.6

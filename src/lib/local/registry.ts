@@ -11,8 +11,17 @@
  * record it, via the same INSFORGE_STACK_TAG the compose file already reads. A
  * directory resolves once at first start and never moves again.
  *
- * Postgres is deliberately not on this train — the local overlay uses the base
- * ghcr.io/insforge/postgres image, which carries its own upstream versioning.
+ * insforge-oss is the only image on the train. Postgres uses the base
+ * ghcr.io/insforge/postgres image, which carries its own upstream versioning;
+ * PostgREST and Deno are upstream images pinned in the template.
+ *
+ * ghcr.io/insforge/deno-runtime used to be listed here, which quietly disabled
+ * the whole mechanism: a tag has to name every repo on the train, and that image
+ * has never published a single release tag — so `newestCommonTag` always came
+ * back empty and every directory ran :latest. The CLI does not use that image at
+ * all. It runs the official denoland/deno and supplies the function host itself,
+ * which is the same conclusion the upstream compose file reached after its baked
+ * copy was found 175 lines behind.
  *
  * Every failure path returns null and the caller leaves the compose file on its
  * `:latest` defaults — a network problem must not break `local start`.
@@ -22,7 +31,7 @@ const GHCR = 'https://ghcr.io';
 const OWNER = 'insforge';
 
 /** Images pinned together by one release tag. */
-export const STACK_REPOS = ['insforge-oss', 'deno-runtime'];
+export const STACK_REPOS = ['insforge-oss'];
 
 const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 

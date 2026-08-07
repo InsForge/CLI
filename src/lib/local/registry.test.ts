@@ -80,7 +80,15 @@ describe('parseNextLink', () => {
 
 describe('STACK_REPOS', () => {
   it('covers the images one release tag has to name', () => {
-    expect(STACK_REPOS).toEqual(['insforge-oss', 'deno-runtime']);
+    expect(STACK_REPOS).toEqual(['insforge-oss']);
+  });
+
+  // A repo that publishes no release tags disables the whole mechanism, because
+  // a tag has to name every repo on the train. deno-runtime was listed here and
+  // has never published one, so newestCommonTag always came back empty and every
+  // directory silently ran :latest. The CLI does not use that image.
+  it('excludes deno-runtime, which the template does not use', () => {
+    expect(STACK_REPOS).not.toContain('deno-runtime');
   });
 
   // Postgres uses the base ghcr.io/insforge/postgres image, versioned upstream by
