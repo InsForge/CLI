@@ -11,7 +11,7 @@ import { createServer } from 'node:net';
 import { CLIError } from '../errors.js';
 import { DEFAULT_PORTS, type LocalPorts } from './state.js';
 
-export function isPortFree(port: number, host = '127.0.0.1'): Promise<boolean> {
+export function bindable(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
     const server = createServer();
     server.once('error', () => resolve(false));
@@ -20,6 +20,24 @@ export function isPortFree(port: number, host = '127.0.0.1'): Promise<boolean> {
     });
     server.listen(port, host);
   });
+}
+
+/**
+ * Free means bindable on both the wildcard address and loopback.
+ *
+ * Checking only loopback misses the collisions that matter most here. Docker
+ * publishes on 0.0.0.0, and on macOS a container holding 0.0.0.0:5432 still
+ * leaves a Node bind to 127.0.0.1:5432 succeeding — so a second InsForge
+ * instance passed this check and then died in `docker compose up` with "port is
+ * already allocated". Checking only the wildcard would miss a service bound to
+ * loopback alone, which a container publish would also collide with.
+ */
+export async function isPortFree(port: number): Promise<boolean> {
+  const [wildcard, loopback] = await Promise.all([
+    bindable(port, '0.0.0.0'),
+    bindable(port, '127.0.0.1'),
+  ]);
+  return wildcard && loopback;
 }
 
 export interface PortCheck {
