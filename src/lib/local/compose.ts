@@ -148,6 +148,40 @@ export function parsePsJson(stdout: string): ServiceStatus[] {
   }));
 }
 
+/**
+ * Volumes this project already owns, whether or not anything is running.
+ *
+ * `compose ps` only sees containers, and the case that matters here is a stopped
+ * instance whose data is still on disk.
+ */
+export function projectVolumes(projectName: string): string[] {
+  const r = spawnSync(
+    'docker',
+    ['volume', 'ls', '--quiet', '--filter', `label=com.docker.compose.project=${projectName}`],
+    { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  if (r.status !== 0) return [];
+  return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+/**
+ * Remove volumes this project owns that `compose down -v` left behind.
+ *
+ * `down -v` only removes what the compose files it was given declare. Switching
+ * --storage changes which overlay is in play, so the previous backend's volume
+ * stops being named — and `--delete-data` reported success while a minio-data
+ * full of objects stayed on disk.
+ */
+export function removeProjectVolumes(projectName: string): string[] {
+  const left = projectVolumes(projectName);
+  if (left.length === 0) return [];
+  const r = spawnSync('docker', ['volume', 'rm', ...left], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return r.status === 0 ? left : [];
+}
+
 export function composePs(ctx: ComposeContext): ServiceStatus[] {
   const r = composeRun(ctx, ['ps', '--format', 'json']);
   if (r.status !== 0) return [];

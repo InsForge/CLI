@@ -20,6 +20,7 @@ import {
   composePs,
   composeRunInherit,
   type ComposeContext,
+  projectVolumes,
 } from '../../lib/local/compose.js';
 import { ensurePortsAvailable, resolvePorts } from '../../lib/local/ports.js';
 import { ensureCheckout } from '../../lib/local/checkout.js';
@@ -161,7 +162,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
         // .env alone, so nothing rotates under a running instance.
         const fetchSpinner = json ? null : clack.spinner();
         fetchSpinner?.start('Fetching the InsForge stack...');
-        await ensureCheckout();
+        await ensureCheckout(undefined, () => projectVolumes(projectName));
         fetchSpinner?.stop('Stack ready');
 
         // On a restart our own containers already hold these ports, which is not

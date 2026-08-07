@@ -68,7 +68,10 @@ async function fetchSetupScript(): Promise<string> {
  * files it owns and leaves `.env` alone, which is the behaviour to inherit.
  * Offline with a checkout already in place is the one case that skips the fetch.
  */
-export async function ensureCheckout(cwd?: string): Promise<string> {
+export async function ensureCheckout(
+  cwd?: string,
+  onExistingData?: () => string[],
+): Promise<string> {
   const dir = checkoutDir(cwd);
   let script: string;
   try {
@@ -84,6 +87,24 @@ export async function ensureCheckout(cwd?: string): Promise<string> {
   }
 
   mkdirSync(dir, { recursive: true });
+  // setup.sh generates a fresh set of secrets whenever .env is absent, and the
+  // Postgres password it picks is only read when a cluster is created. Against
+  // volumes that already exist, the new password never reaches the database and
+  // the backend cannot log in to its own data — recoverable only by restoring
+  // the file. Refuse instead, before anything is written.
+  if (!existsSync(checkoutEnvFile(cwd)) && onExistingData) {
+    const kept = onExistingData();
+    if (kept.length > 0) {
+      throw new CLIError(
+        `This directory has data from a previous instance (${kept.length} volume` +
+          `${kept.length === 1 ? '' : 's'}) but ${checkoutEnvFile(cwd)} is gone.\n\n` +
+          'That file holds the only copy of its secrets. Generating new ones would\n' +
+          'leave the database unreachable behind the old password.\n\n' +
+          '  • Restore the file from a backup and start again, or\n' +
+          '  • `insforge local stop --delete-data` to discard the old instance.',
+      );
+    }
+  }
   const scriptPath = join(dir, '..', 'setup.sh');
   writeFileSync(scriptPath, script, { mode: 0o700 });
 

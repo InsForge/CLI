@@ -138,3 +138,59 @@ describe('ensureCheckout', () => {
     expect(checkoutReady(cwd)).toBe(true);
   });
 });
+
+describe('secrets are not regenerated over existing data', () => {
+  it('refuses when volumes exist but the env file is gone', async () => {
+    // setup.sh generates a new Postgres password whenever .env is absent, and
+    // that password is only read when a cluster is created — so against volumes
+    // that already exist the backend ends up locked out of its own database.
+    const cwd = tmp();
+    mkdirSync(dirname(upstreamComposeFile(cwd)), { recursive: true });
+    writeFileSync(upstreamComposeFile(cwd), 'services: {}\n');
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => '#!/bin/sh\n# INSFORGE_NO_GIT\n',
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(ensureCheckout(cwd, () => ['proj_postgres-data'])).rejects.toThrow(/volume/);
+    await expect(ensureCheckout(cwd, () => ['proj_postgres-data'])).rejects.toThrow(/--delete-data/);
+  });
+
+  it('proceeds when there is no data to strand', async () => {
+    const cwd = tmp();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () =>
+          '#!/bin/sh\n# INSFORGE_NO_GIT\n' +
+          'mkdir -p "$1/deploy/docker-compose"\n' +
+          'echo "services: {}" > "$1/deploy/docker-compose/docker-compose.yml"\n' +
+          'echo "ACCESS_API_KEY=ik_x" > "$1/.env"\n',
+      })),
+    );
+    await expect(ensureCheckout(cwd, () => [])).resolves.toBe(checkoutDir(cwd));
+  });
+
+  it('does not ask about volumes when the env file is already there', async () => {
+    // A normal restart: the secrets exist, so nothing can be stranded.
+    const cwd = tmp();
+    seedCheckout(cwd);
+    const onExisting = vi.fn(() => ['proj_postgres-data']);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => '#!/bin/sh\n# INSFORGE_NO_GIT\nexit 0\n',
+      })),
+    );
+    await ensureCheckout(cwd, onExisting);
+    expect(onExisting).not.toHaveBeenCalled();
+  });
+});

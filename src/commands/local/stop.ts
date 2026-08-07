@@ -7,7 +7,11 @@ import { ensureDockerReady } from '../../lib/docker.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
-import { composeRunInherit, type ComposeContext } from '../../lib/local/compose.js';
+import {
+  composeRunInherit,
+  removeProjectVolumes,
+  type ComposeContext,
+} from '../../lib/local/compose.js';
 import { clearLocalState, readLocalState } from '../../lib/local/state.js';
 
 interface StopOptions {
@@ -53,10 +57,12 @@ export function registerLocalStopCommand(localCmd: Command): void {
           throw new CLIError('docker compose down failed. See the output above.');
         }
 
-        // Only forget the recorded state when the volumes are gone too. After a
-        // plain stop the instance still exists and its keys must survive, or the
-        // next start would generate new ones and orphan the app's .env.local.
+        // Sweep whatever `down -v` did not name. A --storage switch leaves the
+        // previous backend's volume outside the compose files in play, so it
+        // survived a delete that reported having removed everything.
+        let sweptVolumes: string[] = [];
         if (opts.deleteData) {
+          sweptVolumes = removeProjectVolumes(state.projectName);
           clearLocalState();
         }
 
@@ -77,6 +83,7 @@ export function registerLocalStopCommand(localCmd: Command): void {
           outputJson({
             success: true,
             deletedData: !!opts.deleteData,
+            sweptVolumes,
             restoredCloudProject: restored,
           });
           return;
@@ -84,7 +91,11 @@ export function registerLocalStopCommand(localCmd: Command): void {
 
         outputSuccess(
           opts.deleteData
-            ? 'Local InsForge stopped and all data removed.'
+            ? 'Local InsForge stopped and all data removed.' +
+                (sweptVolumes.length > 0
+                  ? `
+  Also removed ${sweptVolumes.length} volume${sweptVolumes.length === 1 ? '' : 's'} left by a previous storage backend.`
+                  : '')
             : 'Local InsForge stopped. Data is kept — `insforge local start` resumes it.',
         );
         if (restored) {
