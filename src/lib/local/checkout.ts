@@ -134,6 +134,14 @@ export async function ensureCheckout(
     env: { ...process.env, INSFORGE_NO_GIT: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  if (run.error && (run.error as NodeJS.ErrnoException).code === 'ENOENT') {
+    // Plain Windows has no `sh`. Docker Desktop there runs on WSL2 anyway, so
+    // the shell is one terminal away rather than a missing dependency.
+    throw new CLIError(
+      'No `sh` on PATH, so InsForge\'s setup script cannot run.\n\n' +
+        'On Windows, run `insforge local start` from WSL or Git Bash.',
+    );
+  }
   if (run.status !== 0) {
     throw new CLIError(
       'InsForge\'s setup script failed.\n' +

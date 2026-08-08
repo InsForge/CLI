@@ -48,6 +48,10 @@ export function bindable(port: number, host: string): Promise<boolean> {
  * port to run on there at all. macOS never showed it.
  */
 export async function isPortFree(port: number): Promise<boolean> {
+  // Binding below 1024 needs privileges this process usually lacks, while the
+  // Docker daemon has them. Probing says "in use" for a port that is free and
+  // would have worked, so leave those to compose, which reports the real answer.
+  if (port < 1024) return true;
   if (!(await bindable(port, '0.0.0.0'))) return false;
   return bindable(port, '127.0.0.1');
 }

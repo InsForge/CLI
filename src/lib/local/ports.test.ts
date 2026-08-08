@@ -88,6 +88,14 @@ describe('checkPorts', () => {
   });
 });
 
+describe('privileged ports', () => {
+  it('does not call a low port occupied just because this process cannot bind it', async () => {
+    // Docker runs privileged and can publish 80; the probe here cannot bind it,
+    // and reporting that as "in use" rejected a config that would have worked.
+    expect(await isPortFree(80)).toBe(true);
+  });
+});
+
 describe('allocatePorts', () => {
   const base = (): LocalPorts =>
     resolvePorts({
