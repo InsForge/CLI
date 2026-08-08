@@ -1,0 +1,23 @@
+# What the CLI changes about the upstream compose file. Everything else is
+# upstream's, unmodified.
+services:
+  insforge:
+    # Telemetry reads this as an artifact stamp: each way of shipping the stack
+    # says what it is, so `local start` can be told apart from a self-hosted
+    # docker compose. The upstream file does not reference the variable, and
+    # Compose only passes variables a file names — so an env file cannot carry
+    # it, and an overlay is the way to add it.
+    environment:
+      INSFORGE_DEPLOYMENT_METHOD: cli-local
+
+    # Upstream publishes the API and dashboard on every interface, which is what
+    # a self-hosted install wants. A development backend on a laptop that joins
+    # untrusted networks does not: bind it to loopback like the rest of the stack
+    # already is.
+    #
+    # !override, because Compose merges port lists by appending — without it the
+    # 0.0.0.0 entry survives alongside the loopback one and still listens.
+    # Requires Compose 2.24.4+, which is what ensureDocker checks for.
+    ports: !override
+      - "127.0.0.1:${APP_PORT:-7130}:7130"
+      - "127.0.0.1:${AUTH_PORT:-7131}:7131"

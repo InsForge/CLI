@@ -32,7 +32,8 @@
   "files": [
     "dist/index.js",
     "dist/index.d.ts",
-    "dist/assets/forger.json"
+    "dist/assets/forger.json",
+    "dist/assets/local/cli-overlay.yml"
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",
