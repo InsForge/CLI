@@ -150,13 +150,15 @@ describe('allocatePorts', () => {
   });
 
   it('shifts past a block where a moving port meets a fixed one', async () => {
-    // app pinned to where auth's default lands one block along. That block is
-    // unusable; the next one is fine, and rejecting outright would refuse a
-    // request that has an answer.
-    const desired = { ...base(), app: FREE + 1 + PORT_BLOCK_STEP };
+    // app pinned onto auth's own default, so block 0 puts two services on one
+    // port with only one of them free to move. That block is unusable; the next
+    // is fine, and rejecting outright would refuse a request that has an answer.
+    const desired = { ...base(), app: FREE + 1 };
     const { ports: got } = await allocatePorts(desired, new Set(['app']));
-    expect(got.app).toBe(FREE + 1 + PORT_BLOCK_STEP);
-    expect(got.auth).not.toBe(got.app);
+    expect(got.app).toBe(FREE + 1);
+    // The evidence that block 0 was skipped rather than used: at block 0 auth
+    // is FREE + 1. Only the collision branch moves it.
+    expect(got.auth).toBe(FREE + 1 + PORT_BLOCK_STEP);
     expect(new Set(Object.values(got)).size).toBe(5);
   });
 
