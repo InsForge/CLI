@@ -144,8 +144,14 @@ from the InsForge repository and runs it into `.insforge/checkout/`. That script
 is what self-hosting uses, so a local instance runs the same compose file, init
 SQL, and images as a deployed one — the CLI adds one overlay, which sets the
 telemetry stamp and binds the published ports to loopback. Every start re-runs it,
-picking up upstream changes; the generated `.env` is left alone. Images track
-`:latest`; `--pull` refreshes them.
+picking up upstream changes; the generated `.env` is left alone.
+
+Images track `:latest`. A directory's first start pulls, because Docker will not
+re-fetch a tag it already has — without it a machine that pulled months ago runs
+that image and reports its version, with nothing to suggest a newer one exists.
+Later starts do not pull: an image moving under an instance that has data is how
+the backend ends up running migrations its volume did not expect. `--pull` asks
+for it deliberately.
 
 `.insforge/checkout/.env` holds the only copy of the instance's secrets. If it is
 missing while volumes still exist, `local start` refuses rather than generating

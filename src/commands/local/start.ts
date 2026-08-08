@@ -212,9 +212,15 @@ export function registerLocalStartCommand(localCmd: Command): void {
         // reach them — writing this afterwards would strand whatever it made.
         writeLocalState(state);
 
-        // The recorded version reaches compose through INSFORGE_STACK_TAG in the
-        // generated env file — the same variable a hand-run compose uses.
-        if (opts.pull && composeRunInherit(ctx, ['pull']) !== 0) {
+        // The stack tracks :latest, and Docker will not re-fetch a tag it already
+        // has — a machine that pulled months ago runs that image and reports its
+        // version, with nothing to suggest a newer one exists. So a directory
+        // that has never started pulls first, and gets what :latest means today.
+        //
+        // Later starts do not. An image moving under an instance that has data is
+        // how you get the backend running migrations the volume behind it did not
+        // expect; --pull is the way to ask for it deliberately.
+        if ((opts.pull || previous === null) && composeRunInherit(ctx, ['pull']) !== 0) {
           throw new CLIError('docker compose pull failed. See the output above.');
         }
         if (!json) clack.log.step('Starting containers...');
