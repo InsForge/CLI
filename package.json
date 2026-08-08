@@ -1,6 +1,6 @@
 {
   "name": "@insforge/cli",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "InsForge CLI - Command line tool for InsForge platform",
   "type": "module",
   "bin": {
@@ -32,7 +32,8 @@
   "files": [
     "dist/index.js",
     "dist/index.d.ts",
-    "dist/assets/forger.json"
+    "dist/assets/forger.json",
+    "dist/assets/local/cli-overlay.yml"
   ],
   "dependencies": {
     "@clack/prompts": "^0.9.1",

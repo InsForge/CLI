@@ -211,3 +211,23 @@ describe('assess — trust boundary', () => {
     expect(withOpts.severity).toBe('critical');
   });
 });
+
+describe('assess — local stop', () => {
+  /** The registry keys on the command path and reads deleteData off opts. */
+  const stop = (opts: Record<string, unknown>): OperationContext => ({
+    path: 'local stop',
+    args: [],
+    opts,
+  });
+
+  it('gates --delete-data as critical', () => {
+    const r = assess(stop({ deleteData: true }));
+    expect(r.severity).toBe('critical');
+    expect(r.kind).toBe('local.delete_data');
+  });
+
+  it('leaves a plain stop ungated', () => {
+    // Containers stop, volumes stay — nothing to confirm.
+    expect(assess(stop({})).severity).not.toBe('critical');
+  });
+});
