@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   composeProjectName,
   clearLocalState,
@@ -67,11 +67,18 @@ describe('local state file', () => {
     expect(readLocalState(cwd)).toBeNull();
   });
 
-  it('clearLocalState removes both state and secrets', () => {
+  it('clearLocalState removes the state file and leaves the checkout alone', () => {
     const cwd = tmp();
     writeLocalState(STATE, cwd);
+    // The secrets live in .insforge/checkout/.env now, and the checkout is
+    // whole directories of upstream's files — `local stop --delete-data`
+    // removes containers and volumes, not the stack definition.
+    const checkoutMarker = join(cwd, '.insforge', 'checkout', '.env');
+    mkdirSync(dirname(checkoutMarker), { recursive: true });
+    writeFileSync(checkoutMarker, 'X=1\n');
     clearLocalState(cwd);
     expect(existsSync(localStateFile(cwd))).toBe(false);
+    expect(existsSync(checkoutMarker)).toBe(true);
   });
 });
 
@@ -95,7 +102,13 @@ describe('ensureLocalGitignore', () => {
     const lines = readFileSync(join(cwd, '.insforge', '.gitignore'), 'utf-8')
       .split('\n')
       .filter(Boolean);
-    expect(lines).toEqual(['something-else', 'checkout/', 'setup.sh', 'local.json']);
+    expect(lines).toEqual([
+      'something-else',
+      'checkout/',
+      'setup.sh',
+      'local.json',
+      'project.cloud.json',
+    ]);
   });
 
   // project.json holds a cloud api_key and is not ours to start ignoring.

@@ -27,9 +27,13 @@ afterEach(() => {
 const CHECKOUT_FILES = [
   'deploy/docker-compose/docker-compose.yml',
   'deploy/docker-init/db/db-init.sql',
+  'deploy/docker-init/db/jwt.sql',
   'deploy/docker-init/db/postgresql.conf',
   'functions/server.ts',
   'functions/deno.json',
+  'functions/worker-template.js',
+  'docker-compose.minio.yml',
+  'docker-compose.rustfs.yml',
 ];
 
 /** What a successful setup.sh run leaves behind. */
@@ -81,6 +85,16 @@ describe('checkoutReady', () => {
     seedCheckout(cwd);
     expect(checkoutReady(cwd)).toBe(true);
     expect(missingCheckoutFiles(cwd)).toEqual([]);
+  });
+
+  it('wants the storage overlay only for the backend that uses it', () => {
+    const cwd = tmp();
+    seedCheckout(cwd);
+    rmSync(join(checkoutDir(cwd), 'docker-compose.minio.yml'));
+    expect(checkoutReady(cwd)).toBe(true);
+    expect(checkoutReady(cwd, 'rustfs')).toBe(true);
+    expect(checkoutReady(cwd, 'minio')).toBe(false);
+    expect(missingCheckoutFiles(cwd, 'minio')).toEqual(['docker-compose.minio.yml']);
   });
 });
 

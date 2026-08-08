@@ -54,7 +54,12 @@ export function registerLocalStopCommand(localCmd: Command): void {
         // labels. The volume sweep below runs either way and is what actually
         // removes the data.
         if (existsSync(checkoutEnvFile())) {
-          const args = opts.deleteData ? ['down', '-v'] : ['down'];
+          // --remove-orphans for the same reason `up` has it: a --storage switch
+          // that persisted the new backend and then failed leaves the old one's
+          // container outside the compose files this call loads.
+          const args = opts.deleteData
+            ? ['down', '-v', '--remove-orphans']
+            : ['down', '--remove-orphans'];
           if (composeRunInherit(ctx, args) !== 0) {
             throw new CLIError('docker compose down failed. See the output above.');
           }
@@ -100,19 +105,10 @@ export function registerLocalStopCommand(localCmd: Command): void {
           }
         }
 
-        await trackCommandUsage('local', 'stop', true, { delete_data: !!opts.deleteData });
-
-        if (json) {
-          outputJson({
-            success: remainingVolumes.length === 0,
-            deletedData: !!opts.deleteData,
-            sweptVolumes,
-            remainingVolumes,
-            restoredCloudProject: restored,
-          });
-          return;
-        }
-
+        // Before the success event, and before the --json early return. Both
+        // used to run first, so a partial delete was recorded as a success and
+        // exited 0 — and the catch below could not correct it, since telemetry
+        // only reports once per process.
         if (remainingVolumes.length > 0) {
           throw new CLIError(
             `The containers are stopped, but ${remainingVolumes.length} volume` +
@@ -122,6 +118,18 @@ export function registerLocalStopCommand(localCmd: Command): void {
               '\n\nThis directory still points at them, so `insforge local stop --delete-data`\n' +
               'will try again once whatever is holding them is gone.',
           );
+        }
+
+        await trackCommandUsage('local', 'stop', true, { delete_data: !!opts.deleteData });
+
+        if (json) {
+          outputJson({
+            success: true,
+            deletedData: !!opts.deleteData,
+            sweptVolumes,
+            restoredCloudProject: restored,
+          });
+          return;
         }
 
         outputSuccess(

@@ -214,21 +214,30 @@ export function removeProjectVolumes(projectName: string): VolumeSweep {
  * is precisely the state a refused start tells people to resolve that way.
  * Labels are enough to find them without any of the files.
  */
-export function forceRemoveProject(projectName: string): { containers: number } {
+export function forceRemoveProject(projectName: string): {
+  containers: number;
+  networks: number;
+} {
   const filter = `label=com.docker.compose.project=${projectName}`;
-  const ls = spawnSync('docker', ['ps', '-aq', '--filter', filter], {
-    encoding: 'utf-8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  if (ls.status !== 0) {
-    throw new CLIError(
-      `Could not list the containers for ${projectName}.\n` +
-        (ls.stderr?.trim() || 'docker ps failed with no output.'),
-    );
-  }
-  const ids = ls.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
-  if (ids.length > 0) {
-    const rm = spawnSync('docker', ['rm', '-f', ...ids], {
+
+  const listed = (kind: 'ps' | 'network'): string[] => {
+    const args = kind === 'ps' ? ['ps', '-aq'] : ['network', 'ls', '--quiet'];
+    const r = spawnSync('docker', [...args, '--filter', filter], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (r.status !== 0) {
+      throw new CLIError(
+        `Could not list the ${kind === 'ps' ? 'containers' : 'networks'} for ${projectName}.\n` +
+          (r.stderr?.trim() || 'docker failed with no output.'),
+      );
+    }
+    return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  };
+
+  const containers = listed('ps');
+  if (containers.length > 0) {
+    const rm = spawnSync('docker', ['rm', '-f', ...containers], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -239,7 +248,19 @@ export function forceRemoveProject(projectName: string): { containers: number } 
       );
     }
   }
-  return { containers: ids.length };
+
+  // `compose down` would have taken the network with it. Removing only the
+  // containers leaves it behind, and the next start then joins a network the
+  // old instance created.
+  const networks = listed('network');
+  if (networks.length > 0) {
+    spawnSync('docker', ['network', 'rm', ...networks], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
+
+  return { containers: containers.length, networks: networks.length };
 }
 
 export function composePs(ctx: ComposeContext): ServiceStatus[] {

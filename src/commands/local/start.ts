@@ -105,6 +105,11 @@ function backupCloudLink(): string | null {
   return existing.project_name;
 }
 
+/** Quote an argument so a path with spaces survives being pasted into a shell. */
+function shellQuote(arg: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
 async function waitForHealth(
   baseUrl: string,
   ctx: ComposeContext,
@@ -119,7 +124,7 @@ async function waitForHealth(
       throw new CLIError(
         `The backend did not become healthy within ${Math.round(HEALTH_TIMEOUT_MS / 1000)}s.\n` +
           `Inspect the containers with:\n` +
-          `  docker ${composeArgs(ctx, ['logs', 'insforge']).join(' ')}`,
+          `  docker ${composeArgs(ctx, ['logs', 'insforge']).map(shellQuote).join(' ')}`,
       );
     }
     onTick(Date.now() - started);
@@ -172,7 +177,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
         // .env alone, so nothing rotates under a running instance.
         const fetchSpinner = json ? null : clack.spinner();
         fetchSpinner?.start('Fetching the InsForge stack...');
-        await ensureCheckout(undefined, () => projectVolumes(projectName));
+        await ensureCheckout(undefined, () => projectVolumes(projectName), storage);
         fetchSpinner?.stop('Stack ready');
 
         // On a restart our own containers already hold these ports, which is not

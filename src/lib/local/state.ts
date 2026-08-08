@@ -128,7 +128,9 @@ export function ensureLocalGitignore(cwd?: string): void {
   // checkout/ holds the .env setup.sh generated — the instance's only copy of
   // its secrets. It was not listed while the entries here still named files from
   // an earlier layout, so `git add .` would have committed them.
-  const wanted = ['checkout/', 'setup.sh', 'local.json'];
+  // project.cloud.json is a copy of the displaced cloud link, api_key and all —
+  // written by `local start`, so it is this feature's to keep out of a commit.
+  const wanted = ['checkout/', 'setup.sh', 'local.json', 'project.cloud.json'];
   const existing = existsSync(file)
     ? readFileSync(file, 'utf-8').split('\n').map((l) => l.trim())
     : [];

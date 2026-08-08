@@ -47,20 +47,36 @@ export function checkoutEnvFile(cwd?: string): string {
 const REQUIRED_FILES = [
   '.env',
   'deploy/docker-compose/docker-compose.yml',
+  // Both are mounted into /docker-entrypoint-initdb.d. A bind mount whose source
+  // is absent does not fail — Docker creates a directory there, and Postgres init
+  // then chokes on it, which reads as nothing to do with a missing file.
   'deploy/docker-init/db/db-init.sql',
+  'deploy/docker-init/db/jwt.sql',
   'deploy/docker-init/db/postgresql.conf',
   'functions/server.ts',
   'functions/deno.json',
+  // Named in the deno command line's --allow-read, so its absence surfaces when
+  // a function is invoked rather than at boot.
+  'functions/worker-template.js',
 ];
 
+/** Overlay per storage backend, needed only when that backend is selected. */
+const STORAGE_FILES: Record<string, string> = {
+  minio: 'docker-compose.minio.yml',
+  rustfs: 'docker-compose.rustfs.yml',
+};
+
 /** Files a start needs that are not there. Empty means the checkout is usable. */
-export function missingCheckoutFiles(cwd?: string): string[] {
-  return REQUIRED_FILES.filter((f) => !existsSync(join(checkoutDir(cwd), f)));
+export function missingCheckoutFiles(cwd?: string, storage?: string): string[] {
+  const wanted = [...REQUIRED_FILES];
+  const overlay = storage ? STORAGE_FILES[storage] : undefined;
+  if (overlay) wanted.push(overlay);
+  return wanted.filter((f) => !existsSync(join(checkoutDir(cwd), f)));
 }
 
 /** True once the checkout holds what a start needs. */
-export function checkoutReady(cwd?: string): boolean {
-  return missingCheckoutFiles(cwd).length === 0;
+export function checkoutReady(cwd?: string, storage?: string): boolean {
+  return missingCheckoutFiles(cwd, storage).length === 0;
 }
 
 async function fetchSetupScript(): Promise<string> {
@@ -92,13 +108,14 @@ async function fetchSetupScript(): Promise<string> {
 export async function ensureCheckout(
   cwd?: string,
   onExistingData?: () => string[],
+  storage?: string,
 ): Promise<string> {
   const dir = checkoutDir(cwd);
   let script: string;
   try {
     script = await fetchSetupScript();
   } catch (err) {
-    if (checkoutReady(cwd)) return dir;
+    if (checkoutReady(cwd, storage)) return dir;
     throw new CLIError(
       `Could not fetch InsForge's setup script: ${err instanceof Error ? err.message : String(err)}\n` +
         `  ${SETUP_URL}\n\n` +
@@ -148,7 +165,7 @@ export async function ensureCheckout(
         (run.stderr?.trim() || run.stdout?.trim() || '(no output)'),
     );
   }
-  const missing = missingCheckoutFiles(cwd);
+  const missing = missingCheckoutFiles(cwd, storage);
   if (missing.length > 0) {
     throw new CLIError(
       `The setup script reported success but ${dir} is missing:\n` +
