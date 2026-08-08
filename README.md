@@ -9,9 +9,6 @@ Requires Node.js >= 18. We recommend running via `npx` so you always get the lat
 ## Quick Start
 
 ```bash
-# Run InsForge on your own machine — no account, no clone (Docker required)
-npx -y @insforge/cli@latest local start
-
 # Login via browser (OAuth)
 npx @insforge/cli login
 
@@ -31,6 +28,10 @@ npx @insforge/cli link
 npx @insforge/cli db tables
 npx @insforge/cli db query "SELECT * FROM users LIMIT 10"
 ```
+
+A hosted project is the default and what these commands assume. If you
+specifically want a backend running in Docker on your own machine — offline work,
+a throwaway database, no account — see [Local Instances](#local-instances).
 
 ## Authentication
 
