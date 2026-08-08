@@ -80,7 +80,10 @@ export function localComposeFile(cwd?: string): string {
  * basename (`~/a/api` and `~/b/api`) from sharing containers.
  */
 export function composeProjectName(cwd: string = process.cwd()): string {
-  const base = (cwd.split('/').pop() ?? 'insforge')
+  // Both separators, not node:path's basename: that one is platform-specific, so
+  // a Windows path handed to a POSIX build keeps its backslashes and the whole
+  // path becomes the name.
+  const base = (cwd.split(/[\\/]/).filter(Boolean).pop() ?? 'insforge')
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, '-')
     .replace(/^[^a-z0-9]+/, '')

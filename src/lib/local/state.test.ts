@@ -108,3 +108,20 @@ describe('ensureLocalGitignore', () => {
     expect(body).not.toMatch(/^\*$/m);
   });
 });
+
+describe('composeProjectName across platforms', () => {
+  it('takes the last segment of a Windows path too', () => {
+    // split('/') returns the whole string on Windows, so the project name became
+    // the entire path flattened — d-users-me-work-app rather than app.
+    expect(composeProjectName('C:\\Users\\me\\work\\app')).toMatch(/^insforge-app-[0-9a-f]{8}$/);
+    expect(composeProjectName('/home/me/work/app')).toMatch(/^insforge-app-[0-9a-f]{8}$/);
+  });
+
+  it('still separates two directories that share a basename', () => {
+    expect(composeProjectName('/a/api')).not.toBe(composeProjectName('/b/api'));
+  });
+
+  it('falls back when there is no usable segment', () => {
+    expect(composeProjectName('/')).toMatch(/^insforge-(app|insforge)-[0-9a-f]{8}$/);
+  });
+});

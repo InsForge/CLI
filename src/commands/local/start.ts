@@ -191,6 +191,9 @@ export function registerLocalStartCommand(localCmd: Command): void {
           ports,
           createdAt: previous?.createdAt ?? new Date().toISOString(),
         };
+        // Before `up`, deliberately. A failed `up` can still leave containers or
+        // volumes behind, and `local stop` needs the recorded project name to
+        // reach them — writing this afterwards would strand whatever it made.
         writeLocalState(state);
 
         // The recorded version reaches compose through INSFORGE_STACK_TAG in the
@@ -250,7 +253,13 @@ export function registerLocalStartCommand(localCmd: Command): void {
             ports,
             storage,
             composeProject: projectName,
-            envLocal: envResult,
+            // Keys only: `mismatched` carries the values already in the user's
+            // .env.local, which are theirs and would end up in a CI log.
+            envLocal: {
+              added: envResult.added,
+              skipped: envResult.skipped,
+              mismatched: envResult.mismatched.map((m) => m.key),
+            },
           });
           return;
         }
