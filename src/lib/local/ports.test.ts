@@ -149,6 +149,17 @@ describe('allocatePorts', () => {
     );
   });
 
+  it('shifts past a block where a moving port meets a fixed one', async () => {
+    // app pinned to where auth's default lands one block along. That block is
+    // unusable; the next one is fine, and rejecting outright would refuse a
+    // request that has an answer.
+    const desired = { ...base(), app: FREE + 1 + PORT_BLOCK_STEP };
+    const { ports: got } = await allocatePorts(desired, new Set(['app']));
+    expect(got.app).toBe(FREE + 1 + PORT_BLOCK_STEP);
+    expect(got.auth).not.toBe(got.app);
+    expect(new Set(Object.values(got)).size).toBe(5);
+  });
+
   it('treats a port the caller owns as available', async () => {
     await occupy(FREE);
     const { ports: got, moved } = await allocatePorts(base(), new Set(), new Set([FREE]));

@@ -13,10 +13,10 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CLIError } from '../errors.js';
-import { ensureLocalDir } from './state.js';
+import { ensureLocalDir, OVERLAYS } from './state.js';
 
 const SETUP_URL = 'https://raw.githubusercontent.com/InsForge/InsForge/main/deploy/setup.sh';
 const FETCH_TIMEOUT_MS = 15_000;
@@ -60,18 +60,29 @@ const REQUIRED_FILES = [
   'functions/worker-template.js',
 ];
 
-/** Overlay per storage backend, needed only when that backend is selected. */
-const STORAGE_FILES: Record<string, string> = {
-  minio: 'docker-compose.minio.yml',
-  rustfs: 'docker-compose.rustfs.yml',
-};
-
-/** Files a start needs that are not there. Empty means the checkout is usable. */
+/**
+ * Files a start needs that are not there. Empty means the checkout is usable.
+ *
+ * The storage overlay comes from compose.ts's own map rather than a copy here:
+ * two lists would let validation and the compose invocation disagree about
+ * which file has to exist.
+ *
+ * A regular file, not merely a path that exists. A failed start leaves
+ * directories behind at bind-mount sources — that is what a missing jwt.sql
+ * turns into — and existsSync then reports the broken checkout as ready.
+ */
 export function missingCheckoutFiles(cwd?: string, storage?: string): string[] {
   const wanted = [...REQUIRED_FILES];
-  const overlay = storage ? STORAGE_FILES[storage] : undefined;
+  const overlay =
+    storage && storage !== 'local' ? OVERLAYS[storage as keyof typeof OVERLAYS] : undefined;
   if (overlay) wanted.push(overlay);
-  return wanted.filter((f) => !existsSync(join(checkoutDir(cwd), f)));
+  return wanted.filter((f) => {
+    try {
+      return !statSync(join(checkoutDir(cwd), f)).isFile();
+    } catch {
+      return true;
+    }
+  });
 }
 
 /** True once the checkout holds what a start needs. */

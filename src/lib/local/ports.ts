@@ -137,10 +137,20 @@ export async function allocatePorts(
     // Two services on one port passes every free check and then fails inside
     // compose with "port is already allocated" — `--port-app 7131` collides with
     // the auth default without either value being wrong on its own.
+    //
+    // Only fatal when both sides are fixed, since nothing can move them apart.
+    // A collision that involves a shifting port belongs to this block alone: a
+    // fixed 7141 meets the auth default once on the way past it, and throwing
+    // there would reject a request the next block satisfies.
     const seen = new Map<number, keyof LocalPorts>();
+    let blockClash = false;
     for (const name of names) {
       const clash = seen.get(candidate[name]);
       if (clash) {
+        if (!fixed.has(clash) || !fixed.has(name)) {
+          blockClash = true;
+          break;
+        }
         throw new CLIError(
           `${LABELS[clash]} and ${LABELS[name]} would both use port ${candidate[name]}.\n` +
             'Give one of them a port of its own with --port-' +
@@ -149,6 +159,7 @@ export async function allocatePorts(
       }
       seen.set(candidate[name], name);
     }
+    if (blockClash) continue;
 
     const checks = await checkPorts(candidate);
     if (checks.every((c) => c.free || ignore.has(c.port))) {

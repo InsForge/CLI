@@ -26,6 +26,16 @@ export interface LocalPorts {
   postgrest: number;
 }
 
+/**
+ * Compose overlay per storage backend. Here rather than in compose.ts because
+ * checkout.ts validates the same files, and compose.ts already imports from
+ * checkout.ts — a second edge the other way would close the cycle.
+ */
+export const OVERLAYS: Record<Exclude<StorageBackend, 'local'>, string> = {
+  minio: 'docker-compose.minio.yml',
+  rustfs: 'docker-compose.rustfs.yml',
+};
+
 export interface LocalState {
   /** Schema version, so a future change can migrate rather than misread. */
   version: 1;

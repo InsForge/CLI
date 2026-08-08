@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLIError } from '../errors.js';
 import { checkoutDir, checkoutEnvFile, upstreamComposeFile } from './checkout.js';
-import type { StorageBackend } from './state.js';
+import { OVERLAYS, type StorageBackend } from './state.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -39,10 +39,6 @@ export function assetsDir(): string {
   );
 }
 
-const OVERLAYS: Record<Exclude<StorageBackend, 'local'>, string> = {
-  minio: 'docker-compose.minio.yml',
-  rustfs: 'docker-compose.rustfs.yml',
-};
 
 /**
  * Upstream's compose file, the CLI's overlay, and a storage overlay if selected.
@@ -254,10 +250,16 @@ export function forceRemoveProject(projectName: string): {
   // old instance created.
   const networks = listed('network');
   if (networks.length > 0) {
-    spawnSync('docker', ['network', 'rm', ...networks], {
+    const rm = spawnSync('docker', ['network', 'rm', ...networks], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    if (rm.status !== 0) {
+      throw new CLIError(
+        `Could not remove the networks for ${projectName}.\n` +
+          (rm.stderr?.trim() || 'docker network rm failed with no output.'),
+      );
+    }
   }
 
   return { containers: containers.length, networks: networks.length };

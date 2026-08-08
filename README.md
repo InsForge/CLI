@@ -153,10 +153,13 @@ Later starts do not pull: an image moving under an instance that has data is how
 the backend ends up running migrations its volume did not expect. `--pull` asks
 for it deliberately.
 
-`.insforge/checkout/.env` holds the only copy of the instance's secrets. If it is
-missing while volumes still exist, `local start` refuses rather than generating
-new ones — Postgres reads its password only when the cluster is created, so fresh
-secrets would leave the database unreachable.
+`.insforge/checkout/.env` is where the instance's secrets are generated, and the
+only copy of most of them — the Postgres password, JWT secret, encryption key,
+and admin password appear nowhere else. (The API key is also in
+`.insforge/project.json`, the anon key in `.env.local`.) If the file is missing
+while volumes still exist, `local start` refuses rather than generating new ones:
+Postgres reads its password only when the cluster is created, so fresh secrets
+would leave the database unreachable.
 
 **Ports.** The first instance on a machine gets 7130 / 7131 / 7133 / 5432 / 5430.
 When those are taken the whole block shifts by ten — a second instance lands on
@@ -164,8 +167,9 @@ When those are taken the whole block shifts by ten — a second instance lands o
 already used stay put across restarts, so `.env.local` keeps pointing at the
 right place.
 
-Everything binds to `127.0.0.1`. A development backend has no business being
-reachable from the rest of the network.
+Every published port binds to `127.0.0.1` — a development backend has no business
+being reachable from the rest of the network. Services reach each other over the
+project's internal Docker network, which is not published at all.
 
 #### `npx @insforge/cli local stop`
 
@@ -1216,7 +1220,7 @@ npx @insforge/cli config apply --auto-approve   # skip confirmation prompt
 
 Running `npx @insforge/cli link` creates a `.insforge/` directory in your project:
 
-```
+```text
 .insforge/
 └── project.json    # project_id, org_id, appkey, region, api_key, oss_host
 ```
@@ -1226,7 +1230,7 @@ Add `.insforge/` to your `.gitignore` — it contains your project API key.
 `local start` adds the following and writes a `.insforge/.gitignore` covering
 them, so the generated secrets cannot be committed even by `git add -A`:
 
-```
+```text
 .insforge/
 ├── local.json           # ports, storage backend, compose project name
 ├── setup.sh             # the script fetched from the InsForge repository
@@ -1237,9 +1241,9 @@ them, so the generated secrets cannot be committed even by `git add -A`:
 ```
 
 `checkout/.env` is written once and re-read on every later start. Deleting it
-loses the secrets for the running instance: the API key your `.env.local` holds,
-and the Postgres password, which the database only ever read at cluster
-creation. `local start` refuses rather than regenerating them.
+loses the secrets that live nowhere else — among them the Postgres password,
+which the database only ever read at cluster creation. `local start` refuses
+rather than regenerating them.
 
 ### Declarative project config — `insforge.toml`
 
