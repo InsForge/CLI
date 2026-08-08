@@ -20,6 +20,97 @@ export function ensureDockerAvailable(): void {
   }
 }
 
+// A local instance needs a container runtime, so getting one comes first — the
+// user asked for local. The other two paths are offered, not chosen for them:
+// nothing here falls back on its own.
+const INSTALL_HINT = [
+  '  • Docker Desktop: https://docs.docker.com/get-docker/',
+  '  • Or OrbStack / Colima / Rancher Desktop — any Docker-compatible daemon works.',
+  '',
+  '  Would rather not run one?',
+  '  • `insforge create` — a hosted project, ready in about 30 seconds.',
+  '  • `insforge link --api-base-url <url> --api-key <key>` — point this directory',
+  '    at a backend you already have. Neither needs Docker.',
+].join('\n');
+
+/**
+ * Preflight for local instances. Distinguishes the four ways this fails, since
+ * "Docker is required" tells someone whose daemon is merely asleep nothing
+ * actionable. Called only by `local *` — the rest of the CLI stays Docker-free.
+ */
+export function ensureDockerReady(): void {
+  const cli = spawnSync('docker', ['--version'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (cli.error || cli.status !== 0) {
+    throw new CLIError(`Docker is not installed, or not on your PATH.\n${INSTALL_HINT}`);
+  }
+
+  const daemon = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (daemon.error || daemon.status !== 0) {
+    throw new CLIError(
+      'Docker is installed but the daemon is not responding.\n' +
+        '  • Start Docker Desktop (or `colima start`) and try again.\n' +
+        (daemon.stderr ? `  Detail: ${daemon.stderr.trim().split('\n')[0].slice(0, 200)}` : ''),
+    );
+  }
+
+  const compose = spawnSync('docker', ['compose', 'version', '--short'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (compose.error || compose.status !== 0) {
+    throw new CLIError(
+      'Docker Compose v2 is required (the `docker compose` subcommand).\n' +
+        '  • The standalone `docker-compose` v1 binary will not work.\n' +
+        '  • Update Docker Desktop, or install the compose plugin:\n' +
+        '    https://docs.docker.com/compose/install/',
+    );
+  }
+  // The CLI overlay uses the !override merge tag to replace upstream's port
+  // list. Older Compose reads the tag as part of the value and fails with a YAML
+  // error naming neither the file nor the version — check for it here instead.
+  const version = compose.stdout.trim().replace(/^v/, '');
+  if (!atLeast(version, [2, 24, 4])) {
+    throw new CLIError(
+      `Docker Compose 2.24.4 or newer is required (found ${version || 'an unknown version'}).\n` +
+        '  • Update Docker Desktop, or the compose plugin:\n' +
+        '    https://docs.docker.com/compose/install/',
+    );
+  }
+}
+
+/** True when a dotted version is >= the given one. Unparseable reads as new enough:
+ *  a version this cannot compare should not block a start that would have worked. */
+function atLeast(version: string, min: [number, number, number]): boolean {
+  const parts = version.split('.').map((p) => Number.parseInt(p, 10));
+  if (parts.length < 3 || parts.some((p) => !Number.isFinite(p))) return true;
+  for (let i = 0; i < 3; i++) {
+    if (parts[i] > min[i]) return true;
+    if (parts[i] < min[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Total memory the Docker daemon can use, in MB, or null when it can't be read.
+ * Four containers need roughly 1.5 GB; below that Postgres and the backend start
+ * getting OOM-killed in ways that look like random failures.
+ */
+export function dockerMemoryMb(): number | null {
+  const r = spawnSync('docker', ['info', '--format', '{{.MemTotal}}'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (r.error || r.status !== 0) return null;
+  const bytes = Number(r.stdout.trim());
+  return Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / 1024 / 1024) : null;
+}
+
 export interface BuildOptions {
   dir: string;
   imageRef: string; // e.g. registry.fly.io/<app>:<tag>

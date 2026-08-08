@@ -317,11 +317,22 @@ export async function ossFetch(
 export async function probeBackendHealth(
   baseUrl: string,
   timeoutMs = 10_000,
-): Promise<{ reachable: boolean; status: number | null; detail?: string }> {
+): Promise<{ reachable: boolean; status: number | null; detail?: string; version?: string }> {
   const url = `${baseUrl.replace(/\/$/, '')}/api/health`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-    return { reachable: res.ok, status: res.status };
+    // The version comes from the instance rather than from anything the CLI
+    // recorded, so it stays true after an image is pulled underneath it.
+    let version: string | undefined;
+    if (res.ok) {
+      try {
+        version = ((await res.clone().json()) as { version?: string }).version;
+      } catch {
+        // A healthy backend that answers something other than the expected JSON
+        // is still healthy; the version is just unavailable.
+      }
+    }
+    return { reachable: res.ok, status: res.status, version };
   } catch (err) {
     return { reachable: false, status: null, detail: formatFetchError(err, url) };
   }

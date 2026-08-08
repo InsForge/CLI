@@ -210,6 +210,23 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     risk: 'Live traffic to this service stops immediately. Not recoverable.',
   }),
 
+  // `local stop` on its own is safe (containers stop, volumes stay). Only the
+  // volume-destroying form is gated — and it is gated even though the target is
+  // a developer's own machine, because an agent running `local stop
+  // --delete-data` wipes a database that has no backup anywhere.
+  'local stop': (ctx) =>
+    ctx.opts.deleteData
+      ? {
+          severity: 'critical',
+          kind: 'local.delete_data',
+          title: 'Delete all data in the local instance',
+          whatHappens:
+            'Stops the local InsForge containers and removes their volumes: database, storage objects, and logs.',
+          blastRadius: 'Every table, row, and uploaded file in this directory\u2019s local backend.',
+          risk: 'Irreversible. Local instances have no backups — nothing restores this.',
+        }
+      : SAFE,
+
   'storage delete-bucket': (ctx) => ({
     severity: 'critical',
     kind: 'storage.delete_bucket',

@@ -92,6 +92,7 @@ import { registerConfigCommand } from './commands/config/index.js';
 import { registerAiCommands } from './commands/ai/index.js';
 import { registerDomainsCommands } from './commands/domains/index.js';
 import { registerMemoryCommands } from './commands/memory/index.js';
+import { registerLocalCommands } from './commands/local/index.js';
 import { guardHook } from './lib/guard/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -302,6 +303,9 @@ registerSchedulesCreateCommand(schedulesCmd);
 registerSchedulesUpdateCommand(schedulesCmd);
 registerSchedulesDeleteCommand(schedulesCmd);
 registerSchedulesLogsCommand(schedulesCmd);
+
+// Local instance commands (Docker on this machine)
+registerLocalCommands(program);
 
 // Config commands
 registerConfigCommand(program);
