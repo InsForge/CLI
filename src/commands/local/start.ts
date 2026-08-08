@@ -22,9 +22,9 @@ import {
   type ComposeContext,
   projectVolumes,
 } from '../../lib/local/compose.js';
-import { ensurePortsAvailable, resolvePorts } from '../../lib/local/ports.js';
+import { allocatePorts, resolvePorts } from '../../lib/local/ports.js';
 import { ensureCheckout } from '../../lib/local/checkout.js';
-import { readSecrets, writeEnvDeltas } from '../../lib/local/secrets.js';
+import { databaseUrl, readSecrets, writeEnvDeltas } from '../../lib/local/secrets.js';
 import {
   composeProjectName,
   readLocalState,
@@ -151,7 +151,15 @@ export function registerLocalStartCommand(localCmd: Command): void {
 
         const previous = readLocalState();
         const storage = resolveStorage(opts, previous?.storage);
-        const ports = resolvePorts({ ...previous?.ports, ...portOverrides(opts) });
+        const overrides = portOverrides(opts);
+        const desiredPorts = resolvePorts({ ...previous?.ports, ...overrides });
+        // Ports with an answer behind them, which allocation must not move: the
+        // ones passed as flags, and the ones a previous start already recorded
+        // and wrote into this directory's .env.local.
+        const fixedPorts = new Set<keyof LocalPorts>([
+          ...((previous?.ports ? Object.keys(previous.ports) : []) as (keyof LocalPorts)[]),
+          ...(Object.keys(overrides) as (keyof LocalPorts)[]),
+        ]);
         const projectName = previous?.projectName ?? composeProjectName();
         const ctx: ComposeContext = { projectName, storage };
 
@@ -166,11 +174,19 @@ export function registerLocalStartCommand(localCmd: Command): void {
         fetchSpinner?.stop('Stack ready');
 
         // On a restart our own containers already hold these ports, which is not
-        // a conflict. Only check when nothing of ours is running; if there is a
-        // genuine clash after that, `docker compose up` reports it.
+        // a conflict. Only allocate when nothing of ours is running; if there is
+        // a genuine clash after that, `docker compose up` reports it.
+        let ports = desiredPorts;
         const alreadyRunning = composePs(ctx).some((s) => s.state === 'running');
         if (!alreadyRunning) {
-          await ensurePortsAvailable(ports);
+          const allocation = await allocatePorts(desiredPorts, fixedPorts);
+          ports = allocation.ports;
+          if (allocation.moved.length > 0 && !json) {
+            clack.log.info(
+              `Default ports are in use, so this instance took the next block:\n` +
+                allocation.moved.map((m) => `  ${m.from} → ${m.to}`).join('\n'),
+            );
+          }
         }
 
         writeEnvDeltas({ ports, storage });
@@ -246,7 +262,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
             success: true,
             apiUrl: baseUrl,
             dashboardUrl: baseUrl,
-            databaseUrl: `postgresql://postgres:postgres@localhost:${ports.postgres}/insforge`,
+            databaseUrl: databaseUrl(secrets.postgresPassword, ports.postgres),
             apiKey: secrets.apiKey,
             anonKey: secrets.anonKey,
             admin: { username: secrets.adminUsername, password: secrets.adminPassword },
@@ -268,7 +284,7 @@ export function registerLocalStartCommand(localCmd: Command): void {
           [
             `${pc.dim('API URL     ')} ${pc.cyan(baseUrl)}`,
             `${pc.dim('Dashboard   ')} ${pc.cyan(baseUrl)}`,
-            `${pc.dim('DB URL      ')} postgresql://postgres:postgres@localhost:${ports.postgres}/insforge`,
+            `${pc.dim('DB URL      ')} ${databaseUrl(secrets.postgresPassword, ports.postgres)}`,
             `${pc.dim('API key     ')} ${secrets.apiKey} ${pc.dim('(superadmin — server-side only)')}`,
             `${pc.dim('anon key    ')} ${secrets.anonKey} ${pc.dim('(safe for browsers)')}`,
             `${pc.dim('Admin login ')} ${secrets.adminUsername} / ${secrets.adminPassword}`,

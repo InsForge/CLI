@@ -24,6 +24,7 @@ export interface LocalSecrets {
   anonKey: string;
   adminUsername: string;
   adminPassword: string;
+  postgresPassword: string;
 }
 
 function hex(bytes: number): string {
@@ -69,8 +70,20 @@ export function readSecrets(cwd?: string): LocalSecrets | null {
   const anonKey = env.ACCESS_ANON_KEY;
   const adminUsername = env.ROOT_ADMIN_USERNAME;
   const adminPassword = env.ROOT_ADMIN_PASSWORD;
-  if (!apiKey || !anonKey || !adminUsername || !adminPassword) return null;
-  return { apiKey, anonKey, adminUsername, adminPassword };
+  const postgresPassword = env.POSTGRES_PASSWORD;
+  if (!apiKey || !anonKey || !adminUsername || !adminPassword || !postgresPassword) return null;
+  return { apiKey, anonKey, adminUsername, adminPassword, postgresPassword };
+}
+
+/**
+ * The connection string for a local instance.
+ *
+ * The password is setup.sh's, not a known default: an earlier version printed
+ * `postgres:postgres` from when the CLI generated its own env, and that URL
+ * failed authentication for everyone who copied it.
+ */
+export function databaseUrl(password: string, port: number): string {
+  return `postgresql://postgres:${password}@localhost:${port}/insforge`;
 }
 
 export interface EnvDeltaInput {

@@ -1,7 +1,14 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createServer, type Server } from 'node:net';
 import { CLIError } from '../errors.js';
-import { checkPorts, ensurePortsAvailable, isPortFree, resolvePorts } from './ports.js';
+import {
+  allocatePorts,
+  checkPorts,
+  ensurePortsAvailable,
+  isPortFree,
+  PORT_BLOCK_STEP,
+  resolvePorts,
+} from './ports.js';
 import { DEFAULT_PORTS, type LocalPorts } from './state.js';
 
 const servers: Server[] = [];
@@ -78,5 +85,58 @@ describe('checkPorts', () => {
       'postgres',
       'postgrest',
     ]);
+  });
+});
+
+describe('allocatePorts', () => {
+  const base = (): LocalPorts =>
+    resolvePorts({
+      app: FREE,
+      auth: FREE + 1,
+      deno: FREE + 2,
+      postgres: FREE + 3,
+      postgrest: FREE + 4,
+    });
+
+  it('keeps the defaults when they are free', async () => {
+    const { ports: got, moved } = await allocatePorts(base());
+    expect(got).toEqual(base());
+    expect(moved).toEqual([]);
+  });
+
+  it('shifts the whole block when one port is taken', async () => {
+    await occupy(FREE + 2);
+    const { ports: got, moved } = await allocatePorts(base());
+    expect(got.app).toBe(FREE + PORT_BLOCK_STEP);
+    expect(got.deno).toBe(FREE + 2 + PORT_BLOCK_STEP);
+    // The whole block moves together, so the offset stays legible.
+    expect(moved).toHaveLength(5);
+  });
+
+  it('keeps shifting past a second occupied block', async () => {
+    await occupy(FREE);
+    await occupy(FREE + PORT_BLOCK_STEP);
+    const { ports: got } = await allocatePorts(base());
+    expect(got.app).toBe(FREE + 2 * PORT_BLOCK_STEP);
+  });
+
+  it('never moves a port the caller fixed, and says so when it is taken', async () => {
+    await occupy(FREE);
+    await expect(allocatePorts(base(), new Set(['app']))).rejects.toThrow(CLIError);
+    await expect(allocatePorts(base(), new Set(['app']))).rejects.toThrow('--port-app');
+  });
+
+  it('shifts the unfixed ports around a fixed one', async () => {
+    await occupy(FREE + 1);
+    const { ports: got } = await allocatePorts(base(), new Set(['app']));
+    expect(got.app).toBe(FREE);
+    expect(got.auth).toBe(FREE + 1 + PORT_BLOCK_STEP);
+  });
+
+  it('treats a port the caller owns as available', async () => {
+    await occupy(FREE);
+    const { ports: got, moved } = await allocatePorts(base(), new Set(), new Set([FREE]));
+    expect(got.app).toBe(FREE);
+    expect(moved).toEqual([]);
   });
 });

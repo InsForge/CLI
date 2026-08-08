@@ -6,7 +6,7 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputInfo, outputJson, outputTable } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import { composePs, type ComposeContext } from '../../lib/local/compose.js';
-import { readSecrets } from '../../lib/local/secrets.js';
+import { databaseUrl, readSecrets } from '../../lib/local/secrets.js';
 import { readLocalState } from '../../lib/local/state.js';
 
 export function registerLocalStatusCommand(localCmd: Command): void {
@@ -43,7 +43,6 @@ export function registerLocalStatusCommand(localCmd: Command): void {
             running: services.some((s) => s.state === 'running'),
             healthy: health.reachable,
             apiUrl: baseUrl,
-            databaseUrl: `postgresql://postgres:postgres@localhost:${state.ports.postgres}/insforge`,
             ports: state.ports,
             storage: state.storage,
               version: health.version ?? null,
@@ -57,6 +56,11 @@ export function registerLocalStatusCommand(localCmd: Command): void {
                   apiKey: secrets.apiKey,
                   anonKey: secrets.anonKey,
                   admin: { username: secrets.adminUsername, password: secrets.adminPassword },
+                  // Carries the Postgres password, so it belongs with the keys
+                  // rather than in the always-present fields. `ports.postgres`
+                  // is there unconditionally for anything that just needs to
+                  // know where the database is.
+                  databaseUrl: databaseUrl(secrets.postgresPassword, state.ports.postgres),
                 }
               : {}),
           });
@@ -73,10 +77,10 @@ export function registerLocalStatusCommand(localCmd: Command): void {
         );
         outputInfo('');
         outputInfo(`  ${pc.dim('API URL   ')} ${pc.cyan(baseUrl)}`);
-        outputInfo(
-          `  ${pc.dim('DB URL    ')} postgresql://postgres:postgres@localhost:${state.ports.postgres}/insforge`,
-        );
         if (secrets) {
+          outputInfo(
+            `  ${pc.dim('DB URL    ')} ${databaseUrl(mask(secrets.postgresPassword), state.ports.postgres)}`,
+          );
           outputInfo(`  ${pc.dim('API key   ')} ${mask(secrets.apiKey)}`);
           outputInfo(`  ${pc.dim('anon key  ')} ${mask(secrets.anonKey)}`);
           outputInfo(

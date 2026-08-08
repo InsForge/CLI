@@ -127,7 +127,7 @@ npx @insforge/cli local start --json
 | --- | --- |
 | `--storage <backend>` | `local` (filesystem, default), `minio`, or `rustfs`. The bundled stores stay on the internal Docker network and enable the S3-compatible gateway at `/storage/v1/s3`. |
 | `--pull` | Re-pull images even when present locally. |
-| `--port-app`, `--port-auth`, `--port-deno`, `--port-postgres`, `--port-postgrest` | Host port overrides. Defaults are 7130 / 7131 / 7133 / 5432 / 5430. |
+| `--port-app`, `--port-auth`, `--port-deno`, `--port-postgres`, `--port-postgrest` | Host port overrides. Defaults are 7130 / 7131 / 7133 / 5432 / 5430. A port set here is never relocated. |
 
 Afterwards every other command targets the local backend — no login, because the
 directory is linked with the instance's own API key:
@@ -152,8 +152,14 @@ missing while volumes still exist, `local start` refuses rather than generating
 new ones — Postgres reads its password only when the cluster is created, so fresh
 secrets would leave the database unreachable.
 
-**Ports.** Everything binds to `127.0.0.1`. A development backend has no business
-being reachable from the rest of the network.
+**Ports.** The first instance on a machine gets 7130 / 7131 / 7133 / 5432 / 5430.
+When those are taken the whole block shifts by ten — a second instance lands on
+7140, a third on 7150 — and `start` prints what moved. Ports a directory has
+already used stay put across restarts, so `.env.local` keeps pointing at the
+right place.
+
+Everything binds to `127.0.0.1`. A development backend has no business being
+reachable from the rest of the network.
 
 #### `npx @insforge/cli local stop`
 

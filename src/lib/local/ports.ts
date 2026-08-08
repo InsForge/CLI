@@ -1,10 +1,20 @@
 /**
- * Port availability for a local instance.
+ * Port allocation for a local instance.
  *
  * The defaults match every existing InsForge doc (7130 for the API and
- * dashboard, 5432 for Postgres, …), so URLs a user has already seen keep
- * working. When one is taken we report exactly which and stop, rather than
- * silently relocating the instance to ports nothing else knows about.
+ * dashboard, 5432 for Postgres, …), so the first instance on a machine keeps the
+ * URLs a user has already seen. A second one cannot have them, and refusing to
+ * start would make "one instance per directory" true only for the first
+ * directory — so the block shifts by ten until it finds a free set.
+ *
+ * Shifting the whole block rather than each port separately keeps the offset
+ * legible: 7140/7141/7143 is recognisably the second instance, where a per-port
+ * scan would land on whatever happened to be free.
+ *
+ * Two kinds of port never move. An explicit --port-app is an answer, not a
+ * preference. A port already in this directory's state belongs to an instance
+ * that has data and an .env.local pointing at it; relocating on a restart would
+ * strand both.
  */
 
 import { createServer } from 'node:net';
@@ -85,4 +95,63 @@ export async function ensurePortsAvailable(
 
 export function resolvePorts(overrides: Partial<LocalPorts> = {}): LocalPorts {
   return { ...DEFAULT_PORTS, ...overrides };
+}
+
+export const PORT_BLOCK_STEP = 10;
+const MAX_BLOCKS = 20;
+
+export interface PortAllocation {
+  ports: LocalPorts;
+  /** Ports that could not stay at their default, for reporting. */
+  moved: { name: keyof LocalPorts; from: number; to: number }[];
+}
+
+/**
+ * Find a set of free ports, shifting the block by ten at a time.
+ *
+ * `fixed` names the ports that must be used as given — explicit flags and
+ * anything this directory already recorded. When one of those is taken there is
+ * nowhere to move it to, so this reports it the same way a single-instance
+ * conflict was always reported.
+ */
+export async function allocatePorts(
+  desired: LocalPorts,
+  fixed: Set<keyof LocalPorts> = new Set(),
+  ignore: Set<number> = new Set(),
+): Promise<PortAllocation> {
+  const names = Object.keys(desired) as (keyof LocalPorts)[];
+
+  for (let block = 0; block < MAX_BLOCKS; block++) {
+    const candidate = {} as LocalPorts;
+    for (const name of names) {
+      candidate[name] = fixed.has(name)
+        ? desired[name]
+        : desired[name] + block * PORT_BLOCK_STEP;
+    }
+    const checks = await checkPorts(candidate);
+    if (checks.every((c) => c.free || ignore.has(c.port))) {
+      const moved = names
+        .filter((n) => candidate[n] !== desired[n])
+        .map((n) => ({ name: n, from: desired[n], to: candidate[n] }));
+      return { ports: candidate, moved };
+    }
+    // A fixed port is taken, so no offset will help — every block reuses it.
+    const stuck = checks.filter((c) => !c.free && !ignore.has(c.port) && fixed.has(c.name));
+    if (stuck.length > 0) {
+      const detail = stuck.map((c) => `  • ${c.port} (${LABELS[c.name]})`).join('\n');
+      const flags = stuck.map((c) => `--port-${c.name} <n>`).join(' ');
+      throw new CLIError(
+        `Port${stuck.length > 1 ? 's' : ''} already in use:\n${detail}\n\n` +
+          'These were set explicitly, or belong to this directory\'s existing\n' +
+          'instance, so they were not relocated. Free them, or pick others:\n' +
+          `  insforge local start ${flags}`,
+      );
+    }
+  }
+
+  throw new CLIError(
+    `No free port block found after trying ${MAX_BLOCKS} of them, starting at ` +
+      `${desired.app}. Something is occupying a very wide range; pass ports ` +
+      'explicitly with --port-app and friends.',
+  );
 }
