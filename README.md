@@ -1223,20 +1223,23 @@ Running `npx @insforge/cli link` creates a `.insforge/` directory in your projec
 
 Add `.insforge/` to your `.gitignore` — it contains your project API key.
 
-`local start` adds two more files and writes a `.insforge/.gitignore` covering
-them, so the generated keys cannot be committed even by `git add -A`:
+`local start` adds the following and writes a `.insforge/.gitignore` covering
+them, so the generated secrets cannot be committed even by `git add -A`:
 
 ```
 .insforge/
-├── local.json           # ports, resolved version, compose project name
-├── local.env            # generated secrets, mode 0600 — fed to docker compose
-├── local-db-init.sql    # cluster-init SQL, mounted into Postgres read-only
+├── local.json           # ports, storage backend, compose project name
+├── setup.sh             # the script fetched from the InsForge repository
+├── checkout/            # the stack that script wrote
+│   ├── .env             # generated secrets, mode 0600
+│   └── deploy/…         # the compose file and what it mounts
 └── project.cloud.json   # only when a cloud link was displaced
 ```
 
-`local.env` is written once and re-read on every later start. Deleting it loses
-the keys for the running instance; regenerating them would rotate the API key
-away from the `.env.local` your app already holds.
+`checkout/.env` is written once and re-read on every later start. Deleting it
+loses the secrets for the running instance: the API key your `.env.local` holds,
+and the Postgres password, which the database only ever read at cluster
+creation. `local start` refuses rather than regenerating them.
 
 ### Declarative project config — `insforge.toml`
 

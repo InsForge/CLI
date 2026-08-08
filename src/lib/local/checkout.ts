@@ -37,9 +37,30 @@ export function checkoutEnvFile(cwd?: string): string {
   return join(checkoutDir(cwd), '.env');
 }
 
+/**
+ * Every file the compose file mounts or reads, relative to the checkout.
+ *
+ * Mirrors setup.sh's own list. Checking only the compose file and .env let an
+ * interrupted fetch pass as ready, and the start then failed inside Compose on
+ * a missing mount instead of here with something to act on.
+ */
+const REQUIRED_FILES = [
+  '.env',
+  'deploy/docker-compose/docker-compose.yml',
+  'deploy/docker-init/db/db-init.sql',
+  'deploy/docker-init/db/postgresql.conf',
+  'functions/server.ts',
+  'functions/deno.json',
+];
+
+/** Files a start needs that are not there. Empty means the checkout is usable. */
+export function missingCheckoutFiles(cwd?: string): string[] {
+  return REQUIRED_FILES.filter((f) => !existsSync(join(checkoutDir(cwd), f)));
+}
+
 /** True once the checkout holds what a start needs. */
 export function checkoutReady(cwd?: string): boolean {
-  return existsSync(upstreamComposeFile(cwd)) && existsSync(checkoutEnvFile(cwd));
+  return missingCheckoutFiles(cwd).length === 0;
 }
 
 async function fetchSetupScript(): Promise<string> {
@@ -119,9 +140,11 @@ export async function ensureCheckout(
         (run.stderr?.trim() || run.stdout?.trim() || '(no output)'),
     );
   }
-  if (!checkoutReady(cwd)) {
+  const missing = missingCheckoutFiles(cwd);
+  if (missing.length > 0) {
     throw new CLIError(
-      `The setup script reported success but ${dir} has no compose file or .env.`,
+      `The setup script reported success but ${dir} is missing:\n` +
+        missing.map((f) => `  • ${f}`).join('\n'),
     );
   }
   return dir;

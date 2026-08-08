@@ -7,7 +7,11 @@ const overlay = readFileSync(join(assetsDir(), 'cli-overlay.yml'), 'utf-8');
 
 describe('cli-overlay.yml', () => {
   it('binds every published port to loopback', () => {
-    const published = [...overlay.matchAll(/^\s*-\s*"([^"]+:\d+)"/gm)].map((m) => m[1]);
+    // Quoted or not, single or double: a rewrite that drops the quotes must not
+    // slip past the check this test exists to be.
+    const published = [...overlay.matchAll(/^\s*-\s*["']?([^"'\n]*:\d+)["']?\s*$/gm)].map(
+      (m) => m[1].trim(),
+    );
     expect(published.length).toBeGreaterThan(0);
     for (const p of published) expect(p).toMatch(/^127\.0\.0\.1:/);
   });

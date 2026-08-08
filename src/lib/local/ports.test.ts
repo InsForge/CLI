@@ -133,6 +133,14 @@ describe('allocatePorts', () => {
     expect(got.auth).toBe(FREE + 1 + PORT_BLOCK_STEP);
   });
 
+  it('refuses two services on one port', async () => {
+    const clashing = { ...base(), auth: FREE };
+    await expect(allocatePorts(clashing, new Set(['app', 'auth']))).rejects.toThrow(CLIError);
+    await expect(allocatePorts(clashing, new Set(['app', 'auth']))).rejects.toThrow(
+      String(FREE),
+    );
+  });
+
   it('treats a port the caller owns as available', async () => {
     await occupy(FREE);
     const { ports: got, moved } = await allocatePorts(base(), new Set(), new Set([FREE]));

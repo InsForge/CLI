@@ -17,6 +17,7 @@ import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import {
+  composeArgs,
   composePs,
   composeRunInherit,
   type ComposeContext,
@@ -106,6 +107,7 @@ function backupCloudLink(): string | null {
 
 async function waitForHealth(
   baseUrl: string,
+  ctx: ComposeContext,
   onTick: (elapsedMs: number) => void,
 ): Promise<{ version?: string }> {
   const deadline = Date.now() + HEALTH_TIMEOUT_MS;
@@ -117,7 +119,7 @@ async function waitForHealth(
       throw new CLIError(
         `The backend did not become healthy within ${Math.round(HEALTH_TIMEOUT_MS / 1000)}s.\n` +
           `Inspect the containers with:\n` +
-          `  docker compose -p ${composeProjectName()} logs insforge`,
+          `  docker ${composeArgs(ctx, ['logs', 'insforge']).join(' ')}`,
       );
     }
     onTick(Date.now() - started);
@@ -224,14 +226,17 @@ export function registerLocalStartCommand(localCmd: Command): void {
           throw new CLIError('docker compose pull failed. See the output above.');
         }
         if (!json) clack.log.step('Starting containers...');
-        if (composeRunInherit(ctx, ['up', '-d']) !== 0) {
+        // --remove-orphans: switching --storage drops the previous backend's
+        // service from the compose files in play. Without this its container
+        // keeps running, invisible to every later status and stop.
+        if (composeRunInherit(ctx, ['up', '-d', '--remove-orphans']) !== 0) {
           throw new CLIError('docker compose up failed. See the output above.');
         }
 
         const baseUrl = `http://localhost:${ports.app}`;
         const spinner = json ? null : clack.spinner();
         spinner?.start('Waiting for the backend (first boot runs migrations)...');
-        const health = await waitForHealth(baseUrl, (elapsed) => {
+        const health = await waitForHealth(baseUrl, ctx, (elapsed) => {
           spinner?.message(
             `Waiting for the backend (first boot runs migrations)... ${Math.round(elapsed / 1000)}s`,
           );

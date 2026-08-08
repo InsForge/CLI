@@ -6,7 +6,6 @@ import {
   composeProjectName,
   clearLocalState,
   ensureLocalGitignore,
-  localEnvFile,
   localStateFile,
   readLocalState,
   writeLocalState,
@@ -71,10 +70,8 @@ describe('local state file', () => {
   it('clearLocalState removes both state and secrets', () => {
     const cwd = tmp();
     writeLocalState(STATE, cwd);
-    writeFileSync(localEnvFile(cwd), 'JWT_SECRET=x\n');
     clearLocalState(cwd);
     expect(existsSync(localStateFile(cwd))).toBe(false);
-    expect(existsSync(localEnvFile(cwd))).toBe(false);
   });
 });
 
@@ -83,7 +80,9 @@ describe('ensureLocalGitignore', () => {
     const cwd = tmp();
     ensureLocalGitignore(cwd);
     const body = readFileSync(join(cwd, '.insforge', '.gitignore'), 'utf-8');
-    expect(body.split('\n')).toContain('local.env');
+    // checkout/ is where the generated .env lives — the entry that actually
+    // keeps the instance's secrets out of a commit.
+    expect(body.split('\n')).toContain('checkout/');
     expect(body.split('\n')).toContain('local.json');
   });
 
@@ -96,7 +95,7 @@ describe('ensureLocalGitignore', () => {
     const lines = readFileSync(join(cwd, '.insforge', '.gitignore'), 'utf-8')
       .split('\n')
       .filter(Boolean);
-    expect(lines).toEqual(['something-else', 'local.env', 'local.json', 'local-compose.yml']);
+    expect(lines).toEqual(['something-else', 'checkout/', 'setup.sh', 'local.json']);
   });
 
   // project.json holds a cloud api_key and is not ours to start ignoring.

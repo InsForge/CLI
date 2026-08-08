@@ -60,19 +60,6 @@ export function localStateFile(cwd?: string): string {
   return join(localDir(cwd), 'local.json');
 }
 
-export function localEnvFile(cwd?: string): string {
-  return join(localDir(cwd), 'local.env');
-}
-
-/**
- * The rendered compose file. Generated on every start from the CLI's template so
- * a CLI upgrade always runs its own spec, and readable on disk so a user can
- * inspect or hand-run exactly what the CLI ran.
- */
-export function localComposeFile(cwd?: string): string {
-  return join(localDir(cwd), 'local-compose.yml');
-}
-
 /**
  * Compose project name for a directory. Docker requires lowercase
  * `[a-z0-9][a-z0-9_-]*`, so the basename is sanitized and suffixed with a hash
@@ -92,15 +79,29 @@ export function composeProjectName(cwd: string = process.cwd()): string {
   return `insforge-${base || 'app'}-${hash}`;
 }
 
+function isLocalState(v: unknown): v is LocalState {
+  if (typeof v !== 'object' || v === null) return false;
+  const s = v as Record<string, unknown>;
+  if (typeof s.projectName !== 'string' || !s.projectName) return false;
+  if (typeof s.storage !== 'string') return false;
+  const ports = s.ports;
+  if (typeof ports !== 'object' || ports === null) return false;
+  const p = ports as Record<string, unknown>;
+  return (['app', 'auth', 'deno', 'postgres', 'postgrest'] as const).every(
+    (k) => Number.isInteger(p[k]),
+  );
+}
+
 export function readLocalState(cwd?: string): LocalState | null {
   const file = localStateFile(cwd);
   if (!existsSync(file)) return null;
   try {
-    return JSON.parse(readFileSync(file, 'utf-8')) as LocalState;
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf-8'));
+    // Valid JSON of the wrong shape is the case that got through: `{}` parses,
+    // and the first `state.ports.postgres` then throws somewhere with no
+    // mention of this file. Callers treat null as "no instance recorded".
+    return isLocalState(parsed) ? parsed : null;
   } catch {
-    // A truncated or hand-edited file shouldn't wedge `local stop`; callers
-    // treat null as "no instance recorded" and can still be pointed at one
-    // by re-running `local start`.
     return null;
   }
 }
@@ -112,9 +113,8 @@ export function writeLocalState(state: LocalState, cwd?: string): void {
 }
 
 export function clearLocalState(cwd?: string): void {
-  for (const file of [localStateFile(cwd), localEnvFile(cwd), localComposeFile(cwd)]) {
-    if (existsSync(file)) unlinkSync(file);
-  }
+  const file = localStateFile(cwd);
+  if (existsSync(file)) unlinkSync(file);
 }
 
 /**
@@ -125,7 +125,10 @@ export function clearLocalState(cwd?: string): void {
 export function ensureLocalGitignore(cwd?: string): void {
   const dir = ensureLocalDir(cwd);
   const file = join(dir, '.gitignore');
-  const wanted = ['local.env', 'local.json', 'local-compose.yml'];
+  // checkout/ holds the .env setup.sh generated — the instance's only copy of
+  // its secrets. It was not listed while the entries here still named files from
+  // an earlier layout, so `git add .` would have committed them.
+  const wanted = ['checkout/', 'setup.sh', 'local.json'];
   const existing = existsSync(file)
     ? readFileSync(file, 'utf-8').split('\n').map((l) => l.trim())
     : [];

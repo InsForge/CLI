@@ -13,7 +13,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { CLIError } from '../errors.js';
 import { checkoutEnvFile } from './checkout.js';
 import type { LocalPorts, StorageBackend } from './state.js';
@@ -58,7 +58,11 @@ export function setEnvVars(vars: Record<string, string>, cwd?: string): void {
     if (i === -1) lines.push(`${key}=${value}`);
     else lines[i] = `${key}=${value}`;
   }
+  // mode only applies when writeFileSync creates the file. This one already
+  // exists — setup.sh made it — so the permissions have to be set outright, or
+  // a stricter umask elsewhere is the only thing keeping the secrets private.
   writeFileSync(path, lines.join('\n'), { mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 /** Read what setup.sh generated. Null when a value it should have written is absent. */

@@ -26,10 +26,6 @@ export function registerLocalStatusCommand(localCmd: Command): void {
           );
         }
 
-        // Re-render if the file is gone (deleted by hand, or by a previous
-        // --delete-data). Every compose call needs it, and without this the only
-        // way to stop the containers would be raw `docker`.
-
         const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage };
         const services = composePs(ctx);
         const baseUrl = `http://localhost:${state.ports.app}`;
@@ -67,8 +63,11 @@ export function registerLocalStatusCommand(localCmd: Command): void {
           return;
         }
 
+        // A prefix helps identify which key you are looking at. A password has
+        // no such use, and the prefix is just less password.
         const mask = (v: string): string =>
           opts.showKeys ? v : `${v.slice(0, Math.min(8, v.length))}${'•'.repeat(8)}`;
+        const hide = (v: string): string => (opts.showKeys ? v : '•'.repeat(16));
 
         outputInfo('');
         outputInfo(
@@ -79,12 +78,12 @@ export function registerLocalStatusCommand(localCmd: Command): void {
         outputInfo(`  ${pc.dim('API URL   ')} ${pc.cyan(baseUrl)}`);
         if (secrets) {
           outputInfo(
-            `  ${pc.dim('DB URL    ')} ${databaseUrl(mask(secrets.postgresPassword), state.ports.postgres)}`,
+            `  ${pc.dim('DB URL    ')} ${databaseUrl(hide(secrets.postgresPassword), state.ports.postgres)}`,
           );
           outputInfo(`  ${pc.dim('API key   ')} ${mask(secrets.apiKey)}`);
           outputInfo(`  ${pc.dim('anon key  ')} ${mask(secrets.anonKey)}`);
           outputInfo(
-            `  ${pc.dim('Admin     ')} ${secrets.adminUsername} / ${mask(secrets.adminPassword)}`,
+            `  ${pc.dim('Admin     ')} ${secrets.adminUsername} / ${hide(secrets.adminPassword)}`,
           );
         }
         outputInfo(

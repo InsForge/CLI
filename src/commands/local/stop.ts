@@ -6,9 +6,11 @@ import { FAKE_PROJECT_ID, getProjectConfig, getProjectConfigFile } from '../../l
 import { ensureDockerReady } from '../../lib/docker.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
+import { checkoutEnvFile } from '../../lib/local/checkout.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 import {
   composeRunInherit,
+  forceRemoveProject,
   removeProjectVolumes,
   type ComposeContext,
 } from '../../lib/local/compose.js';
@@ -47,23 +49,44 @@ export function registerLocalStopCommand(localCmd: Command): void {
           );
         }
 
-        // Re-render if the file is gone (deleted by hand, or by a previous
-        // --delete-data). Every compose call needs it, and without this the only
-        // way to stop the containers would be raw `docker`.
-
         const ctx: ComposeContext = { projectName: state.projectName, storage: state.storage };
-        const args = opts.deleteData ? ['down', '-v'] : ['down'];
-        if (composeRunInherit(ctx, args) !== 0) {
-          throw new CLIError('docker compose down failed. See the output above.');
+        // Without the env file compose refuses to load at all, so fall back to
+        // labels. The volume sweep below runs either way and is what actually
+        // removes the data.
+        if (existsSync(checkoutEnvFile())) {
+          const args = opts.deleteData ? ['down', '-v'] : ['down'];
+          if (composeRunInherit(ctx, args) !== 0) {
+            throw new CLIError('docker compose down failed. See the output above.');
+          }
+        } else {
+          if (!opts.deleteData) {
+            throw new CLIError(
+              `${checkoutEnvFile()} is missing, so the stack cannot be stopped cleanly.\n\n` +
+                'Restore it from a backup, or run `insforge local stop --delete-data`\n' +
+                'to remove the containers and their data outright.',
+            );
+          }
+          clack.log.warn(
+            `${checkoutEnvFile()} is gone — removing the containers by label instead.`,
+          );
+          forceRemoveProject(state.projectName);
         }
 
         // Sweep whatever `down -v` did not name. A --storage switch leaves the
         // previous backend's volume outside the compose files in play, so it
         // survived a delete that reported having removed everything.
         let sweptVolumes: string[] = [];
+        let remainingVolumes: string[] = [];
+        let sweepError: string | undefined;
         if (opts.deleteData) {
-          sweptVolumes = removeProjectVolumes(state.projectName);
-          clearLocalState();
+          const sweep = removeProjectVolumes(state.projectName);
+          sweptVolumes = sweep.removed;
+          remainingVolumes = sweep.remaining;
+          sweepError = sweep.error;
+          // The state file is the only record of which project the surviving
+          // volumes belong to. Clearing it after a partial delete would leave
+          // data on disk with nothing pointing at it.
+          if (remainingVolumes.length === 0) clearLocalState();
         }
 
         let restored: string | null = null;
@@ -81,12 +104,24 @@ export function registerLocalStopCommand(localCmd: Command): void {
 
         if (json) {
           outputJson({
-            success: true,
+            success: remainingVolumes.length === 0,
             deletedData: !!opts.deleteData,
             sweptVolumes,
+            remainingVolumes,
             restoredCloudProject: restored,
           });
           return;
+        }
+
+        if (remainingVolumes.length > 0) {
+          throw new CLIError(
+            `The containers are stopped, but ${remainingVolumes.length} volume` +
+              `${remainingVolumes.length === 1 ? '' : 's'} could not be removed:\n` +
+              remainingVolumes.map((v) => `  • ${v}`).join('\n') +
+              (sweepError ? `\n\n${sweepError}` : '') +
+              '\n\nThis directory still points at them, so `insforge local stop --delete-data`\n' +
+              'will try again once whatever is holding them is gone.',
+          );
         }
 
         outputSuccess(
@@ -94,7 +129,7 @@ export function registerLocalStopCommand(localCmd: Command): void {
             ? 'Local InsForge stopped and all data removed.' +
                 (sweptVolumes.length > 0
                   ? `
-  Also removed ${sweptVolumes.length} volume${sweptVolumes.length === 1 ? '' : 's'} left by a previous storage backend.`
+  Also swept ${sweptVolumes.length} volume${sweptVolumes.length === 1 ? '' : 's'} that \`compose down -v\` did not remove.`
                   : '')
             : 'Local InsForge stopped. Data is kept — `insforge local start` resumes it.',
         );

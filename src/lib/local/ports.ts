@@ -41,13 +41,15 @@ export function bindable(port: number, host: string): Promise<boolean> {
  * instance passed this check and then died in `docker compose up` with "port is
  * already allocated". Checking only the wildcard would miss a service bound to
  * loopback alone, which a container publish would also collide with.
+ *
+ * One at a time, never Promise.all. 0.0.0.0:P and 127.0.0.1:P overlap, and Linux
+ * refuses the second bind while BSD accepts it — so probing them together
+ * reported every free port as taken on Linux, and `local start` could not find a
+ * port to run on there at all. macOS never showed it.
  */
 export async function isPortFree(port: number): Promise<boolean> {
-  const [wildcard, loopback] = await Promise.all([
-    bindable(port, '0.0.0.0'),
-    bindable(port, '127.0.0.1'),
-  ]);
-  return wildcard && loopback;
+  if (!(await bindable(port, '0.0.0.0'))) return false;
+  return bindable(port, '127.0.0.1');
 }
 
 export interface PortCheck {
@@ -128,6 +130,22 @@ export async function allocatePorts(
         ? desired[name]
         : desired[name] + block * PORT_BLOCK_STEP;
     }
+    // Two services on one port passes every free check and then fails inside
+    // compose with "port is already allocated" — `--port-app 7131` collides with
+    // the auth default without either value being wrong on its own.
+    const seen = new Map<number, keyof LocalPorts>();
+    for (const name of names) {
+      const clash = seen.get(candidate[name]);
+      if (clash) {
+        throw new CLIError(
+          `${LABELS[clash]} and ${LABELS[name]} would both use port ${candidate[name]}.\n` +
+            'Give one of them a port of its own with --port-' +
+            `${clash} or --port-${name}.`,
+        );
+      }
+      seen.set(candidate[name], name);
+    }
+
     const checks = await checkPorts(candidate);
     if (checks.every((c) => c.free || ignore.has(c.port))) {
       const moved = names

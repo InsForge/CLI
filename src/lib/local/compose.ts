@@ -160,7 +160,15 @@ export function projectVolumes(projectName: string): string[] {
     ['volume', 'ls', '--quiet', '--filter', `label=com.docker.compose.project=${projectName}`],
     { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
-  if (r.status !== 0) return [];
+  // Never an empty list on failure. The caller that matters asks this to decide
+  // whether generating fresh secrets would strand a database, and answering
+  // "no volumes" because docker was unreachable is the one wrong answer.
+  if (r.status !== 0) {
+    throw new CLIError(
+      `Could not list the volumes for ${projectName}.\n` +
+        (r.stderr?.trim() || 'docker volume ls failed with no output.'),
+    );
+  }
   return r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
@@ -172,14 +180,66 @@ export function projectVolumes(projectName: string): string[] {
  * stops being named — and `--delete-data` reported success while a minio-data
  * full of objects stayed on disk.
  */
-export function removeProjectVolumes(projectName: string): string[] {
+export interface VolumeSweep {
+  removed: string[];
+  /** Still on disk. Non-empty means the caller must not report a clean delete. */
+  remaining: string[];
+  error?: string;
+}
+
+export function removeProjectVolumes(projectName: string): VolumeSweep {
   const left = projectVolumes(projectName);
-  if (left.length === 0) return [];
+  if (left.length === 0) return { removed: [], remaining: [] };
   const r = spawnSync('docker', ['volume', 'rm', ...left], {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  return r.status === 0 ? left : [];
+  if (r.status === 0) return { removed: left, remaining: [] };
+  // Partial success is normal here: `docker volume rm a b c` removes what it
+  // can and fails on the rest, so re-reading is the only way to know which.
+  // Reporting "removed nothing" would have been wrong in both directions.
+  const remaining = projectVolumes(projectName);
+  return {
+    removed: left.filter((v) => !remaining.includes(v)),
+    remaining,
+    error: r.stderr?.trim() || undefined,
+  };
+}
+
+/**
+ * Tear a project down with plain docker, no compose.
+ *
+ * Every compose call needs --env-file, so losing .insforge/checkout/.env leaves
+ * `local stop --delete-data` unable to remove the containers it created — which
+ * is precisely the state a refused start tells people to resolve that way.
+ * Labels are enough to find them without any of the files.
+ */
+export function forceRemoveProject(projectName: string): { containers: number } {
+  const filter = `label=com.docker.compose.project=${projectName}`;
+  const ls = spawnSync('docker', ['ps', '-aq', '--filter', filter], {
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (ls.status !== 0) {
+    throw new CLIError(
+      `Could not list the containers for ${projectName}.\n` +
+        (ls.stderr?.trim() || 'docker ps failed with no output.'),
+    );
+  }
+  const ids = ls.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (ids.length > 0) {
+    const rm = spawnSync('docker', ['rm', '-f', ...ids], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (rm.status !== 0) {
+      throw new CLIError(
+        `Could not remove the containers for ${projectName}.\n` +
+          (rm.stderr?.trim() || 'docker rm failed with no output.'),
+      );
+    }
+  }
+  return { containers: ids.length };
 }
 
 export function composePs(ctx: ComposeContext): ServiceStatus[] {

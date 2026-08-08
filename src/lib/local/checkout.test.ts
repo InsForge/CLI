@@ -7,6 +7,7 @@ import {
   checkoutEnvFile,
   checkoutReady,
   ensureCheckout,
+  missingCheckoutFiles,
   readCheckoutEnv,
   upstreamComposeFile,
 } from './checkout.js';
@@ -22,12 +23,32 @@ afterEach(() => {
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
+/** Every file a start needs, in the layout setup.sh writes them. */
+const CHECKOUT_FILES = [
+  'deploy/docker-compose/docker-compose.yml',
+  'deploy/docker-init/db/db-init.sql',
+  'deploy/docker-init/db/postgresql.conf',
+  'functions/server.ts',
+  'functions/deno.json',
+];
+
 /** What a successful setup.sh run leaves behind. */
 function seedCheckout(cwd: string, env = 'ACCESS_API_KEY=ik_seeded\n'): void {
-  const compose = upstreamComposeFile(cwd);
-  mkdirSync(dirname(compose), { recursive: true });
-  writeFileSync(compose, 'services: {}\n');
+  for (const f of CHECKOUT_FILES) {
+    const path = join(checkoutDir(cwd), f);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, '# seeded\n');
+  }
   writeFileSync(checkoutEnvFile(cwd), env);
+}
+
+/** A fake setup.sh that writes the same set, so ensureCheckout sees a real run. */
+function fakeSetupScript(): string {
+  return (
+    '#!/bin/sh\n# INSFORGE_NO_GIT\nset -e\ncd "$1"\n' +
+    CHECKOUT_FILES.map((f) => `mkdir -p "$(dirname ${f})" && echo seeded > ${f}`).join('\n') +
+    '\n[ -f .env ] || echo "ACCESS_API_KEY=ik_generated" > .env\n'
+  );
 }
 
 describe('paths', () => {
@@ -47,14 +68,19 @@ describe('paths', () => {
 });
 
 describe('checkoutReady', () => {
-  it('needs both the compose file and the env file', () => {
+  it('needs every file the compose mounts, not just the compose file', () => {
     const cwd = tmp();
     expect(checkoutReady(cwd)).toBe(false);
     mkdirSync(dirname(upstreamComposeFile(cwd)), { recursive: true });
     writeFileSync(upstreamComposeFile(cwd), 'services: {}\n');
-    expect(checkoutReady(cwd)).toBe(false);
     writeFileSync(checkoutEnvFile(cwd), 'X=1\n');
+    // An interrupted fetch leaves exactly this: the compose file and .env, with
+    // the init SQL and function host still missing.
+    expect(checkoutReady(cwd)).toBe(false);
+    expect(missingCheckoutFiles(cwd)).toContain('deploy/docker-init/db/db-init.sql');
+    seedCheckout(cwd);
     expect(checkoutReady(cwd)).toBe(true);
+    expect(missingCheckoutFiles(cwd)).toEqual([]);
   });
 });
 
@@ -124,12 +150,9 @@ describe('ensureCheckout', () => {
         ok: true,
         status: 200,
         statusText: 'OK',
-        text: async () =>
-          '#!/bin/sh\n# INSFORGE_NO_GIT\n' +
-          `[ -n "$INSFORGE_NO_GIT" ] && echo yes > ${marker}\n` +
-          'mkdir -p "$1/deploy/docker-compose"\n' +
-          'echo "services: {}" > "$1/deploy/docker-compose/docker-compose.yml"\n' +
-          'echo "ACCESS_API_KEY=ik_x" > "$1/.env"\n',
+          text: async () =>
+            `#!/bin/sh\n[ -n "$INSFORGE_NO_GIT" ] && echo yes > ${marker}\n` +
+            fakeSetupScript(),
       })),
     );
     await ensureCheckout(cwd);
@@ -151,7 +174,7 @@ describe('secrets are not regenerated over existing data', () => {
       ok: true,
       status: 200,
       statusText: 'OK',
-      text: async () => '#!/bin/sh\n# INSFORGE_NO_GIT\n',
+      text: async () => fakeSetupScript(),
     }));
     vi.stubGlobal('fetch', fetchMock);
     await expect(ensureCheckout(cwd, () => ['proj_postgres-data'])).rejects.toThrow(/volume/);
@@ -165,12 +188,8 @@ describe('secrets are not regenerated over existing data', () => {
       vi.fn(async () => ({
         ok: true,
         status: 200,
-        statusText: 'OK',
-        text: async () =>
-          '#!/bin/sh\n# INSFORGE_NO_GIT\n' +
-          'mkdir -p "$1/deploy/docker-compose"\n' +
-          'echo "services: {}" > "$1/deploy/docker-compose/docker-compose.yml"\n' +
-          'echo "ACCESS_API_KEY=ik_x" > "$1/.env"\n',
+          statusText: 'OK',
+          text: async () => fakeSetupScript(),
       })),
     );
     await expect(ensureCheckout(cwd, () => [])).resolves.toBe(checkoutDir(cwd));
