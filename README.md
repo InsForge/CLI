@@ -1143,6 +1143,15 @@ Display EC2 instance metrics (CPU, memory, disk, network).
 npx @insforge/cli diagnose metrics --range 6h
 ```
 
+#### `npx @insforge/cli diagnose incident`
+
+Explain why the project is down or returning gateway timeouts (504). The report is built entirely on the platform side, so the command works even while the instance itself is unreachable.
+
+```bash
+npx @insforge/cli diagnose incident
+npx @insforge/cli --json diagnose incident
+```
+
 ---
 
 ### Web Scraper — `npx @insforge/cli webscraper`

@@ -46,6 +46,62 @@ function formatWhen(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
+/**
+ * Render the report as printable lines. Pure and exported for tests — this
+ * is the command's output contract. Every evidence field the backend sends
+ * shows up here so the verdict is always accompanied by the facts behind it.
+ */
+export function formatIncidentReport(report: IncidentReport): string[] {
+  const lines: string[] = [];
+  lines.push(`Verdict: ${VERDICT_LABELS[report.verdict] ?? report.verdict}`);
+  lines.push('');
+  lines.push(report.explanation);
+  lines.push('');
+  const facts: string[] = [];
+  if (report.project_status !== 'active') {
+    facts.push(`Project status: ${report.project_status}`);
+  }
+  if (report.operation_status) {
+    facts.push(`Platform operation in progress: ${report.operation_status}`);
+  }
+  facts.push(
+    `Instance metrics: ${
+      report.reachable.metrics_reporting
+        ? 'reporting'
+        : `not reporting (last seen ${formatWhen(report.reachable.metrics_last_seen_at)})`
+    }`,
+  );
+  facts.push(
+    `Database connection: ${report.reachable.database_connect ? 'accepting connections' : 'unreachable'}`,
+  );
+  if (report.down_since) {
+    facts.push(`Down since: ${formatWhen(report.down_since)}`);
+  }
+  if (report.memory_before_down_pct !== null) {
+    facts.push(`Memory right before: ${report.memory_before_down_pct}%`);
+  } else if (report.memory_latest_pct !== null) {
+    facts.push(`Memory latest: ${report.memory_latest_pct}%`);
+  }
+  if (report.postgres_started_at) {
+    facts.push(`Postgres started: ${formatWhen(report.postgres_started_at)}`);
+  }
+  if (report.scrape_gaps_24h > 0) {
+    facts.push(`Reporting gaps in the last 24h: ${report.scrape_gaps_24h}`);
+  }
+  if (report.instance_type) {
+    facts.push(`Instance type: ${report.instance_type}`);
+  }
+  for (const op of report.recent_platform_operations) {
+    facts.push(`Recent platform operation: ${op.action} at ${formatWhen(op.at)}`);
+  }
+  for (const fact of facts) {
+    lines.push(`  - ${fact}`);
+  }
+  lines.push('');
+  lines.push(`What to do: ${report.recommendation}`);
+  return lines;
+}
+
 export function registerDiagnoseIncidentCommand(diagnoseCmd: Command): void {
   diagnoseCmd
     .command('incident')
@@ -71,47 +127,18 @@ export function registerDiagnoseIncidentCommand(diagnoseCmd: Command): void {
           apiUrl,
         );
         const report = (await res.json()) as IncidentReport;
+        if (!report || typeof report !== 'object' || typeof report.reachable !== 'object') {
+          throw new CLIError(
+            'Unexpected response from the platform (missing incident report fields). Your backend may predate this command.',
+          );
+        }
 
         if (json) {
           outputJson(report);
         } else {
-          console.log(`Verdict: ${VERDICT_LABELS[report.verdict] ?? report.verdict}`);
-          console.log('');
-          console.log(report.explanation);
-          console.log('');
-          const facts: string[] = [];
-          facts.push(
-            `Instance metrics: ${
-              report.reachable.metrics_reporting
-                ? 'reporting'
-                : `not reporting (last seen ${formatWhen(report.reachable.metrics_last_seen_at)})`
-            }`,
-          );
-          facts.push(
-            `Database connection: ${report.reachable.database_connect ? 'accepting connections' : 'unreachable'}`,
-          );
-          if (report.down_since) {
-            facts.push(`Down since: ${formatWhen(report.down_since)}`);
+          for (const line of formatIncidentReport(report)) {
+            console.log(line);
           }
-          if (report.memory_before_down_pct !== null) {
-            facts.push(`Memory right before: ${report.memory_before_down_pct}%`);
-          } else if (report.memory_latest_pct !== null) {
-            facts.push(`Memory latest: ${report.memory_latest_pct}%`);
-          }
-          if (report.postgres_started_at) {
-            facts.push(`Postgres started: ${formatWhen(report.postgres_started_at)}`);
-          }
-          if (report.scrape_gaps_24h > 0) {
-            facts.push(`Reporting gaps in the last 24h: ${report.scrape_gaps_24h}`);
-          }
-          if (report.instance_type) {
-            facts.push(`Instance type: ${report.instance_type}`);
-          }
-          for (const fact of facts) {
-            console.log(`  - ${fact}`);
-          }
-          console.log('');
-          console.log(`What to do: ${report.recommendation}`);
         }
         await reportCliUsage('cli.diagnose.incident', true);
       } catch (err) {
