@@ -4,7 +4,6 @@ import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError, ProjectNotLinkedError } from '../../lib/errors.js';
 import { getProjectConfig, FAKE_PROJECT_ID } from '../../lib/config.js';
 import { outputJson } from '../../lib/output.js';
-import { reportCliUsage } from '../../lib/skills.js';
 import { trackDiagnose, shutdownAnalytics } from '../../lib/analytics.js';
 
 // Cloud-side incident report. Everything behind this endpoint lives on the
@@ -40,6 +39,74 @@ const VERDICT_LABELS: Record<string, string> = {
   down_unknown: 'Instance down, cause unclear',
   no_incident_detected: 'No incident detected',
 };
+
+function asString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function asNullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function asNullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Coerce whatever the platform returned into a report the renderer can
+ * safely consume. This command exists precisely for moments when the
+ * backend or instance state is unusual, so every field gets a defensive
+ * default instead of trusting the cast. Throws a CLIError only when the
+ * payload is not a report at all. Exported for tests.
+ */
+export function normalizeIncidentReport(raw: unknown): IncidentReport {
+  if (raw === null || typeof raw !== 'object') {
+    throw new CLIError(
+      'Unexpected response from the platform (not an incident report). Your backend may predate this command.',
+    );
+  }
+  const r = raw as Record<string, unknown>;
+  if (typeof r.verdict !== 'string' || typeof r.explanation !== 'string') {
+    throw new CLIError(
+      'Unexpected response from the platform (missing incident report fields). Your backend may predate this command.',
+    );
+  }
+  const reachable =
+    r.reachable !== null && typeof r.reachable === 'object'
+      ? (r.reachable as Record<string, unknown>)
+      : {};
+  const operations = Array.isArray(r.recent_platform_operations)
+    ? r.recent_platform_operations
+    : [];
+  return {
+    project_id: asString(r.project_id, 'unknown'),
+    project_status: asString(r.project_status, 'unknown'),
+    operation_status: asNullableString(r.operation_status),
+    instance_type: asNullableString(r.instance_type),
+    reachable: {
+      metrics_last_seen_at: asNullableString(reachable.metrics_last_seen_at),
+      metrics_reporting: reachable.metrics_reporting === true,
+      database_connect: reachable.database_connect === true,
+    },
+    down_since: asNullableString(r.down_since),
+    memory_before_down_pct: asNullableNumber(r.memory_before_down_pct),
+    memory_latest_pct: asNullableNumber(r.memory_latest_pct),
+    postgres_started_at: asNullableString(r.postgres_started_at),
+    scrape_gaps_24h: asNullableNumber(r.scrape_gaps_24h) ?? 0,
+    recent_platform_operations: operations
+      .filter(
+        (op): op is { action: string; at: string } =>
+          op !== null &&
+          typeof op === 'object' &&
+          typeof (op as Record<string, unknown>).action === 'string' &&
+          typeof (op as Record<string, unknown>).at === 'string',
+      )
+      .map((op) => ({ action: op.action, at: op.at })),
+    verdict: r.verdict,
+    explanation: r.explanation,
+    recommendation: asString(r.recommendation, ''),
+  };
+}
 
 function formatWhen(iso: string | null): string {
   if (!iso) return 'unknown';
@@ -126,12 +193,7 @@ export function registerDiagnoseIncidentCommand(diagnoseCmd: Command): void {
           {},
           apiUrl,
         );
-        const report = (await res.json()) as IncidentReport;
-        if (!report || typeof report !== 'object' || typeof report.reachable !== 'object') {
-          throw new CLIError(
-            'Unexpected response from the platform (missing incident report fields). Your backend may predate this command.',
-          );
-        }
+        const report = normalizeIncidentReport(await res.json());
 
         if (json) {
           outputJson(report);
@@ -140,9 +202,7 @@ export function registerDiagnoseIncidentCommand(diagnoseCmd: Command): void {
             console.log(line);
           }
         }
-        await reportCliUsage('cli.diagnose.incident', true);
       } catch (err) {
-        await reportCliUsage('cli.diagnose.incident', false);
         await shutdownAnalytics();
         handleError(err, json);
       } finally {

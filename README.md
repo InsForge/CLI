@@ -1145,7 +1145,7 @@ npx @insforge/cli diagnose metrics --range 6h
 
 #### `npx @insforge/cli diagnose incident`
 
-Explain why the project is down or returning gateway timeouts (504). The report is built entirely on the platform side, so the command works even while the instance itself is unreachable.
+Explain why the project is down or returning gateway timeouts (504). The report is built entirely on the platform side, so the command works even while the instance itself is unreachable. Requires InsForge Platform login (`npx @insforge/cli login`); not available when the project is linked via `--api-key`.
 
 ```bash
 npx @insforge/cli diagnose incident

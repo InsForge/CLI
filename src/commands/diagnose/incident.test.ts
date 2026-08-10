@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatIncidentReport } from './incident.js';
+import { formatIncidentReport, normalizeIncidentReport } from './incident.js';
 
 // The command's human-readable output contract: every evidence field the
 // backend sends must surface next to the verdict.
@@ -64,5 +64,46 @@ describe('formatIncidentReport', () => {
   it('falls back to the raw verdict string for unknown verdicts (forward compatibility)', () => {
     const text = formatIncidentReport({ ...baseReport(), verdict: 'new_verdict' }).join('\n');
     expect(text).toContain('Verdict: new_verdict');
+  });
+});
+
+describe('normalizeIncidentReport', () => {
+  it('rejects payloads that are not a report at all with a clear error', () => {
+    expect(() => normalizeIncidentReport(null)).toThrow(/not an incident report/);
+    expect(() => normalizeIncidentReport('nope')).toThrow(/not an incident report/);
+    expect(() => normalizeIncidentReport({ error: 'x' })).toThrow(/missing incident report/);
+  });
+
+  it('defends every rendered field against partial payloads', () => {
+    // The exact shape r2d2 called out: reachable present but empty, and
+    // recent_platform_operations null.
+    const report = normalizeIncidentReport({
+      verdict: 'down_unknown',
+      explanation: 'x',
+      reachable: {},
+      recent_platform_operations: null,
+    });
+    expect(report.reachable.metrics_reporting).toBe(false);
+    expect(report.recent_platform_operations).toEqual([]);
+    expect(report.scrape_gaps_24h).toBe(0);
+    expect(report.memory_latest_pct).toBeNull();
+    // and the renderer consumes it without throwing
+    expect(formatIncidentReport(report).join('\n')).toContain('Verdict:');
+  });
+
+  it('drops malformed operation entries and coerces bad numbers', () => {
+    const report = normalizeIncidentReport({
+      verdict: 'no_incident_detected',
+      explanation: 'x',
+      reachable: { metrics_reporting: 'yes', database_connect: true },
+      recent_platform_operations: [{ action: 'reset_project' }, { action: 'ok', at: 't' }, 42],
+      scrape_gaps_24h: 'many',
+      memory_before_down_pct: NaN,
+    });
+    expect(report.reachable.metrics_reporting).toBe(false); // non-boolean → false
+    expect(report.reachable.database_connect).toBe(true);
+    expect(report.recent_platform_operations).toEqual([{ action: 'ok', at: 't' }]);
+    expect(report.scrape_gaps_24h).toBe(0);
+    expect(report.memory_before_down_pct).toBeNull();
   });
 });
