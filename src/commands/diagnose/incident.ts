@@ -37,6 +37,7 @@ const VERDICT_LABELS: Record<string, string> = {
   platform_operation_in_progress: 'Platform operation in progress',
   oom_likely: 'Out of memory (likely)',
   down_unknown: 'Instance down, cause unclear',
+  metrics_stopped: 'Instance stopped reporting metrics',
   no_incident_detected: 'No incident detected',
 };
 
