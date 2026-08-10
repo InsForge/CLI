@@ -14,6 +14,7 @@ import { fetchMetricsSummary, registerDiagnoseMetricsCommand } from './metrics.j
 import { fetchAdvisorSummary, registerDiagnoseAdvisorCommand } from './advisor.js';
 import { runDbChecks, registerDiagnoseDbCommand } from './db.js';
 import { fetchLogsSummary, registerDiagnoseLogsCommand } from './logs.js';
+import { registerDiagnoseIncidentCommand } from './incident.js';
 
 function sectionHeader(title: string): string {
   return `── ${title} ${'─'.repeat(Math.max(0, 44 - title.length))}`;
@@ -379,6 +380,7 @@ export function registerDiagnoseCommands(diagnoseCmd: Command): void {
   registerDiagnoseAdvisorCommand(diagnoseCmd);
   registerDiagnoseDbCommand(diagnoseCmd);
   registerDiagnoseLogsCommand(diagnoseCmd);
+  registerDiagnoseIncidentCommand(diagnoseCmd);
 }
 
 function formatBytesCompact(bytes: number): string {
