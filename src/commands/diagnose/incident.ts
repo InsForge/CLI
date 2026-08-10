@@ -193,11 +193,14 @@ export function registerDiagnoseIncidentCommand(diagnoseCmd: Command): void {
           {},
           apiUrl,
         );
-        const report = normalizeIncidentReport(await res.json());
+        const raw = await res.json();
 
         if (json) {
-          outputJson(report);
+          // Raw passthrough: machine consumers get the exact server payload,
+          // including fields this CLI version does not know about yet.
+          outputJson(raw);
         } else {
+          const report = normalizeIncidentReport(raw);
           for (const line of formatIncidentReport(report)) {
             console.log(line);
           }
