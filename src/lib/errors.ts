@@ -126,7 +126,7 @@ export function getRootOpts(cmd: Command): { json: boolean; apiUrl?: string; yes
   }
   const opts = root.opts();
   return {
-    json: opts.json ?? false,
+    json: opts.json ?? opts.toon ?? false,
     apiUrl: opts.apiUrl,
     yes: opts.yes ?? false,
   };
