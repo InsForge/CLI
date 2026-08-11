@@ -76,4 +76,29 @@ describe('ossFetch', () => {
       /Upgrade your InsForge project to a version with Model Gateway support/,
     );
   });
+
+  it('shows an upgrade+token message for a route-level 404 under /api/webscraper (not a cloud-only warning)', async () => {
+    // A 404 here means the backend predates the web scraper feature, not that
+    // self-hosting is unsupported — self-hosted backends do serve this route
+    // once they're upgraded. Guards against regressing to the old wording.
+    vi.spyOn(config, 'getProjectConfig').mockReturnValue({
+      project_id: 'p1',
+      project_name: 'demo',
+      org_id: 'o1',
+      appkey: 'app',
+      region: 'us-east',
+      api_key: 'ik_test',
+      oss_host: 'https://app.us-east.insforge.app',
+    } satisfies ProjectConfig);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'NOT_FOUND' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(ossFetch('/api/webscraper/apify/config')).rejects.toThrow(
+      /Upgrade your InsForge instance.*insforge webscraper apify connect --token/s,
+    );
+  });
 });

@@ -84,6 +84,7 @@ import { registerComputeDeployCommand } from './commands/compute/deploy.js';
 import { registerLogsCommand } from './commands/logs.js';
 import { registerMetadataCommand } from './commands/metadata.js';
 import { registerDiagnoseCommands } from './commands/diagnose/index.js';
+import { registerAdvisorCommands } from './commands/advisor/index.js';
 import { registerPaymentsCommands } from './commands/payments/index.js';
 import { registerPosthogSetupCommand } from './commands/posthog/setup.js';
 import { registerWebscraperCommands } from './commands/webscraper/index.js';
@@ -91,6 +92,7 @@ import { registerConfigCommand } from './commands/config/index.js';
 import { registerAiCommands } from './commands/ai/index.js';
 import { registerDomainsCommands } from './commands/domains/index.js';
 import { registerMemoryCommands } from './commands/memory/index.js';
+import { registerLocalCommands } from './commands/local/index.js';
 import { guardHook } from './lib/guard/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -252,6 +254,10 @@ registerMetadataCommand(program);
 const diagnoseCmd = program.command('diagnose');
 registerDiagnoseCommands(diagnoseCmd);
 
+// Advisor commands (scan + suppressions; read results with `diagnose advisor`)
+const advisorCmd = program.command('advisor').description('Run advisor scans and manage suppressed findings');
+registerAdvisorCommands(advisorCmd);
+
 // Payments commands
 const paymentsCmd = program.command('payments').description('Manage payments');
 registerPaymentsCommands(paymentsCmd);
@@ -304,6 +310,9 @@ registerSchedulesCreateCommand(schedulesCmd);
 registerSchedulesUpdateCommand(schedulesCmd);
 registerSchedulesDeleteCommand(schedulesCmd);
 registerSchedulesLogsCommand(schedulesCmd);
+
+// Local instance commands (Docker on this machine)
+registerLocalCommands(program);
 
 // Config commands
 registerConfigCommand(program);

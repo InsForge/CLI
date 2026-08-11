@@ -145,11 +145,29 @@ const DB_CHECKS: Record<string, DbCheck> = {
 
 const ALL_CHECKS = Object.keys(DB_CHECKS);
 
+/**
+ * Runs one health check on the unrestricted (root) SQL endpoint.
+ *
+ * `diagnose` is the operator triage path, which is the only sanctioned use of
+ * unrestricted execution — nothing else in the CLI should reach for it, and no
+ * command should suggest that users do. Root is required rather than merely
+ * convenient: as `project_admin`, `pg_stat_activity` masks the `query` text of
+ * backends owned by other roles as `<insufficient privilege>`, which would
+ * blank out the slow-query and lock checks.
+ *
+ * Every statement passed here is a fixed, read-only SELECT over Postgres
+ * statistics views declared in `DB_CHECKS` above. Do not widen this helper to
+ * accept caller-supplied or interpolated SQL.
+ */
+async function runDbCheckSql(sql: string): Promise<{ rows: Record<string, unknown>[] }> {
+  return runRawSql(sql, true);
+}
+
 export async function runDbChecks(): Promise<Record<string, Record<string, unknown>[]>> {
   const results: Record<string, Record<string, unknown>[]> = {};
   for (const key of ALL_CHECKS) {
     try {
-      const { rows } = await runRawSql(DB_CHECKS[key].sql, true);
+      const { rows } = await runDbCheckSql(DB_CHECKS[key].sql);
       results[key] = rows;
     } catch {
       results[key] = [];
@@ -185,7 +203,7 @@ export function registerDiagnoseDbCommand(diagnoseCmd: Command): void {
             continue;
           }
           try {
-            const { rows } = await runRawSql(check.sql, true);
+            const { rows } = await runDbCheckSql(check.sql);
             results[name] = rows;
           } catch (err) {
             results[name] = [];

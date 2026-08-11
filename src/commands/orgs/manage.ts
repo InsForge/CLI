@@ -7,10 +7,15 @@ import {
   inviteMember,
   removeMember,
   updateMemberRole,
+  leaveOrganization,
+  deleteOrganization,
+  listOrganizations,
+  listProjects,
 } from '../../lib/api/platform.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { resolveOrgId } from '../../lib/resolve-org.js';
+import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable, outputSuccess, outputInfo } from '../../lib/output.js';
 import type { MemberRole } from '../../types.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
@@ -23,6 +28,23 @@ function assertRole(role: string): MemberRole {
     throw new CLIError(`Invalid role "${role}". Valid roles: ${MEMBER_ROLES.join(', ')}.`);
   }
   return role as MemberRole;
+}
+
+/** Destructive org ops never fall back to an ambient org — --org-id must be explicit. */
+function requireExplicitOrgId(opts: { orgId?: string }, verb: string): string {
+  if (!opts.orgId) {
+    throw new CLIError(
+      `Refusing to ${verb} an organization implicitly. Pass --org-id <id> to target an organization explicitly.`,
+    );
+  }
+  return opts.orgId;
+}
+
+/** Best-effort org label for confirmation prompts: `"name" (id)` or the bare id. */
+async function orgLabel(orgId: string, apiUrl?: string): Promise<string> {
+  const orgs = await listOrganizations(apiUrl).catch(() => null);
+  const org = orgs?.find((o) => o.id === orgId);
+  return org ? `"${org.name}" (${orgId})` : orgId;
 }
 
 export function registerOrgsManageCommands(orgsCmd: Command): void {
@@ -83,6 +105,97 @@ export function registerOrgsManageCommands(orgsCmd: Command): void {
         }
       } catch (err) {
         await trackCommandUsage('orgs', 'update', false, {}, err);
+        handleError(err, json);
+      }
+    });
+
+  orgsCmd
+    .command('leave')
+    .description('Leave an organization (you must be re-invited to return)')
+    .option('--org-id <id>', 'Organization ID (required — will not default to the linked org)')
+    .action(async (opts, cmd) => {
+      const { json, apiUrl, yes } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const orgId = requireExplicitOrgId(opts, 'leave');
+
+        if (!yes && !json) {
+          const label = await orgLabel(orgId, apiUrl);
+          const confirmed = await clack.confirm({
+            message: `Leave organization ${label}? You lose access to all of its projects and must be re-invited to return.`,
+          });
+          if (clack.isCancel(confirmed) || !confirmed) {
+            outputInfo('Cancelled.');
+            return;
+          }
+        }
+
+        const result = await leaveOrganization(orgId, apiUrl);
+        await trackCommandUsage('orgs', 'leave', true);
+        if (json) {
+          outputJson({ left: true, org_id: orgId });
+        } else {
+          outputSuccess(result.message || `Left organization ${orgId}.`);
+        }
+      } catch (err) {
+        await trackCommandUsage('orgs', 'leave', false, {}, err);
+        handleError(err, json);
+      }
+    });
+
+  orgsCmd
+    .command('delete')
+    .description('Permanently delete an organization and ALL of its projects')
+    .option('--org-id <id>', 'Organization ID (required — will not default to the linked org)')
+    .action(async (opts, cmd) => {
+      const { json, apiUrl, yes } = getRootOpts(cmd);
+      try {
+        await requireAuth(apiUrl);
+        const orgId = requireExplicitOrgId(opts, 'delete');
+
+        // Org deletion cascades to every project in it, so surface that before asking.
+        const linkedConfig = getProjectConfig();
+        const linkedInOrg = linkedConfig?.org_id === orgId;
+
+        if (!yes && !json) {
+          const label = await orgLabel(orgId, apiUrl);
+          // Fail closed: without the project inventory the user can't judge the blast radius.
+          const projects = await listProjects(orgId, apiUrl);
+          if (projects.length > 0) {
+            outputInfo(`This organization has ${projects.length} project(s) that will be PERMANENTLY deleted with it:`);
+            for (const p of projects.slice(0, 10)) {
+              outputInfo(`  - ${p.name} (${p.id})`);
+            }
+            if (projects.length > 10) {
+              outputInfo(`  … and ${projects.length - 10} more`);
+            }
+          }
+          if (linkedInOrg) {
+            outputInfo(
+              `The linked project "${linkedConfig?.project_name}" belongs to this organization and will be deleted with it.`,
+            );
+          }
+          const confirmed = await clack.confirm({
+            message: `Permanently delete organization ${label}? This destroys every project in it (databases, storage, all resources) and cancels its subscription.`,
+          });
+          if (clack.isCancel(confirmed) || !confirmed) {
+            outputInfo('Cancelled.');
+            return;
+          }
+        }
+
+        const result = await deleteOrganization(orgId, apiUrl);
+        await trackCommandUsage('orgs', 'delete', true);
+        if (json) {
+          outputJson({ deleted: true, org_id: orgId, linked_project_deleted: linkedInOrg });
+        } else {
+          outputSuccess(result.message || `Organization ${orgId} deleted.`);
+          if (linkedInOrg) {
+            outputInfo('The linked project was deleted with the organization. Run `insforge link` to link a different project.');
+          }
+        }
+      } catch (err) {
+        await trackCommandUsage('orgs', 'delete', false, {}, err);
         handleError(err, json);
       }
     });

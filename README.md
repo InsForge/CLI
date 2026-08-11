@@ -29,6 +29,10 @@ npx @insforge/cli db tables
 npx @insforge/cli db query "SELECT * FROM users LIMIT 10"
 ```
 
+A hosted project is the default and what these commands assume. If you
+specifically want a backend running in Docker on your own machine — offline work,
+a throwaway database, no account — see [Local Instances](#local-instances).
+
 ## Authentication
 
 If you run any command without being logged in, the CLI will automatically open your browser and start the login flow — no need to run `npx @insforge/cli login` first.
@@ -97,6 +101,108 @@ when you want to link a directory directly to a known project.
 > (`hidden: true` in `src/index.ts`) and are intentionally excluded from this
 > reference. Use `npx @insforge/cli list` instead of `orgs`/`projects`; `records`
 > is internal and not supported for direct use.
+
+### Local Instances
+
+Run a full InsForge backend on your own machine in Docker: Postgres, PostgREST,
+the backend, and the edge-functions runtime. No account, no repository clone.
+
+**One instance per directory.** The compose project name includes a hash of the
+directory path, so every app folder gets its own containers, volumes, and
+database — including two folders that share a name.
+
+#### `npx @insforge/cli local start`
+
+Starts the stack, waits for it to become healthy, links the directory, and seeds
+`.env.local`.
+
+```bash
+npx @insforge/cli local start
+npx @insforge/cli local start --storage minio   # bundled S3-compatible store
+npx @insforge/cli local start --pull            # re-pull images
+npx @insforge/cli local start --port-app 8130   # relocate a port
+npx @insforge/cli local start --json
+```
+
+| Option | Description |
+| --- | --- |
+| `--storage <backend>` | `local` (filesystem, default), `minio`, or `rustfs`. The bundled stores stay on the internal Docker network and enable the S3-compatible gateway at `/storage/v1/s3`. |
+| `--pull` | Re-pull images even when present locally. |
+| `--port-app`, `--port-auth`, `--port-deno`, `--port-postgres`, `--port-postgrest` | Host port overrides. Defaults are 7130 / 7131 / 7133 / 5432 / 5430. A port set here is never relocated. |
+
+Afterwards every other command targets the local backend — no login, because the
+directory is linked with the instance's own API key:
+
+```bash
+npx @insforge/cli db query "select 1"
+npx @insforge/cli storage create-bucket avatars
+npx @insforge/cli functions deploy
+```
+
+**Where the stack comes from.** The first start fetches
+[`deploy/setup.sh`](https://github.com/InsForge/InsForge/blob/main/deploy/setup.sh)
+from the InsForge repository and runs it into `.insforge/checkout/`. That script
+is what self-hosting uses, so a local instance runs the same compose file, init
+SQL, and images as a deployed one — the CLI adds one overlay, which sets the
+telemetry stamp and binds the published ports to loopback. Every start re-runs it,
+picking up upstream changes; the generated `.env` is left alone.
+
+Images track `:latest`. A directory's first start pulls, because Docker will not
+re-fetch a tag it already has — without it a machine that pulled months ago runs
+that image and reports its version, with nothing to suggest a newer one exists.
+Later starts do not pull: an image moving under an instance that has data is how
+the backend ends up running migrations its volume did not expect. `--pull` asks
+for it deliberately.
+
+`.insforge/checkout/.env` is where the instance's secrets are generated, and the
+only copy of most of them — the Postgres password, JWT secret, encryption key,
+and admin password appear nowhere else. (The API key is also in
+`.insforge/project.json`, the anon key in `.env.local`.) If the file is missing
+while volumes still exist, `local start` refuses rather than generating new ones:
+Postgres reads its password only when the cluster is created, so fresh secrets
+would leave the database unreachable.
+
+**Ports.** The first instance on a machine gets 7130 / 7131 / 7133 / 5432 / 5430.
+When those are taken the whole block shifts by ten — a second instance lands on
+7140, a third on 7150 — and `start` prints what moved. Ports a directory has
+already used stay put across restarts, so `.env.local` keeps pointing at the
+right place.
+
+Every published port binds to `127.0.0.1` — a development backend has no business
+being reachable from the rest of the network. Services reach each other over the
+project's internal Docker network, which is not published at all.
+
+#### `npx @insforge/cli local stop`
+
+```bash
+npx @insforge/cli local stop                # stop; data is kept
+npx @insforge/cli local stop --delete-data  # also destroy the volumes
+npx @insforge/cli local stop --unlink       # restore the previous cloud link
+```
+
+`--delete-data` is irreversible and classified `critical` by the human-in-the-loop
+guard, so with the guard enabled it requires approval. A plain `stop` never prompts.
+
+If the directory was linked to a cloud project, `local start` saves that link to
+`.insforge/project.cloud.json` rather than overwriting it, and `local stop
+--unlink` puts it back.
+
+#### `npx @insforge/cli local status`
+
+```bash
+npx @insforge/cli local status
+npx @insforge/cli local status --show-keys   # print keys in full
+npx @insforge/cli local status --json
+```
+
+Shows health, ports, the backend version, the compose project name, and
+per-container state. Keys are masked by default, and `--json` omits them unless
+`--show-keys` is passed — so its output is safe to paste into an issue.
+
+**Requirements.** Docker with Compose 2.24.4 or newer, and roughly 1.5 GB
+available to the daemon. Any Docker-compatible runtime works (Docker Desktop,
+OrbStack, Colima, Rancher Desktop). Without Docker, `insforge create` gives you a
+hosted project instead.
 
 ### Top-Level
 
@@ -306,7 +412,6 @@ Execute a raw SQL query.
 ```bash
 npx @insforge/cli db query "SELECT * FROM users LIMIT 10"
 npx @insforge/cli db query "SELECT count(*) FROM orders" --json
-npx @insforge/cli db query "SELECT * FROM pg_tables" --unrestricted
 ```
 
 #### `npx @insforge/cli db tables`
@@ -1038,6 +1143,15 @@ Display EC2 instance metrics (CPU, memory, disk, network).
 npx @insforge/cli diagnose metrics --range 6h
 ```
 
+#### `npx @insforge/cli diagnose incident`
+
+Explain why the project is down or returning gateway timeouts (504). The report is built entirely on the platform side, so the command works even while the instance itself is unreachable. Requires InsForge Platform login (`npx @insforge/cli login`); not available when the project is linked via `--api-key`.
+
+```bash
+npx @insforge/cli diagnose incident
+npx @insforge/cli --json diagnose incident
+```
+
 ---
 
 ### Web Scraper — `npx @insforge/cli webscraper`
@@ -1116,12 +1230,30 @@ npx @insforge/cli config apply --auto-approve   # skip confirmation prompt
 
 Running `npx @insforge/cli link` creates a `.insforge/` directory in your project:
 
-```
+```text
 .insforge/
 └── project.json    # project_id, org_id, appkey, region, api_key, oss_host
 ```
 
 Add `.insforge/` to your `.gitignore` — it contains your project API key.
+
+`local start` adds the following and writes a `.insforge/.gitignore` covering
+them, so the generated secrets cannot be committed even by `git add -A`:
+
+```text
+.insforge/
+├── local.json           # ports, storage backend, compose project name
+├── setup.sh             # the script fetched from the InsForge repository
+├── checkout/            # the stack that script wrote
+│   ├── .env             # generated secrets, mode 0600
+│   └── deploy/…         # the compose file and what it mounts
+└── project.cloud.json   # only when a cloud link was displaced
+```
+
+`checkout/.env` is written once and re-read on every later start. Deleting it
+loses the secrets that live nowhere else — among them the Postgres password,
+which the database only ever read at cluster creation. `local start` refuses
+rather than regenerating them.
 
 ### Declarative project config — `insforge.toml`
 

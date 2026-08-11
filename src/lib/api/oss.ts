@@ -1,6 +1,10 @@
 import { getProjectConfig } from '../config.js';
 import { CLIError, formatFetchError, ProjectNotLinkedError } from '../errors.js';
 import type {
+  AdvisorSuppression,
+  AdvisorSuppressionReason,
+  AdvisorSuppressionScope,
+  OssBackup,
   ProjectConfig,
   RotateKeyResponse,
   S3AccessKey,
@@ -157,6 +161,76 @@ export async function deleteS3AccessKey(id: string): Promise<void> {
   await ossFetch(`/api/storage/s3/access-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// --- Advisor ---
+
+export async function triggerAdvisorScan(): Promise<{ scanId: string; message: string }> {
+  const res = await ossFetch('/api/advisor/scan', { method: 'POST' });
+  return await res.json() as { scanId: string; message: string };
+}
+
+export async function listAdvisorSuppressions(): Promise<AdvisorSuppression[]> {
+  const res = await ossFetch('/api/advisor/suppressions');
+  const data = await res.json() as { suppressions?: AdvisorSuppression[] };
+  return data.suppressions ?? [];
+}
+
+export interface CreateAdvisorSuppressionBody {
+  ruleId: string;
+  scope: AdvisorSuppressionScope;
+  /** Required for `instance` scope — the finding's affected object, verbatim. */
+  affectedObject?: string;
+  reason: AdvisorSuppressionReason;
+  note?: string;
+}
+
+export async function createAdvisorSuppression(
+  body: CreateAdvisorSuppressionBody,
+): Promise<AdvisorSuppression> {
+  const res = await ossFetch('/api/advisor/suppressions', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return await res.json() as AdvisorSuppression;
+}
+
+export async function deleteAdvisorSuppression(id: string): Promise<void> {
+  await ossFetch(`/api/advisor/suppressions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// --- Database backups (self-hosted / OSS route) ---
+
+export async function listOssBackups(): Promise<OssBackup[]> {
+  const res = await ossFetch('/api/database/backups');
+  const data = await res.json() as { backups?: OssBackup[] };
+  return data.backups ?? [];
+}
+
+export async function createOssBackup(name?: string): Promise<OssBackup> {
+  const res = await ossFetch('/api/database/backups', {
+    method: 'POST',
+    body: JSON.stringify(name ? { name } : {}),
+  });
+  return await res.json() as OssBackup;
+}
+
+export async function renameOssBackup(backupId: string, name: string | null): Promise<OssBackup> {
+  const res = await ossFetch(`/api/database/backups/${encodeURIComponent(backupId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+  return await res.json() as OssBackup;
+}
+
+export async function deleteOssBackup(backupId: string): Promise<void> {
+  await ossFetch(`/api/database/backups/${encodeURIComponent(backupId)}`, { method: 'DELETE' });
+}
+
+export async function restoreOssBackup(backupId: string): Promise<void> {
+  await ossFetch(`/api/database/backups/${encodeURIComponent(backupId)}/restore`, {
+    method: 'POST',
+  });
+}
+
 export async function ossFetch(
   path: string,
   options: RequestInit = {},
@@ -201,6 +275,11 @@ export async function ossFetch(
       message = 'Database migrations are not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: contact your InsForge admin about database migration support.';
     }
 
+    // Exact match only: per-id backup routes 404 for a missing backup id.
+    if (res.status === 404 && isRouteLevel404 && path === '/api/database/backups') {
+      message = 'Database backups are not available on this backend.\nSelf-hosted: upgrade your InsForge instance to a version with the backups feature.';
+    }
+
     if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/ai')) {
       message = 'AI Model Gateway setup is not available on this backend.\nUpgrade your InsForge project to a version with Model Gateway support, or keep using the legacy @insforge/sdk AI modules for projects that still rely on the older AI API surface.';
     }
@@ -210,15 +289,12 @@ export async function ossFetch(
     }
 
     if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/webscraper')) {
-      message = 'The web scraper is not available on this backend.\nThe Apify web scraper is cloud-only. Self-hosted: this feature is not supported. Cloud: contact your InsForge admin to enable it.';
+      message = 'The web scraper is not available on this backend.\nUpgrade your InsForge instance to a version with web scraper support, then run `insforge webscraper apify connect --token <token>` to connect your Apify account.';
     }
 
-    // Safe to treat any 404 on /api/advisor/* as a route-level miss: the OSS
-    // advisor endpoints return 200 with a null/empty body when no scan exists
-    // (a resource-level "no data" state), so they never emit a 404 for a
-    // present-but-empty resource. A 404 here therefore means the route itself
-    // is absent (backend older than the advisor feature).
-    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/advisor')) {
+    // Excludes per-id suppression routes: deleting a missing suppression 404s
+    // with the code NOT_FOUND, which must keep its real message.
+    if (res.status === 404 && isRouteLevel404 && path.startsWith('/api/advisor') && !path.startsWith('/api/advisor/suppressions/')) {
       message = 'Backend Advisor is not available on this backend.\nSelf-hosted: upgrade your InsForge instance. Cloud: update the project to a newer version.';
     }
 
@@ -241,11 +317,22 @@ export async function ossFetch(
 export async function probeBackendHealth(
   baseUrl: string,
   timeoutMs = 10_000,
-): Promise<{ reachable: boolean; status: number | null; detail?: string }> {
+): Promise<{ reachable: boolean; status: number | null; detail?: string; version?: string }> {
   const url = `${baseUrl.replace(/\/$/, '')}/api/health`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-    return { reachable: res.ok, status: res.status };
+    // The version comes from the instance rather than from anything the CLI
+    // recorded, so it stays true after an image is pulled underneath it.
+    let version: string | undefined;
+    if (res.ok) {
+      try {
+        version = ((await res.clone().json()) as { version?: string }).version;
+      } catch {
+        // A healthy backend that answers something other than the expected JSON
+        // is still healthy; the version is just unavailable.
+      }
+    }
+    return { reachable: res.ok, status: res.status, version };
   } catch (err) {
     return { reachable: false, status: null, detail: formatFetchError(err, url) };
   }

@@ -5,12 +5,15 @@ const apiMock = vi.hoisted(() => ({
   startPosthogCliFlow: vi.fn(),
   pollPosthogConnection: vi.fn(),
   fetchPosthogConnection: vi.fn(),
+  readOssPosthogConnection: vi.fn(),
+  storePosthogKey: vi.fn(),
 }));
 vi.mock('../../lib/api/posthog.js', () => apiMock);
 
 const configMock = vi.hoisted(() => ({
   getProjectConfig: vi.fn(() => ({ project_id: 'p1', project_name: 'Test Project' })),
-  getAccessToken: vi.fn(() => 'tok'),
+  getAccessToken: vi.fn((): string | null => 'tok'),
+  FAKE_PROJECT_ID: 'fa4e0000-1234-5678-90ab-cd1234567890',
 }));
 vi.mock('../../lib/config.js', () => configMock);
 
@@ -84,6 +87,16 @@ beforeEach(() => {
   apiMock.startPosthogCliFlow.mockReset();
   apiMock.pollPosthogConnection.mockReset();
   apiMock.fetchPosthogConnection.mockReset();
+  apiMock.readOssPosthogConnection.mockReset();
+  apiMock.storePosthogKey.mockReset();
+  apiMock.readOssPosthogConnection.mockResolvedValue(null);
+  apiMock.storePosthogKey.mockResolvedValue({
+    personalApiKey: { configured: true, maskedKey: 'phx_AaBb••••••••WxYz' },
+    host: 'https://us.posthog.com',
+    posthogProjectId: '4242',
+    projectName: 'Web',
+    organizationName: 'Acme',
+  });
   outputMock.outputJson.mockReset();
   outputMock.outputSuccess.mockReset();
   clackNoteMock.mockReset();
@@ -134,6 +147,100 @@ describe('posthog setup', () => {
 
       expect(r.exitCode).toBeGreaterThan(0);
       expect(clackNoteMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('self-hosted', () => {
+    const CONNECTION = {
+      apiKey: 'phc_pub',
+      host: 'https://us.posthog.com',
+      posthogProjectId: '4242',
+      projectName: 'Web',
+    };
+
+    it('--key stores via the local backend and never needs a cloud login', async () => {
+      configMock.getAccessToken.mockReturnValue(null);
+      apiMock.readOssPosthogConnection.mockResolvedValue(CONNECTION);
+
+      const r = await runSetup(['--key', 'phx_secret']);
+
+      expect(r.exitCode).toBeUndefined();
+      expect(apiMock.storePosthogKey).toHaveBeenCalledWith({
+        personalApiKey: 'phx_secret',
+        region: 'US',
+      });
+      // The whole cloud flow is bypassed, not just the login check.
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+      expect(clackNoteMock).toHaveBeenCalledOnce();
+    });
+
+    it('--key "" is rejected locally instead of falling through to OAuth', async () => {
+      const r = await runSetup(['--key', '']);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.storePosthogKey).not.toHaveBeenCalled();
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+    });
+
+    it('normalises --region and passes an explicit project id through', async () => {
+      apiMock.readOssPosthogConnection.mockResolvedValue(CONNECTION);
+
+      await runSetup(['--key', 'phx_secret', '--region', 'eu', '--posthog-project-id', '7']);
+
+      expect(apiMock.storePosthogKey).toHaveBeenCalledWith({
+        personalApiKey: 'phx_secret',
+        region: 'EU',
+        posthogProjectId: '7',
+      });
+    });
+
+    it('rejects an unknown --region before touching the backend', async () => {
+      const r = await runSetup(['--key', 'phx_secret', '--region', 'APAC']);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.storePosthogKey).not.toHaveBeenCalled();
+    });
+
+    // The dashboard's setup prompt runs the bare command — no login required.
+    it('bare setup hands off an existing local connection without a login', async () => {
+      configMock.getProjectConfig.mockReturnValue({
+        project_id: 'fa4e0000-1234-5678-90ab-cd1234567890',
+        project_name: 'OSS Project',
+      });
+      configMock.getAccessToken.mockReturnValue(null);
+      apiMock.readOssPosthogConnection.mockResolvedValue(CONNECTION);
+
+      const r = await runSetup([]);
+
+      expect(r.exitCode).toBeUndefined();
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+      expect(apiMock.storePosthogKey).not.toHaveBeenCalled();
+      expect(clackNoteMock).toHaveBeenCalledOnce();
+    });
+
+    // A sentinel-linked project must never reach the cloud flow — even with a
+    // cloud login present on the machine, cli-start would 4xx on the fake id.
+    it('bare setup on an OSS link never falls into the cloud flow', async () => {
+      configMock.getProjectConfig.mockReturnValue({
+        project_id: 'fa4e0000-1234-5678-90ab-cd1234567890',
+        project_name: 'OSS Project',
+      });
+
+      const r = await runSetup([]);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+    });
+
+    it('bare setup on a cloud link without a login still asks for insforge login', async () => {
+      configMock.getAccessToken.mockReturnValue(null);
+
+      const r = await runSetup([]);
+
+      expect(r.exitCode).toBeGreaterThan(0);
+      expect(apiMock.startPosthogCliFlow).not.toHaveBeenCalled();
+      // Mode-first: the cloud path never touches the local backend.
+      expect(apiMock.readOssPosthogConnection).not.toHaveBeenCalled();
     });
   });
 

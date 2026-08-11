@@ -14,8 +14,10 @@ import {
   fetchApifyConnection,
   pollApifyConnection,
   startApifyCliFlow,
+  storeApifyToken,
   type ApifyConnectionResponse,
-} from '../../../lib/api/apify.js';
+  type ApifyTokenStatus,
+} from '../../../lib/api/webscraper.js';
 import { outputJson, outputSuccess } from '../../../lib/output.js';
 import { trackGroupCommand, shutdownAnalytics } from '../../../lib/analytics.js';
 import { runApifyAuthBridge } from '../../../lib/apify-bridge.js';
@@ -33,6 +35,8 @@ interface ConnectResult {
     plan?: string | null;
     status?: string;
   };
+  /** Present only on the self-hosted `--token` path. */
+  token?: ApifyTokenStatus;
 }
 
 export function registerApifyConnectCommand(program: Command): void {
@@ -40,6 +44,7 @@ export function registerApifyConnectCommand(program: Command): void {
     .command('connect')
     .description('Connect your Apify account to your InsForge project')
     .option('--skip-browser', 'Do not auto-open the browser for OAuth; only print the URL')
+    .option('--token <token>', 'Apify API token (self-hosted; skips the OAuth flow)')
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -47,6 +52,7 @@ export function registerApifyConnectCommand(program: Command): void {
           json,
           apiUrl,
           skipBrowser: Boolean(opts.skipBrowser),
+          token: opts.token,
         });
         if (json) {
           outputJson({ success: true, ...result });
@@ -69,6 +75,8 @@ interface RunConnectOpts {
   json: boolean;
   apiUrl?: string;
   skipBrowser: boolean;
+  /** Self-hosted path: an Apify API token to store directly, bypassing OAuth. */
+  token?: string;
 }
 
 // Ensures the InsForge project has an Apify connection (cli-start / OAuth).
@@ -80,6 +88,33 @@ async function runConnect(opts: RunConnectOpts): Promise<ConnectResult> {
   const proj = getProjectConfig();
   if (!proj || !proj.project_id) {
     throw new ProjectNotLinkedError();
+  }
+
+  // Self-hosted token path: the token is validated and stored server-side via
+  // the existing admin-authenticated ossFetch, so it needs neither the login
+  // token below nor any of the OAuth / auth-bridge flow further down. Short-
+  // circuits before any OAuth work; everything below is unreachable and thus
+  // unchanged when --token is absent.
+  //
+  // Branch on the option being *supplied*, not on its truthiness: `--token ""`
+  // must not silently fall through to the OAuth flow below (which would print
+  // a confusing "not logged in" error in CI when an env var expands to empty).
+  // Reject it locally instead — the backend's zod message for this case
+  // ("String must contain at least 1 character(s)") is far less clear.
+  if (opts.token !== undefined) {
+    if (opts.token.trim().length === 0) {
+      throw new CLIError('--token requires a non-empty Apify API token.');
+    }
+    trackGroupCommand('apify', 'connect', proj);
+    const status = await storeApifyToken(opts.token);
+    if (!opts.json) {
+      outputSuccess(`Apify connected with token ${status.maskedKey ?? '(hidden)'}`);
+    }
+    return {
+      connectionState: 'newly-connected',
+      connection: { apifyUsername: null, plan: null, status: 'active' },
+      token: status,
+    };
   }
 
   // 2. Login token

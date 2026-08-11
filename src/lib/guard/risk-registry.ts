@@ -210,6 +210,23 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     risk: 'Live traffic to this service stops immediately. Not recoverable.',
   }),
 
+  // `local stop` on its own is safe (containers stop, volumes stay). Only the
+  // volume-destroying form is gated — and it is gated even though the target is
+  // a developer's own machine, because an agent running `local stop
+  // --delete-data` wipes a database that has no backup anywhere.
+  'local stop': (ctx) =>
+    ctx.opts.deleteData
+      ? {
+          severity: 'critical',
+          kind: 'local.delete_data',
+          title: 'Delete all data in the local instance',
+          whatHappens:
+            'Stops the local InsForge containers and removes their volumes: database, storage objects, and logs.',
+          blastRadius: 'Every table, row, and uploaded file in this directory\u2019s local backend.',
+          risk: 'Irreversible. Local instances have no backups — nothing restores this.',
+        }
+      : SAFE,
+
   'storage delete-bucket': (ctx) => ({
     severity: 'critical',
     kind: 'storage.delete_bucket',
@@ -307,6 +324,24 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     whatHappens: `Removes member "${ctx.args[0] ?? '?'}" from the organization.`,
     blastRadius: 'That user loses access to all projects in the organization.',
     risk: 'They must be re-invited to regain access.',
+  }),
+
+  'orgs leave': (ctx) => ({
+    severity: 'high',
+    kind: 'org.leave',
+    title: 'Leave an organization',
+    whatHappens: `Removes you from organization "${(ctx.opts.orgId as string) ?? '?'}".`,
+    blastRadius: 'You lose access to every project in the organization.',
+    risk: 'You must be re-invited by an administrator to regain access.',
+  }),
+
+  'orgs delete': (ctx) => ({
+    severity: 'critical',
+    kind: 'org.delete',
+    title: 'Delete an organization',
+    whatHappens: `Permanently deletes organization "${(ctx.opts.orgId as string) ?? '?'}" and every project in it.`,
+    blastRadius: 'All of the org\'s projects (databases, storage, functions), members, and its subscription are destroyed.',
+    risk: 'Irreversible. Every app pointing at any project in this organization breaks immediately.',
   }),
 
   'secrets rotate': (ctx) => ({

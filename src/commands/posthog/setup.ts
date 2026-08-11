@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
-import { getProjectConfig, getAccessToken } from '../../lib/config.js';
+import { getProjectConfig, getAccessToken, FAKE_PROJECT_ID } from '../../lib/config.js';
 import {
   handleError,
   getRootOpts,
@@ -12,8 +12,10 @@ import {
 import { isInteractive } from '../../lib/prompts.js';
 import {
   fetchPosthogConnection,
+  readOssPosthogConnection,
   pollPosthogConnection,
   startPosthogCliFlow,
+  storePosthogKey,
   type PosthogConnectionResponse,
 } from '../../lib/api/posthog.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
@@ -54,6 +56,12 @@ export function registerPosthogSetupCommand(program: Command): void {
     .command('setup')
     .description('Connect PostHog to your InsForge dashboard, then run the official PostHog wizard to wire it into your app')
     .option('--skip-browser', 'Do not auto-open the browser for OAuth; only print the URL')
+    .option('--key <key>', 'PostHog personal API key (self-hosted; skips the OAuth flow)')
+    .option('--region <region>', 'PostHog Cloud region for --key: US or EU', 'US')
+    .option(
+      '--posthog-project-id <id>',
+      'PostHog project to connect when --key can see several',
+    )
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
@@ -61,6 +69,9 @@ export function registerPosthogSetupCommand(program: Command): void {
           json,
           apiUrl,
           skipBrowser: Boolean(opts.skipBrowser),
+          key: opts.key,
+          region: opts.region,
+          posthogProjectId: opts.posthogProjectId,
         });
         if (json) {
           outputJson({ success: true, ...result });
@@ -77,6 +88,10 @@ interface RunSetupOpts {
   json: boolean;
   apiUrl?: string;
   skipBrowser: boolean;
+  /** Self-hosted path: a PostHog personal API key to store locally, bypassing OAuth. */
+  key?: string;
+  region?: string;
+  posthogProjectId?: string;
 }
 
 // Two-step flow:
@@ -94,12 +109,6 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
     throw new ProjectNotLinkedError();
   }
 
-  // 2. Login token
-  const token = getAccessToken();
-  if (!token) {
-    throw new AuthError('Not logged in. Run `insforge login` first.');
-  }
-
   trackPosthog('setup', proj);
 
   if (!opts.json) {
@@ -107,12 +116,44 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
     outputSuccess(`Linked to InsForge project: ${proj.project_name} (${proj.project_id})`);
   }
 
-  // 3. Ensure dashboard connection exists
-  const { state: dashboardConnection, connection } = await ensureDashboardConnection(
-    proj.project_id,
-    token,
-    opts,
-  );
+  let dashboardConnection: SetupResult['dashboardConnection'];
+  let connection: PosthogConnectionResponse;
+
+  // Branch on --key being *supplied*, not truthy: an env var expanding to ""
+  // must be rejected here, not fall through to OAuth (mirrors apify connect).
+  if (opts.key !== undefined) {
+    connection = await connectOss(opts);
+    dashboardConnection = 'newly-connected';
+  } else if (proj.project_id === FAKE_PROJECT_ID) {
+    // Mode first, like every other consumer of the sentinel (analytics,
+    // feedback, diagnose): a direct OSS link never touches the cloud flow.
+    // A connection made from the dashboard's Analytics page hands off without
+    // any login — this is what makes the setup prompt work self-hosted.
+    const existing = await readOssPosthogConnection();
+    if (!existing) {
+      throw new CLIError(
+        'PostHog is not connected on this self-hosted backend. Connect it from ' +
+          "your dashboard's Analytics page, or re-run with --key <phx_...> " +
+          '(add --region EU if your PostHog is in the EU).',
+      );
+    }
+    if (!opts.json) {
+      outputSuccess('PostHog is already connected to your InsForge dashboard.');
+    }
+    connection = existing;
+    dashboardConnection = 'already-connected';
+  } else {
+    // 2. Login token
+    const token = getAccessToken();
+    if (!token) {
+      throw new AuthError('Not logged in. Run `insforge login` first.');
+    }
+
+    // 3. Ensure dashboard connection exists
+    const cloudResult = await ensureDashboardConnection(proj.project_id, token, opts);
+    dashboardConnection = cloudResult.state;
+    connection = cloudResult.connection;
+  }
 
   // 4. Print the wizard command and exit. The wizard is interactive (browser
   // OAuth + framework picker) and reliably detecting "do we have a real,
@@ -155,6 +196,42 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
       projectName: connection.projectName,
     },
   };
+}
+
+// Store the key via the local backend (validated against PostHog before it is
+// written), then read the connection back for the wizard handoff.
+async function connectOss(opts: RunSetupOpts): Promise<PosthogConnectionResponse> {
+  const key = (opts.key ?? '').trim();
+  if (!key) {
+    throw new CLIError('--key requires a non-empty PostHog personal API key.');
+  }
+  const region = (opts.region ?? 'US').toUpperCase();
+  if (region !== 'US' && region !== 'EU') {
+    throw new CLIError(`--region must be US or EU (got: ${opts.region}).`);
+  }
+
+  const config = await storePosthogKey({
+    personalApiKey: key,
+    region,
+    ...(opts.posthogProjectId ? { posthogProjectId: opts.posthogProjectId } : {}),
+  });
+  if (!opts.json) {
+    outputSuccess(
+      `PostHog connected with key ${config.personalApiKey.maskedKey ?? '(hidden)'}`,
+    );
+  }
+
+  // Strict read, not the best-effort probe: the key is stored at this point,
+  // so a failing read must surface its real error rather than a generic miss.
+  const connection = await readOssPosthogConnection();
+  if (!connection) {
+    throw new CLIError(
+      'The key was stored but the backend returned no connection; check the Analytics page in your dashboard.',
+      1,
+      'POSTHOG_CONNECTION_MISSING',
+    );
+  }
+  return connection;
 }
 
 // Calls cli-start. If already connected, no-op. Otherwise opens the OAuth

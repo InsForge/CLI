@@ -1,5 +1,6 @@
 import { getPlatformApiUrl } from '../config.js';
 import { CLIError, formatFetchError } from '../errors.js';
+import { ossFetch } from './oss.js';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -38,6 +39,76 @@ export type ConnectionFetch =
   | { kind: 'not-connected' }
   | { kind: 'forbidden'; message: string }
   | { kind: 'error'; message: string; status?: number };
+
+// --- self-hosted (OSS backend) ---
+
+export interface PosthogOssConfig {
+  personalApiKey: { configured: boolean; maskedKey: string | null };
+  host: string | null;
+  posthogProjectId: string | null;
+  projectName: string | null;
+  organizationName: string | null;
+}
+
+// PUT /api/analytics/config — the backend validates the key against PostHog
+// before storing, so its actionable rejections (missing scopes, ambiguous
+// multi-project key) propagate unchanged. Mirrors storeApifyToken.
+export async function storePosthogKey(input: {
+  personalApiKey: string;
+  region: 'US' | 'EU';
+  posthogProjectId?: string;
+}): Promise<PosthogOssConfig> {
+  const res = await ossFetch('/api/analytics/config', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  const config = data as PosthogOssConfig | null;
+  if (typeof config !== 'object' || config === null || !config.personalApiKey) {
+    throw new CLIError(
+      'PostHog config endpoint returned no key status; try again.',
+      1,
+      'POSTHOG_CONFIG_MALFORMED',
+    );
+  }
+  if (config.personalApiKey.configured !== true) {
+    throw new CLIError(
+      'The backend did not report the PostHog key as stored; try again.',
+      1,
+      'POSTHOG_KEY_NOT_STORED',
+    );
+  }
+  return config;
+}
+
+// GET /api/analytics/connection with the project api_key (no cloud login).
+// Null strictly means "no connection there" (not_connected, or a backend
+// without the route); real failures propagate like every other ossFetch call.
+export async function readOssPosthogConnection(): Promise<PosthogConnectionResponse | null> {
+  let res: Response;
+  try {
+    res = await ossFetch('/api/analytics/connection');
+  } catch (err) {
+    if (
+      err instanceof CLIError &&
+      (err.message.includes('not_connected') || err.message.includes('404'))
+    ) {
+      return null;
+    }
+    throw err;
+  }
+  const data = (await res.json().catch(() => null)) as {
+    connection?: PosthogConnectionResponse;
+  } | null;
+  return data?.connection?.apiKey ? data.connection : null;
+}
 
 /**
  * GET /integrations/posthog/v1/connection?project_id=<id>

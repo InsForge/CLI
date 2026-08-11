@@ -141,6 +141,18 @@ describe('assess — command-path classification', () => {
     expect(risk.whatHappens).toContain('live');
   });
 
+  it('flags org lifecycle commands (leave high, delete critical)', () => {
+    const leave = assess({ path: 'orgs leave', args: [], opts: { orgId: 'org-1' } });
+    expect(leave.severity).toBe('high');
+    expect(leave.kind).toBe('org.leave');
+    expect(leave.whatHappens).toContain('org-1');
+
+    const del = assess({ path: 'orgs delete', args: [], opts: { orgId: 'org-1' } });
+    expect(del.severity).toBe('critical');
+    expect(del.kind).toBe('org.delete');
+    expect(del.whatHappens).toContain('org-1');
+  });
+
   it('catches unregistered destructive verbs (defense in depth)', () => {
     const r = assess(cmd('widgets destroy', ['x']));
     expect(r.severity).toBe('high');
@@ -197,5 +209,25 @@ describe('assess — trust boundary', () => {
     });
     expect(withOpts).toEqual(base);
     expect(withOpts.severity).toBe('critical');
+  });
+});
+
+describe('assess — local stop', () => {
+  /** The registry keys on the command path and reads deleteData off opts. */
+  const stop = (opts: Record<string, unknown>): OperationContext => ({
+    path: 'local stop',
+    args: [],
+    opts,
+  });
+
+  it('gates --delete-data as critical', () => {
+    const r = assess(stop({ deleteData: true }));
+    expect(r.severity).toBe('critical');
+    expect(r.kind).toBe('local.delete_data');
+  });
+
+  it('leaves a plain stop ungated', () => {
+    // Containers stop, volumes stay — nothing to confirm.
+    expect(assess(stop({})).severity).not.toBe('critical');
   });
 });

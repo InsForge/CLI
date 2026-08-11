@@ -1,5 +1,6 @@
 import { getPlatformApiUrl } from '../config.js';
 import { CLIError, formatFetchError } from '../errors.js';
+import { ossFetch } from './oss.js';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -134,6 +135,69 @@ export async function fetchApifyConnection(
   }
 
   return { kind: 'connected', connection: conn };
+}
+
+export interface ApifyTokenStatus {
+  configured: boolean;
+  maskedKey: string | null;
+}
+
+/**
+ * Store a developer-supplied Apify API token on a self-hosted InsForge backend.
+ *
+ * Calls PUT /api/webscraper/apify/config on the project's OSS host. The backend
+ * validates the token against Apify before saving, so a 400 here means the token
+ * is bad — or that this is a cloud project, where the connection is made by OAuth
+ * instead. Both arrive as a CLIError from ossFetch carrying the backend's message,
+ * so they are left to propagate unchanged.
+ *
+ * A 2xx response is not itself proof the token was stored: an empty/non-JSON
+ * body is treated the same as a missing `token` object (APIFY_CONFIG_MALFORMED
+ * — the endpoint's response shape can't be trusted), while a well-formed body
+ * with `configured: false` is a distinct condition — the write may have
+ * succeeded but the read-back didn't find the secret — surfaced under its own
+ * APIFY_TOKEN_NOT_STORED code so callers can tell "can't parse the response"
+ * apart from "parsed fine, but nothing was actually stored".
+ */
+export async function storeApifyToken(apiToken: string): Promise<ApifyTokenStatus> {
+  const res = await ossFetch('/api/webscraper/apify/config', {
+    method: 'PUT',
+    body: JSON.stringify({ apiToken }),
+  });
+
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (typeof data !== 'object' || data === null) {
+    throw new CLIError(
+      'Apify config endpoint returned no token status; try again.',
+      1,
+      'APIFY_CONFIG_MALFORMED',
+    );
+  }
+
+  const token = (data as { token?: ApifyTokenStatus }).token;
+  if (!token) {
+    throw new CLIError(
+      'Apify config endpoint returned no token status; try again.',
+      1,
+      'APIFY_CONFIG_MALFORMED',
+    );
+  }
+
+  if (token.configured !== true) {
+    throw new CLIError(
+      'Apify did not report the token as stored; try again.',
+      1,
+      'APIFY_TOKEN_NOT_STORED',
+    );
+  }
+
+  return token;
 }
 
 export interface PollOptions {
