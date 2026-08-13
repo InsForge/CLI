@@ -29,23 +29,39 @@ const METRIC_LABELS: Record<string, string> = {
   cpu_usage: 'CPU Usage',
   memory_usage: 'Memory Usage',
   disk_usage: 'Disk Usage',
+  disk_used: 'Disk Used',
+  disk_total: 'Disk Total',
+  disk_database: 'Disk Database',
+  disk_wal: 'Disk WAL',
   network_in: 'Network In',
   network_out: 'Network Out',
 };
 
 const NETWORK_METRICS = new Set(['network_in', 'network_out']);
 
-function formatValue(metric: string, value: number): string {
+/** Raw byte counters — rendered as sizes, not percentages. */
+const BYTE_METRICS = new Set(['disk_used', 'disk_total', 'disk_database', 'disk_wal']);
+
+export function formatValue(metric: string, value: number): string {
   if (NETWORK_METRICS.has(metric)) {
     return formatBytes(value) + '/s';
+  }
+  if (BYTE_METRICS.has(metric)) {
+    return formatBytes(value);
   }
   return `${value.toFixed(1)}%`;
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes.toFixed(1)} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const KB = 1024;
+  const MB = KB * 1024;
+  const GB = MB * 1024;
+  const TB = GB * 1024;
+  if (bytes < KB) return `${bytes.toFixed(1)} B`;
+  if (bytes < MB) return `${(bytes / KB).toFixed(1)} KB`;
+  if (bytes < GB) return `${(bytes / MB).toFixed(1)} MB`;
+  if (bytes < TB) return `${(bytes / GB).toFixed(1)} GB`;
+  return `${(bytes / TB).toFixed(1)} TB`;
 }
 
 function computeStats(data: MetricDataPoint[]): { latest: number; avg: number; max: number } {
