@@ -1,8 +1,13 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Command } from 'commander';
-import { ossFetch } from '../../lib/api/oss.js';
+<<<<<<< HEAD
+import { handleBranchProvisioningError, ossFetch } from '../../lib/api/oss.js';
+=======
+import { isProvisioningError, buildProvisioningErrorMessage, ossFetch } from '../../lib/api/oss.js';
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
 import { requireAuth } from '../../lib/credentials.js';
+import { getProjectConfig } from '../../lib/config.js';
 import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
 import {
   canonicalMigrationVersion,
@@ -133,6 +138,23 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.db.migrations.list', false);
         await trackCommandUsage('db', 'migrations list', false, {}, err);
+
+<<<<<<< HEAD
+        await handleBranchProvisioningError(err, json);
+=======
+        const projectConfig = getProjectConfig();
+        const isBranch = projectConfig?.branched_from != null;
+        if (isBranch && isProvisioningError(err)) {
+          const msg = buildProvisioningErrorMessage(projectConfig?.project_name);
+          if (json) {
+            console.error(JSON.stringify({ error: msg, code: 'BRANCH_PROVISIONING' }));
+          } else {
+            console.error(`Error: ${msg}`);
+          }
+          process.exit(1);
+        }
+
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
         handleError(err, json);
       }
     });
@@ -201,6 +223,23 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.db.migrations.fetch', false);
         await trackCommandUsage('db', 'migrations fetch', false, {}, err);
+<<<<<<< HEAD
+        await handleBranchProvisioningError(err, json);
+=======
+
+        const projectConfig = getProjectConfig();
+        const isBranch = projectConfig?.branched_from != null;
+        if (isBranch && isProvisioningError(err)) {
+          const msg = buildProvisioningErrorMessage(projectConfig?.project_name);
+          if (json) {
+            console.error(JSON.stringify({ error: msg, code: 'BRANCH_PROVISIONING' }));
+          } else {
+            console.error(`Error: ${msg}`);
+          }
+          process.exit(1);
+        }
+
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
         handleError(err, json);
       }
     });
@@ -247,6 +286,23 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.db.migrations.new', false);
         await trackCommandUsage('db', 'migrations new', false, {}, err);
+<<<<<<< HEAD
+        await handleBranchProvisioningError(err, json);
+=======
+
+        const projectConfig = getProjectConfig();
+        const isBranch = projectConfig?.branched_from != null;
+        if (isBranch && isProvisioningError(err)) {
+          const msg = buildProvisioningErrorMessage(projectConfig?.project_name);
+          if (json) {
+            console.error(JSON.stringify({ error: msg, code: 'BRANCH_PROVISIONING' }));
+          } else {
+            console.error(`Error: ${msg}`);
+          }
+          process.exit(1);
+        }
+
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
         handleError(err, json);
       }
     });
@@ -427,6 +483,23 @@ export function registerDbMigrationsCommand(dbCmd: Command): void {
       } catch (err) {
         await reportCliUsage('cli.db.migrations.up', false);
         await trackCommandUsage('db', 'migrations up', false, {}, err);
+<<<<<<< HEAD
+        await handleBranchProvisioningError(err, json);
+=======
+
+        const projectConfig = getProjectConfig();
+        const isBranch = projectConfig?.branched_from != null;
+        if (isBranch && isProvisioningError(err)) {
+          const msg = buildProvisioningErrorMessage(projectConfig?.project_name);
+          if (json) {
+            console.error(JSON.stringify({ error: msg, code: 'BRANCH_PROVISIONING' }));
+          } else {
+            console.error(`Error: ${msg}`);
+          }
+          process.exit(1);
+        }
+
+>>>>>>> 34b302ebc5c301be89edb5a9c7e75ac702eb55ca
         handleError(err, json);
       }
     });
