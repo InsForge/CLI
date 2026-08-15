@@ -212,7 +212,10 @@ export function registerBranchCreateCommand(branch: Command): void {
  * Reported upstream: InsForge/InsForge#1790.
  */
 function isTransportFailure(err: unknown): boolean {
-  return err instanceof CLIError && err.code === NETWORK_ERROR_CODE;
+  return (
+    err instanceof CLIError &&
+    (err.code === NETWORK_ERROR_CODE || err.statusCode === 502 || err.statusCode === 503 || err.statusCode === 504)
+  );
 }
 
 async function createBranchOrAdopt(
