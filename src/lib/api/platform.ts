@@ -118,8 +118,9 @@ export async function platformFetch(
       return retryRes;
     }
     if (!retryRes.ok) {
-      const err = await retryRes.json().catch(() => ({})) as { error?: string };
-      throw new CLIError(err.error ?? `Request failed: ${retryRes.status}`, retryRes.status === 403 ? 5 : 1);
+      const err = await retryRes.json().catch(() => ({})) as { error?: string; message?: string };
+      const message = err.message ? `${err.error ?? retryRes.status}: ${err.message}` : (err.error ?? `Request failed: ${retryRes.status}`);
+      throw new CLIError(message, retryRes.status === 403 ? 5 : 1, undefined, retryRes.status);
     }
     return retryRes;
   }
@@ -131,7 +132,7 @@ export async function platformFetch(
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string; message?: string };
     const msg = err.message ? `${err.error ?? res.status}: ${err.message}` : (err.error ?? `Request failed: ${res.status}`);
-    throw new CLIError(msg, res.status === 403 ? 5 : 1);
+    throw new CLIError(msg, res.status === 403 ? 5 : 1, undefined, res.status);
   }
 
   return res;
