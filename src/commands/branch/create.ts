@@ -181,8 +181,8 @@ export function registerBranchCreateCommand(branch: Command): void {
 }
 
 /**
- * Create the branch, and if the request fails at the TRANSPORT layer, check
- * whether it was created anyway before giving up.
+ * Create the branch, and if the request fails ambiguously at the transport or
+ * gateway layer, check whether it was created anyway before giving up.
  *
  * `createBranchApi` carries no idempotency key, and a reset on the RESPONSE leg
  * leaves a fully created, billing branch behind while the CLI exits non-zero.
@@ -192,11 +192,13 @@ export function registerBranchCreateCommand(branch: Command): void {
  * the branch's own host is unreachable.
  *
  * Two guards keep this from adopting something it did not create — a duplicate
- * name is a REJECTION, not a lost response, and adopting on it would switch the
- * caller into someone else's branch with a different mode and different data:
+ * name is a REJECTION, not an ambiguous failure, and adopting on it would
+ * switch the caller into someone else's branch with a different mode and
+ * different data:
  *
- *   1. only a tagged transport failure is eligible; every HTTP/API rejection
- *      (duplicate name, quota, auth) rethrows untouched;
+ *   1. only a tagged transport failure or a 502/503/504 gateway failure is
+ *      eligible; other HTTP/API rejections (duplicate name, quota, auth)
+ *      rethrow untouched;
  *   2. the branch must have been created at or after the moment we sent the
  *      request, so a pre-existing same-name branch is never a candidate;
  *   3. the branch's mode must match what we asked for.
@@ -207,11 +209,12 @@ export function registerBranchCreateCommand(branch: Command): void {
  * and with the default `--switch` that would silently move local context onto
  * their branch. Requiring a mode match makes that require an even more specific
  * coincidence (same name AND same mode AND the same ~60s AND our transport
- * failure). The real fix is a server-issued idempotency/request token on
- * `createBranchApi`; until that exists, this is the tightest client-side guard.
+ * or gateway failure). The real fix is a server-issued idempotency/request token
+ * on `createBranchApi`; until that exists, this is the tightest client-side
+ * guard.
  * Reported upstream: InsForge/InsForge#1790.
  */
-function isTransportFailure(err: unknown): boolean {
+function isAmbiguousCreateFailure(err: unknown): boolean {
   return (
     err instanceof CLIError &&
     (err.code === NETWORK_ERROR_CODE || err.statusCode === 502 || err.statusCode === 503 || err.statusCode === 504)
@@ -227,7 +230,7 @@ async function createBranchOrAdopt(
   try {
     return await createBranchApi(parentId, body, apiUrl);
   } catch (err) {
-    if (!isTransportFailure(err)) throw err;
+    if (!isAmbiguousCreateFailure(err)) throw err;
     const existing = await listBranchesApi(parentId, apiUrl)
       .then(branches =>
         branches.find(
