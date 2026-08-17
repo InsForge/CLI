@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import * as clack from '@clack/prompts';
 import { listBranchesApi, resetBranchApi, getBranchApi } from '../../lib/api/platform.js';
-import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
+import { CLIError, getRootOpts, handleError, isTransientApiError } from '../../lib/errors.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
@@ -83,6 +83,14 @@ export function registerBranchResetCommand(branch: Command): void {
     });
 }
 
+/**
+ * Poll the control plane until the reset lands.
+ *
+ * Same shape — and the same transient-failure tolerance — as the create poll:
+ * a 502 from the gateway is a failed READ, not a failed reset, and giving up on
+ * it leaves the caller believing a reset that is still running has failed. See
+ * the note on `pollUntilReady` in create.ts.
+ */
 async function pollUntilReady(
   branchId: string,
   apiUrl: string | undefined,
@@ -91,9 +99,24 @@ async function pollUntilReady(
 ): Promise<Branch> {
   const start = Date.now();
   let lastState = startingState;
+  let lastBranch: Branch | null = null;
+  let announcedUnreachable = false;
   if (showProgress) outputInfo(`  state: ${startingState}…`);
   while (Date.now() - start < POLL_TIMEOUT_MS) {
-    const branch = await getBranchApi(branchId, apiUrl);
+    let branch: Branch;
+    try {
+      branch = await getBranchApi(branchId, apiUrl);
+    } catch (err) {
+      if (!isTransientApiError(err)) throw err;
+      if (showProgress && !announcedUnreachable) {
+        outputInfo('  control plane not answering; reset still running, retrying…');
+        announcedUnreachable = true;
+      }
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      continue;
+    }
+    lastBranch = branch;
+    announcedUnreachable = false;
     // Reset always lands at ready (even when entry was merged) — see
     // backend BranchQueue.processResetFinalize. A bounce back to ready
     // OR merged is the rollback path; treat both as terminal so the user
@@ -110,8 +133,12 @@ async function pollUntilReady(
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
   // Timed out — re-check terminal failure states so a state flip just before
-  // the deadline is not silently reported as “still in state …”.
-  const branch = await getBranchApi(branchId, apiUrl);
+  // the deadline is not silently reported as “still in state …”. A transient
+  // failure on that last read falls back to the last state we observed.
+  const branch = await getBranchApi(branchId, apiUrl).catch((err: unknown) => {
+    if (!isTransientApiError(err) || !lastBranch) throw err;
+    return lastBranch;
+  });
   if (branch.branch_state === 'deleted' || branch.branch_state === 'conflicted') {
     throw new CLIError(`Branch reset failed (state: ${branch.branch_state})`);
   }

@@ -394,6 +394,118 @@ describe('branch create', () => {
     expect(exitCode).toBe(1);
   });
 
+  it('survives a transient 502 mid-poll instead of abandoning a branch that is still provisioning', async () => {
+    // The reported incident: the control plane 502s once at ~90s, the CLI exits
+    // non-zero, and the backend marks the branch ready ~15s later — leaving a
+    // real, billing branch behind a failed command. A failed READ is not a
+    // failed branch. (agent-e2e runs 31832239687 / 32055449431.)
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+      appkey: 'p1ky',
+      region: 'us-east',
+      api_key: 'k',
+      oss_host: 'p1ky.us-east.insforge.app',
+    });
+    const { getBranchApi } = await import('../../lib/api/platform.js');
+    // One gateway 502, then the branch is ready (the default mock impl).
+    (getBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError('Request failed: 502', 1, undefined, 502),
+    );
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(' '));
+    };
+    vi.useFakeTimers();
+    let exitCode: number | undefined;
+    try {
+      exitCode = await withCapturedExit(async () => {
+        const program = new Command().exitOverride();
+        program.option('--json').option('--api-url <url>').option('-y, --yes');
+        registerBranchCreateCommand(program);
+        const run = program
+          .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch', '--json'], {
+            from: 'user',
+          })
+          .catch(() => {});
+        await vi.runAllTimersAsync();
+        await run;
+      });
+    } finally {
+      vi.useRealTimers();
+      console.log = origLog;
+    }
+    // Polled past the 502 and reported the ready branch, exit 0.
+    expect((getBranchApi as Mock).mock.calls.length).toBeGreaterThan(1);
+    expect(exitCode).toBeUndefined();
+    expect(logs.join('\n')).toContain('branch-id');
+  });
+
+  it('still gives up on a real rejection mid-poll (404 is not transient)', async () => {
+    // The tolerance must not swallow an answer that will never change — a
+    // deleted/unknown branch id has to end the command, not burn 15 minutes.
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { getBranchApi } = await import('../../lib/api/platform.js');
+    (getBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError('Branch not found', 1, undefined, 404),
+    );
+    const exitCode = await withCapturedExit(async () => {
+      const program = new Command().exitOverride();
+      program.option('--json').option('--api-url <url>').option('-y, --yes');
+      registerBranchCreateCommand(program);
+      await program
+        .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+        .catch(() => {});
+    });
+    expect(getBranchApi as Mock).toHaveBeenCalledTimes(1);
+    expect(exitCode).toBe(1);
+  });
+
+  it('adopts a branch that was created despite a gateway 5xx on the create request', async () => {
+    // Same lost-response ambiguity as a transport reset: a 502 is the proxy
+    // saying IT could not complete the round trip, so the branch may well exist
+    // and be billing. The name/mode/created_at guards still apply.
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
+    (createBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError('Request failed: 502', 1, undefined, 502),
+    );
+    (listBranchesApi as Mock).mockResolvedValueOnce([
+      {
+        id: 'branch-id',
+        parent_project_id: 'p1',
+        organization_id: 'o1',
+        name: 'feat-x',
+        appkey: 'p1ky-x9p',
+        region: 'us-east',
+        branch_state: 'creating',
+        branch_created_at: new Date().toISOString(),
+        branch_metadata: { mode: 'schema-only' },
+      },
+    ]);
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    await program
+      .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+      .catch(() => {});
+    expect(listBranchesApi as Mock).toHaveBeenCalledWith('p1', undefined);
+    expect(String(spinnerMock.stop.mock.calls.at(-1)?.[0])).not.toContain('creation failed');
+  });
+
   it('adopts a branch that was created despite a transport failure', async () => {
     // createBranchApi carries no idempotency key, so a reset on the RESPONSE
     // leg leaves a real, billing branch behind. Giving up here orphans it.

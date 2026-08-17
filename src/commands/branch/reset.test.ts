@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchResetCommand } from './reset.js';
+import { CLIError } from '../../lib/errors.js';
 
 vi.mock('../../lib/api/platform.js', () => ({
   listBranchesApi: vi.fn(async () => [
@@ -144,6 +145,37 @@ describe('branch reset', () => {
     ).rejects.toThrow();
     const { resetBranchApi } = await import('../../lib/api/platform.js');
     expect(resetBranchApi).not.toHaveBeenCalled();
+  });
+
+  it('survives a transient 502 mid-poll instead of reporting a reset that is still running as failed', async () => {
+    // Same failure the create poll had: a gateway 502 on the status read says
+    // nothing about the reset job, which keeps running server-side.
+    const platformModule = await import('../../lib/api/platform.js');
+    const getBranchApi = platformModule.getBranchApi as ReturnType<typeof vi.fn>;
+    getBranchApi.mockRejectedValueOnce(new CLIError('Request failed: 502', 1, undefined, 502));
+    const program = makeProgram();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.useFakeTimers();
+    try {
+      const run = program.parseAsync(['reset', 'feat-x', '--yes', '--json'], { from: 'user' });
+      await vi.runAllTimersAsync();
+      await run;
+    } finally {
+      vi.useRealTimers();
+      logSpy.mockRestore();
+    }
+    expect(getBranchApi.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('gives up on a real rejection mid-poll (404 is not transient)', async () => {
+    const platformModule = await import('../../lib/api/platform.js');
+    const getBranchApi = platformModule.getBranchApi as ReturnType<typeof vi.fn>;
+    getBranchApi.mockRejectedValueOnce(new CLIError('Branch not found', 1, undefined, 404));
+    const program = makeProgram();
+    await expect(
+      program.parseAsync(['reset', 'feat-x', '--yes', '--json'], { from: 'user' }),
+    ).rejects.toThrow();
+    expect(getBranchApi).toHaveBeenCalledTimes(1);
   });
 
   it('throws when polling sees a terminal failure state (deleted)', async () => {
