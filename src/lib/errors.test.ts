@@ -115,8 +115,12 @@ describe('isTransientApiError', () => {
     expect(isTransientApiError(new CLIError('Branch creation failed (state: deleted)'))).toBe(false);
   });
 
-  it('treats a raw non-CLIError throw as transient', () => {
-    // ossFetch does not wrap fetch rejections, so these arrive as plain errors.
-    expect(isTransientApiError(new TypeError('fetch failed'))).toBe(true);
+  it('treats an unclassified throw as terminal', () => {
+    // A res.json() parse failure or a plain bug must not spin a poll loop for
+    // its whole budget. platformFetch wraps every transport/HTTP failure into a
+    // CLIError, so nothing real is misclassified here; ossFetch callers that
+    // need raw fetch rejections retried handle that themselves.
+    expect(isTransientApiError(new TypeError('fetch failed'))).toBe(false);
+    expect(isTransientApiError(new SyntaxError('Unexpected end of JSON input'))).toBe(false);
   });
 });

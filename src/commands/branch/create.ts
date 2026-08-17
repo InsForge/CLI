@@ -199,11 +199,11 @@ export function registerBranchCreateCommand(branch: Command): void {
  * name is a REJECTION, not a lost response, and adopting on it would switch the
  * caller into someone else's branch with a different mode and different data:
  *
- *   1. only an ambiguous failure is eligible — a transport reset, or a gateway
- *      5xx, which is the proxy reporting that IT could not complete the round
- *      trip and says nothing about what the backend did. Every API-level
- *      rejection (duplicate name, quota, auth, any other 4xx) rethrows
- *      untouched;
+ *   1. only an ambiguous failure is eligible — a transport reset, or one of the
+ *      PROXY-level statuses, which is the edge reporting that IT could not
+ *      complete the round trip and says nothing about what the backend did.
+ *      Every answer the API itself authored — a duplicate name, a quota, auth,
+ *      any other 4xx, and a plain 500 — rethrows untouched;
  *   2. the branch must have been created at or after the moment we sent the
  *      request, so a pre-existing same-name branch is never a candidate;
  *   3. the branch's mode must match what we asked for.
@@ -219,12 +219,24 @@ export function registerBranchCreateCommand(branch: Command): void {
  * Reported upstream: InsForge/InsForge#1790.
  *
  * When no matching branch turns up, the original error is rethrown unchanged —
- * so widening guard 1 to 5xx cannot mask a request the backend never acted on.
+ * so guard 1 accepting proxy statuses cannot mask a request the backend never
+ * acted on.
+ *
+ * Deliberately NARROWER than `isTransientApiError`, which the poll uses:
+ *   - 500 is excluded. That is the application's own answer, so it is more
+ *     likely an authoritative rejection than a lost response, and adopting on
+ *     it would widen the window in which a collaborator's same-name branch
+ *     could be picked up and switched into (the residual collision above).
+ *     Re-reading a status after a 500 is free; adopting after one is not.
+ *   - 408/429 are excluded. A rate limit or a timeout on the POST means the
+ *     request was refused, not lost — nothing was created to adopt.
  */
+const PROXY_STATUSES = new Set([502, 503, 504]);
+
 function isAmbiguousCreateFailure(err: unknown): boolean {
   if (!(err instanceof CLIError)) return false;
   if (err.code === NETWORK_ERROR_CODE) return true;
-  return err.statusCode !== undefined && err.statusCode >= 500;
+  return err.statusCode !== undefined && PROXY_STATUSES.has(err.statusCode);
 }
 
 async function createBranchOrAdopt(
@@ -325,7 +337,12 @@ async function pollUntilReady(
   // Timed out — re-check terminal failure states so a state flip just before
   // the deadline is not silently reported as “still in state …”. If even this
   // read fails transiently, report the last state we did observe rather than
-  // turning a timeout into an API error about a branch that exists.
+  // turning a timeout into an API error about a branch that exists: the caller
+  // needs the id and appkey printed to find and delete it. The reported state
+  // may be stale, but it cannot manufacture success — every non-'ready' state
+  // exits non-zero, so the worst case is a stale label on a failure that was
+  // already going to be a failure. (`branch reset` has no identity to emit and
+  // exits 0 on a non-ready state, so it fails loudly there instead.)
   const branch = await getBranchApi(branchId, apiUrl).catch((err: unknown) => {
     if (!isTransientApiError(err) || !lastBranch) throw err;
     return lastBranch;

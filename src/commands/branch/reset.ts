@@ -133,11 +133,24 @@ async function pollUntilReady(
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
   // Timed out — re-check terminal failure states so a state flip just before
-  // the deadline is not silently reported as “still in state …”. A transient
-  // failure on that last read falls back to the last state we observed.
+  // the deadline is not silently reported as “still in state …”.
+  //
+  // If that last read fails too, the final state is UNKNOWN and the command
+  // must say so. Substituting the last polled state here would let a branch
+  // that went 'deleted'/'conflicted' after the last successful read be
+  // reported as "still resetting" — and this command exits 0 on a non-ready
+  // state, so a failed reset would exit successfully. Unlike create, there is
+  // no identity to emit that the caller does not already have (they named the
+  // branch), so failing loudly costs nothing.
   const branch = await getBranchApi(branchId, apiUrl).catch((err: unknown) => {
-    if (!isTransientApiError(err) || !lastBranch) throw err;
-    return lastBranch;
+    if (!isTransientApiError(err)) throw err;
+    throw new CLIError(
+      `Could not confirm the reset of branch ${branchId}: the control plane is not answering (${
+        err instanceof CLIError ? err.message : String(err)
+      }).` +
+        (lastBranch ? ` Last observed state: '${lastBranch.branch_state}'.` : '') +
+        ' Run `insforge branch list` to check.',
+    );
   });
   if (branch.branch_state === 'deleted' || branch.branch_state === 'conflicted') {
     throw new CLIError(`Branch reset failed (state: ${branch.branch_state})`);

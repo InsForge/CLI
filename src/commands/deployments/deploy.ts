@@ -318,7 +318,11 @@ export async function pollDeployment(
       // responses other than the retryable ones are terminal. Gateway 5xx
       // responses on the status endpoint are transient — the deployment itself
       // may still succeed — so keep polling, same as network-level fetch errors.
-      if (!isTransientApiError(err)) {
+      // `ossFetch` does not wrap raw fetch rejections into CLIError the way
+      // `platformFetch` does, so a non-CLIError throw here IS the network-level
+      // case and stays retryable — that is why this is not a bare
+      // `!isTransientApiError(err)`.
+      if (err instanceof CLIError && !isTransientApiError(err)) {
         throw err;
       }
       // Transient: keep polling, but remember why the read failed so that an

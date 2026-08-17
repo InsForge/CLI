@@ -167,6 +167,43 @@ describe('branch reset', () => {
     expect(getBranchApi.mock.calls.length).toBeGreaterThan(1);
   });
 
+  it('fails loudly when the final state could never be confirmed, instead of reporting a stale one', async () => {
+    // This command exits 0 on any non-ready state, so substituting the last
+    // polled state after an unreadable final check would let a reset that went
+    // 'deleted'/'conflicted' exit successfully.
+    const platformModule = await import('../../lib/api/platform.js');
+    const getBranchApi = platformModule.getBranchApi as ReturnType<typeof vi.fn>;
+    getBranchApi.mockRejectedValue(new CLIError('Request failed: 502', 1, undefined, 502));
+    const program = makeProgram();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.useFakeTimers();
+    let reads: number;
+    try {
+      // Attach the rejection handler BEFORE advancing timers, or the failure
+      // surfaces as an unhandled rejection while the fake clock runs.
+      const run = expect(
+        program.parseAsync(['reset', 'feat-x', '--yes', '--json'], { from: 'user' }),
+      ).rejects.toThrow();
+      await vi.runAllTimersAsync();
+      await run;
+      reads = getBranchApi.mock.calls.length;
+    } finally {
+      vi.useRealTimers();
+      logSpy.mockRestore();
+      // mockRejectedValue survives clearAllMocks — restore the shared impl or
+      // every later test polls a 502 for the full budget.
+      getBranchApi.mockReset();
+      getBranchApi.mockResolvedValue({
+        id: 'b1', name: 'feat-x', branch_state: 'ready',
+        organization_id: 'o1', parent_project_id: 'p1', appkey: 'k', region: 'us-east',
+        branch_created_at: '2026',
+      });
+    }
+    // It kept polling for the whole budget rather than aborting on the first
+    // 502, and then refused to guess the outcome.
+    expect(reads).toBeGreaterThan(10);
+  });
+
   it('gives up on a real rejection mid-poll (404 is not transient)', async () => {
     const platformModule = await import('../../lib/api/platform.js');
     const getBranchApi = platformModule.getBranchApi as ReturnType<typeof vi.fn>;
