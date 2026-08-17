@@ -1,5 +1,5 @@
 import { getProjectConfig } from '../config.js';
-import { CLIError, formatFetchError, ProjectNotLinkedError } from '../errors.js';
+import { CLIError, NETWORK_ERROR_CODE, formatFetchError, ProjectNotLinkedError } from '../errors.js';
 import type {
   AdvisorSuppression,
   AdvisorSuppressionReason,
@@ -243,7 +243,19 @@ export async function ossFetch(
     ...(options.headers as Record<string, string> ?? {}),
   };
 
-  const res = await fetch(`${config.oss_host}${path}`, { ...options, headers });
+  const url = `${config.oss_host}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (err) {
+    // Tag transport failures the way `platformFetch` does. Two reasons:
+    // callers get an actionable message ("Cannot resolve host…") instead of
+    // Node's bare "fetch failed", and a poll loop can tell a lost connection
+    // apart from a response it could not parse — otherwise every unclassified
+    // throw, including a JSON parse error, has to be retried on the chance
+    // that it was the network.
+    throw new CLIError(formatFetchError(err, url), 1, NETWORK_ERROR_CODE);
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as {

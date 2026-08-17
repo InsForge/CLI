@@ -1,5 +1,16 @@
 import type { Command } from 'commander';
 
+// Marks a CLIError that came from a failed fetch rather than an HTTP response:
+// the request may still have been received and acted on by the server.
+// Re-exported from `lib/api/platform.js`, which is where most callers import it.
+export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
+
+// 4xx statuses that say nothing about the operation a caller is polling for. A
+// rate limit or a request timeout on a status endpoint is about THIS read, not
+// about the job running server-side — and polling every few seconds is exactly
+// the shape that trips a rate limit. Every other 4xx stays terminal.
+const TRANSIENT_4XX_STATUSES = new Set([408, 429]);
+
 export class CLIError extends Error {
   constructor(
     message: string,
@@ -34,6 +45,35 @@ export class PermissionError extends CLIError {
   constructor(message: string = 'Permission denied.') {
     super(message, 5, 'PERMISSION_DENIED');
   }
+}
+
+/**
+ * True when a CLASSIFIED API failure says nothing about the operation being
+ * polled, so a caller in a poll loop should read again rather than give up.
+ *
+ * Gateway 5xx is the case this exists for: `insforge branch create` polls the
+ * control plane every 3s for up to 15 minutes, and a SINGLE 502 anywhere in
+ * that window used to abort a branch that the backend went on to finish
+ * creating seconds later (observed twice in agent-e2e: CLI out at ~90s and
+ * ~97s, branch ready at ~108s and ~113s). The branch still exists and still
+ * bills, so exiting is both wrong and expensive.
+ *
+ * Terminal by design:
+ *   - any CLIError with no `statusCode` — a locally raised error (a failed job,
+ *     a bad state) rather than a transport hiccup, so retrying only burns the
+ *     budget;
+ *   - anything that is not a CLIError at all. That is an UNCLASSIFIED throw —
+ *     a `res.json()` parse failure on a mangled body, or a plain bug — and a
+ *     poll loop must not spin on it for its whole budget. `platformFetch`
+ *     wraps every transport and HTTP failure into a CLIError, so nothing real
+ *     is lost. `ossFetch` does NOT wrap raw fetch rejections, so its callers
+ *     handle that case themselves (see the deployment poller).
+ */
+export function isTransientApiError(err: unknown): boolean {
+  if (!(err instanceof CLIError)) return false;
+  if (err.code === NETWORK_ERROR_CODE) return true;
+  if (err.statusCode === undefined) return false;
+  return err.statusCode >= 500 || TRANSIENT_4XX_STATUSES.has(err.statusCode);
 }
 
 /**

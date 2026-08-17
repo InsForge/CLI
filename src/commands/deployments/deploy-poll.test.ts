@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLIError } from '../../lib/errors.js';
+import { CLIError, NETWORK_ERROR_CODE } from '../../lib/errors.js';
 
 const ossMock = vi.hoisted(() => ({
   ossFetch: vi.fn(),
@@ -98,14 +98,38 @@ describe('pollDeployment', () => {
   });
 
   it('reports a network-level failure that persists for the whole window', async () => {
-    ossMock.ossFetch.mockRejectedValue(new TypeError('fetch failed'));
+    // The shape a real connection failure now reaches the poller in: ossFetch
+    // tags transport failures the way platformFetch does, instead of letting
+    // Node's bare TypeError through.
+    ossMock.ossFetch.mockRejectedValue(
+      new CLIError('Connection to app.insforge.app was reset.', 1, NETWORK_ERROR_CODE),
+    );
 
     const promise = pollDeployment('dep_1', null, false);
     await vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS + POLL_INTERVAL_MS);
 
     const result = await promise;
     expect(result.isReady).toBe(false);
-    expect(result.lastError).toContain('the deployment API');
+    expect(result.lastError).toContain('was reset');
+  });
+
+  it('fails fast on a malformed status body instead of retrying it for the whole window', async () => {
+    // An unparseable body answers the same way on every retry, so spinning on
+    // it only delays the real error by the length of the poll window. Only
+    // classified transport/gateway failures are worth re-reading.
+    ossMock.ossFetch.mockResolvedValue(
+      new Response('<html>502 Bad Gateway</html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+
+    const promise = pollDeployment('dep_1', null, false);
+    const assertion = expect(promise).rejects.toThrow(SyntaxError);
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
+    await assertion;
+    // One read, not a window's worth.
+    expect(ossMock.ossFetch).toHaveBeenCalledTimes(1);
   });
 
   it('leaves lastError null when the final read succeeded and the build was just slow', async () => {
