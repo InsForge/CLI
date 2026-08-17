@@ -13,6 +13,7 @@ import { buildOssHost, getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { runBranchSwitch } from './switch.js';
+import { readBranchWithRetry } from './poll.js';
 import type { Branch, BranchMode } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
@@ -35,6 +36,9 @@ const CREATED_AT_SKEW_MS = 60_000;
 // failing, so the next successful read re-announces the real state even if it
 // has not changed. No branch_state can collide with it.
 const UNREACHABLE_STATE = '__control-plane-unreachable__';
+// Retries for the post-timeout read that decides the command's verdict. Inside
+// the loop the interval is the retry; this one has no second chance.
+const FINAL_READ_ATTEMPTS = 3;
 
 export function registerBranchCreateCommand(branch: Command): void {
   branch
@@ -335,15 +339,22 @@ async function pollUntilReady(
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
   // Timed out — re-check terminal failure states so a state flip just before
-  // the deadline is not silently reported as “still in state …”. If even this
-  // read fails transiently, report the last state we did observe rather than
-  // turning a timeout into an API error about a branch that exists: the caller
-  // needs the id and appkey printed to find and delete it. The reported state
-  // may be stale, but it cannot manufacture success — every non-'ready' state
-  // exits non-zero, so the worst case is a stale label on a failure that was
-  // already going to be a failure. (`branch reset` has no identity to emit and
-  // exits 0 on a non-ready state, so it fails loudly there instead.)
-  const branch = await getBranchApi(branchId, apiUrl).catch((err: unknown) => {
+  // the deadline is not silently reported as “still in state …”. This read
+  // decides the command's verdict, so it gets its own retries: a branch that
+  // reached 'ready' right at the deadline would otherwise be reported as stuck
+  // — a genuine success inverted by one unlucky 502.
+  //
+  // Only if all of those fail does it fall back to the last observed state,
+  // rather than turning a timeout into an API error about a branch that
+  // exists: the caller needs the id and appkey printed to find and delete it.
+  // (`branch reset` has no identity to emit and exits 0 on a non-ready state,
+  // so it refuses to guess there instead.)
+  const branch = await readBranchWithRetry(
+    branchId,
+    apiUrl,
+    FINAL_READ_ATTEMPTS,
+    POLL_INTERVAL_MS,
+  ).catch((err: unknown) => {
     if (!isTransientApiError(err) || !lastBranch) throw err;
     return lastBranch;
   });

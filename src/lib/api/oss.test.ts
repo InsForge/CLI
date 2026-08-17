@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as config from '../config.js';
+import { CLIError, NETWORK_ERROR_CODE } from '../errors.js';
 import { isMaskedDatabasePassword, ossFetch, spliceDatabasePassword } from './oss.js';
 import type { ProjectConfig } from '../../types.js';
 
@@ -100,5 +101,32 @@ describe('ossFetch', () => {
     await expect(ossFetch('/api/webscraper/apify/config')).rejects.toThrow(
       /Upgrade your InsForge instance.*insforge webscraper apify connect --token/s,
     );
+  });
+
+  it('tags a transport failure as a network CLIError with an actionable message', async () => {
+    // Node's fetch throws a bare "fetch failed" for every transport problem.
+    // Callers need to tell that apart from a response they could not parse —
+    // a poll loop retries the first and must not retry the second — and users
+    // need to know it was DNS rather than the server.
+    vi.spyOn(config, 'getProjectConfig').mockReturnValue({
+      project_id: 'p1',
+      project_name: 'demo',
+      org_id: 'o1',
+      appkey: 'app',
+      region: 'us-east',
+      api_key: 'ik_test',
+      oss_host: 'https://app.us-east.insforge.app',
+    } satisfies ProjectConfig);
+    const failure = new Error('fetch failed');
+    (failure as { cause?: unknown }).cause = Object.assign(new Error('getaddrinfo ENOTFOUND'), {
+      code: 'ENOTFOUND',
+    });
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(failure);
+
+    const err = await ossFetch('/api/metadata').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CLIError);
+    expect((err as CLIError).code).toBe(NETWORK_ERROR_CODE);
+    expect((err as CLIError).message).toContain('app.us-east.insforge.app');
+    expect((err as CLIError).message).toContain('DNS');
   });
 });

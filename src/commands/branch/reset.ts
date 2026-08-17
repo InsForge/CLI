@@ -6,6 +6,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
+import { readBranchWithRetry } from './poll.js';
 import type { Branch } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
@@ -13,6 +14,9 @@ const POLL_INTERVAL_MS = 3_000;
 // finalize. Same order of magnitude as create — minutes for a small DB,
 // longer for a populated one. Match create's 5-min budget.
 const POLL_TIMEOUT_MS = 5 * 60 * 1_000;
+// Retries for the post-timeout read that decides the verdict. Inside the loop
+// the interval is the retry; this one has no second chance.
+const FINAL_READ_ATTEMPTS = 3;
 
 export function registerBranchResetCommand(branch: Command): void {
   branch
@@ -63,7 +67,7 @@ export function registerBranchResetCommand(branch: Command): void {
           outputSuccess(`Reset enqueued for branch '${name}'. Restoring T0…`);
         }
 
-        const final = await pollUntilReady(target.id, apiUrl, !json, initial.branch_state);
+        const final = await pollUntilReady(target.id, name, apiUrl, !json, initial.branch_state);
 
         if (json) {
           outputJson({ branch: final });
@@ -93,6 +97,7 @@ export function registerBranchResetCommand(branch: Command): void {
  */
 async function pollUntilReady(
   branchId: string,
+  name: string,
   apiUrl: string | undefined,
   showProgress: boolean,
   startingState: string,
@@ -133,19 +138,26 @@ async function pollUntilReady(
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
   // Timed out — re-check terminal failure states so a state flip just before
-  // the deadline is not silently reported as “still in state …”.
+  // the deadline is not silently reported as “still in state …”. Retried,
+  // because this read decides the verdict and one unlucky 502 should not cost
+  // a reset that had just landed.
   //
-  // If that last read fails too, the final state is UNKNOWN and the command
-  // must say so. Substituting the last polled state here would let a branch
-  // that went 'deleted'/'conflicted' after the last successful read be
-  // reported as "still resetting" — and this command exits 0 on a non-ready
-  // state, so a failed reset would exit successfully. Unlike create, there is
-  // no identity to emit that the caller does not already have (they named the
-  // branch), so failing loudly costs nothing.
-  const branch = await getBranchApi(branchId, apiUrl).catch((err: unknown) => {
+  // If every attempt fails, the final state is UNKNOWN and the command must
+  // say so. Substituting the last polled state here would let a branch that
+  // went 'deleted'/'conflicted' after the last successful read be reported as
+  // "still resetting" — and this command exits 0 on a non-ready state, so a
+  // failed reset would exit successfully. Unlike create, there is no identity
+  // to emit that the caller does not already have (they named the branch), so
+  // failing loudly costs nothing.
+  const branch = await readBranchWithRetry(
+    branchId,
+    apiUrl,
+    FINAL_READ_ATTEMPTS,
+    POLL_INTERVAL_MS,
+  ).catch((err: unknown) => {
     if (!isTransientApiError(err)) throw err;
     throw new CLIError(
-      `Could not confirm the reset of branch ${branchId}: the control plane is not answering (${
+      `Could not confirm the reset of branch '${name}': the control plane is not answering (${
         err instanceof CLIError ? err.message : String(err)
       }).` +
         (lastBranch ? ` Last observed state: '${lastBranch.branch_state}'.` : '') +

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Command } from 'commander';
 import { registerBranchResetCommand } from './reset.js';
 import { CLIError } from '../../lib/errors.js';
@@ -171,9 +171,23 @@ describe('branch reset', () => {
     // This command exits 0 on any non-ready state, so substituting the last
     // polled state after an unreadable final check would let a reset that went
     // 'deleted'/'conflicted' exit successfully.
+    //
+    // The successful 'resetting' reads first are what makes this a real test:
+    // they populate the last-observed state, which is exactly what a stale
+    // fallback would substitute. Rejecting every read from the start would
+    // leave nothing to substitute and the test would pass either way.
     const platformModule = await import('../../lib/api/platform.js');
     const getBranchApi = platformModule.getBranchApi as ReturnType<typeof vi.fn>;
-    getBranchApi.mockRejectedValue(new CLIError('Request failed: 502', 1, undefined, 502));
+    const resetting = {
+      id: 'b1', name: 'feat-x', branch_state: 'resetting',
+      organization_id: 'o1', parent_project_id: 'p1', appkey: 'k', region: 'us-east',
+      branch_created_at: '2026',
+    };
+    getBranchApi
+      .mockResolvedValueOnce(resetting)
+      .mockResolvedValueOnce(resetting)
+      .mockResolvedValueOnce(resetting)
+      .mockRejectedValue(new CLIError('Request failed: 502', 1, undefined, 502));
     const program = makeProgram();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.useFakeTimers();
@@ -200,8 +214,47 @@ describe('branch reset', () => {
       });
     }
     // It kept polling for the whole budget rather than aborting on the first
-    // 502, and then refused to guess the outcome.
+    // 502, and then refused to guess the outcome from the 'resetting' state it
+    // had in hand.
     expect(reads).toBeGreaterThan(10);
+  });
+
+  it('retries the verdict read so one 502 at the deadline does not lose a landed reset', async () => {
+    // The final re-check decides the outcome. A branch that reached 'ready'
+    // right at the deadline must not be reported as unconfirmable because a
+    // single read failed.
+    const platformModule = await import('../../lib/api/platform.js');
+    const getBranchApi = platformModule.getBranchApi as Mock;
+    const ready = {
+      id: 'b1', name: 'feat-x', branch_state: 'ready',
+      organization_id: 'o1', parent_project_id: 'p1', appkey: 'k', region: 'us-east',
+      branch_created_at: '2026',
+    };
+    getBranchApi.mockImplementation(async () => {
+      // Non-terminal for the whole poll window, then one 502 on the verdict
+      // read, then 'ready' — the state flipped just as the budget ran out.
+      const call = getBranchApi.mock.calls.length;
+      if (call <= 100) return { ...ready, branch_state: 'resetting' };
+      if (call === 101) throw new CLIError('Request failed: 502', 1, undefined, 502);
+      return ready;
+    });
+    const program = makeProgram();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.useFakeTimers();
+    let printed: string;
+    try {
+      const run = program.parseAsync(['reset', 'feat-x', '--yes', '--json'], { from: 'user' });
+      await vi.runAllTimersAsync();
+      await run;
+      printed = logSpy.mock.calls.map(args => args.map(String).join(' ')).join('\n');
+    } finally {
+      vi.useRealTimers();
+      logSpy.mockRestore();
+      getBranchApi.mockReset();
+      getBranchApi.mockResolvedValue(ready);
+    }
+    // Resolved with the real final state rather than "could not confirm".
+    expect(printed).toContain('ready');
   });
 
   it('gives up on a real rejection mid-poll (404 is not transient)', async () => {
