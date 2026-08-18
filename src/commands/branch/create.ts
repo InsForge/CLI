@@ -189,8 +189,8 @@ export function registerBranchCreateCommand(branch: Command): void {
 }
 
 /**
- * Create the branch, and if the request fails WITHOUT an answer from the API
- * itself, check whether it was created anyway before giving up.
+ * Create the branch, and if the request fails ambiguously at the transport or
+ * gateway layer, check whether it was created anyway before giving up.
  *
  * `createBranchApi` carries no idempotency key, and a reset on the RESPONSE leg
  * leaves a fully created, billing branch behind while the CLI exits non-zero.
@@ -199,15 +199,14 @@ export function registerBranchCreateCommand(branch: Command): void {
  * authoritative here, and it is a control-plane call, so it still works while
  * the branch's own host is unreachable.
  *
- * Three guards keep this from adopting something it did not create — a duplicate
- * name is a REJECTION, not a lost response, and adopting on it would switch the
- * caller into someone else's branch with a different mode and different data:
+ * Two guards keep this from adopting something it did not create — a duplicate
+ * name is a REJECTION, not an ambiguous failure, and adopting on it would
+ * switch the caller into someone else's branch with a different mode and
+ * different data:
  *
- *   1. only an ambiguous failure is eligible — a transport reset, or one of the
- *      PROXY-level statuses, which is the edge reporting that IT could not
- *      complete the round trip and says nothing about what the backend did.
- *      Every answer the API itself authored — a duplicate name, a quota, auth,
- *      any other 4xx, and a plain 500 — rethrows untouched;
+ *   1. only a tagged transport failure or a 502/503/504 gateway failure is
+ *      eligible; other HTTP/API rejections (duplicate name, quota, auth)
+ *      rethrow untouched;
  *   2. the branch must have been created at or after the moment we sent the
  *      request, so a pre-existing same-name branch is never a candidate;
  *   3. the branch's mode must match what we asked for.
@@ -218,8 +217,9 @@ export function registerBranchCreateCommand(branch: Command): void {
  * and with the default `--switch` that would silently move local context onto
  * their branch. Requiring a mode match makes that require an even more specific
  * coincidence (same name AND same mode AND the same ~60s AND our transport
- * failure). The real fix is a server-issued idempotency/request token on
- * `createBranchApi`; until that exists, this is the tightest client-side guard.
+ * or gateway failure). The real fix is a server-issued idempotency/request token
+ * on `createBranchApi`; until that exists, this is the tightest client-side
+ * guard.
  * Reported upstream: InsForge/InsForge#1790.
  *
  * When no matching branch turns up, the original error is rethrown unchanged —

@@ -570,6 +570,40 @@ describe('branch create', () => {
     expect(String(spinnerMock.stop.mock.calls.at(-1)?.[0])).not.toContain('creation failed');
   });
 
+  it('adopts a branch that was created despite a 502 response', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { createBranchApi, listBranchesApi } = await import('../../lib/api/platform.js');
+    (createBranchApi as Mock).mockRejectedValueOnce(
+      new CLIError('Request failed: 502', 1, undefined, 502),
+    );
+    (listBranchesApi as Mock).mockResolvedValueOnce([
+      {
+        id: 'branch-id',
+        parent_project_id: 'p1',
+        organization_id: 'o1',
+        name: 'feat-x',
+        appkey: 'p1ky-x9p',
+        region: 'us-east',
+        branch_state: 'creating',
+        branch_created_at: new Date().toISOString(),
+        branch_metadata: { mode: 'schema-only' },
+      },
+    ]);
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    await program
+      .parseAsync(['create', 'feat-x', '--mode', 'schema-only', '--no-switch'], { from: 'user' })
+      .catch(() => {});
+    expect(listBranchesApi as Mock).toHaveBeenCalledWith('p1', undefined);
+    expect(String(spinnerMock.stop.mock.calls.at(-1)?.[0])).not.toContain('creation failed');
+  });
+
   it('does NOT adopt a same-name branch created with a DIFFERENT mode', async () => {
     // A collaborator's same-name branch landing in the skew window — at the same
     // moment our own request loses its response leg — must not be adopted, or a
