@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatFetchError } from './errors.js';
+import {
+  AuthError,
+  CLIError,
+  NETWORK_ERROR_CODE,
+  formatFetchError,
+  isTransientApiError,
+} from './errors.js';
 
 function fetchError(causeCode?: string, causeMessage?: string): Error {
   const err = new Error('fetch failed');
@@ -75,5 +81,46 @@ describe('formatFetchError', () => {
   it('handles a URL that is just a host string', () => {
     const msg = formatFetchError(fetchError('ENOTFOUND'), 'broken-host');
     expect(msg).toContain('broken-host');
+  });
+});
+
+describe('isTransientApiError', () => {
+  it('treats gateway 5xx as transient — the poll must survive one 502', () => {
+    for (const status of [500, 502, 503, 504]) {
+      expect(isTransientApiError(new CLIError('Request failed', 1, undefined, status))).toBe(true);
+    }
+  });
+
+  it('treats a tagged network failure as transient', () => {
+    expect(
+      isTransientApiError(new CLIError('Connection reset', 1, NETWORK_ERROR_CODE)),
+    ).toBe(true);
+  });
+
+  it('treats rate limiting and request timeout as transient', () => {
+    expect(isTransientApiError(new CLIError('Too many requests', 1, undefined, 429))).toBe(true);
+    expect(isTransientApiError(new CLIError('Request timeout', 1, undefined, 408))).toBe(true);
+  });
+
+  it('treats real API rejections as terminal', () => {
+    for (const status of [400, 401, 403, 404, 409, 422]) {
+      expect(isTransientApiError(new CLIError('Nope', 1, undefined, status))).toBe(false);
+    }
+    expect(isTransientApiError(new AuthError())).toBe(false);
+  });
+
+  it('treats a locally raised CLIError (no status) as terminal', () => {
+    // e.g. "Branch creation failed (state: deleted)" — retrying only burns the
+    // poll budget on an answer that will not change.
+    expect(isTransientApiError(new CLIError('Branch creation failed (state: deleted)'))).toBe(false);
+  });
+
+  it('treats an unclassified throw as terminal', () => {
+    // A res.json() parse failure or a plain bug must not spin a poll loop for
+    // its whole budget. platformFetch wraps every transport/HTTP failure into a
+    // CLIError, so nothing real is misclassified here; ossFetch callers that
+    // need raw fetch rejections retried handle that themselves.
+    expect(isTransientApiError(new TypeError('fetch failed'))).toBe(false);
+    expect(isTransientApiError(new SyntaxError('Unexpected end of JSON input'))).toBe(false);
   });
 });

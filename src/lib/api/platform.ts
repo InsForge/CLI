@@ -1,6 +1,6 @@
 import { getAccessToken, getCredentials, getPlatformApiUrl } from '../config.js';
 import { refreshAccessToken } from '../credentials.js';
-import { AuthError, CLIError, formatFetchError } from '../errors.js';
+import { AuthError, CLIError, NETWORK_ERROR_CODE, formatFetchError } from '../errors.js';
 import type {
   ApiKeyResponse,
   Backup,
@@ -31,8 +31,10 @@ import type {
 } from '../../types.js';
 
 // Marks a CLIError that came from a failed fetch rather than an HTTP response:
-// the request may still have been received and acted on by the server.
-export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
+// the request may still have been received and acted on by the server. Defined
+// in lib/errors.ts (so `isTransientApiError` can reference it without importing
+// this module) and re-exported here, where callers already import it from.
+export { NETWORK_ERROR_CODE } from '../errors.js';
 
 export interface PlatformFetchOptions extends RequestInit {
   /**
@@ -132,6 +134,9 @@ export async function platformFetch(
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string; message?: string };
     const msg = err.message ? `${err.error ?? res.status}: ${err.message}` : (err.error ?? `Request failed: ${res.status}`);
+    // Carry the HTTP status: callers that poll need it to tell a transient
+    // gateway 5xx from a real rejection (see `isTransientApiError`), and
+    // command telemetry already reports it.
     throw new CLIError(msg, res.status === 403 ? 5 : 1, undefined, res.status);
   }
 

@@ -8,7 +8,7 @@ import archiver from 'archiver';
 import { ossFetch } from '../../lib/api/oss.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts, CLIError, ProjectNotLinkedError, getDeploymentError, formatFetchError } from '../../lib/errors.js';
+import { handleError, getRootOpts, CLIError, ProjectNotLinkedError, getDeploymentError, formatFetchError, isTransientApiError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import type {
   CreateDeploymentResponse,
@@ -26,12 +26,6 @@ import { loadDeployIgnore, IGNORE_FILE_NAME, type DeployIgnore } from './ignore-
 export const POLL_INTERVAL_MS = 5_000;
 export const POLL_TIMEOUT_MS = 300_000;
 const DIRECT_UPLOAD_CONCURRENCY = 8;
-
-// 4xx statuses that are retryable while a deployment is in flight. A rate limit
-// or request timeout on the status endpoint says nothing about the deployment,
-// which keeps running server-side — and polling every 5s is exactly the shape
-// that trips a rate limit. Every other 4xx stays terminal.
-const TRANSIENT_4XX_STATUSES = new Set([408, 429]);
 
 const EXCLUDE_PATTERNS = [
   'node_modules',
@@ -323,12 +317,12 @@ export async function pollDeployment(
       // Deployment-failure errors (thrown above, no statusCode) and 4xx
       // responses other than the retryable ones are terminal. Gateway 5xx
       // responses on the status endpoint are transient — the deployment itself
-      // may still succeed — so keep polling, same as network-level fetch errors.
-      const isTerminal =
-        err instanceof CLIError &&
-        (err.statusCode === undefined ||
-          (err.statusCode < 500 && !TRANSIENT_4XX_STATUSES.has(err.statusCode)));
-      if (isTerminal) {
+      // may still succeed — so keep polling, same as network-level fetch
+      // failures, which `ossFetch` now tags as such. Anything left unclassified
+      // (a malformed status body failing `.json()`, a missing `status` field)
+      // is a bug, not an outage: it would fail identically on every retry, so
+      // it surfaces now instead of at the end of the poll window.
+      if (!isTransientApiError(err)) {
         throw err;
       }
       // Transient: keep polling, but remember why the read failed so that an

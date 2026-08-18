@@ -7,12 +7,13 @@ import {
   NETWORK_ERROR_CODE,
 } from '../../lib/api/platform.js';
 import { probeBackendHealth } from '../../lib/api/oss.js';
-import { CLIError, getRootOpts, handleError } from '../../lib/errors.js';
+import { CLIError, getRootOpts, handleError, isTransientApiError } from '../../lib/errors.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { buildOssHost, getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { runBranchSwitch } from './switch.js';
+import { readBranchWithRetry } from './poll.js';
 import type { Branch, BranchMode } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
@@ -31,6 +32,13 @@ const HEALTH_INTERVAL_MS = 5_000;
 // branch someone created seconds ago under the same name; the cost of being too
 // narrow is orphaning a billing resource, which is the bug this exists to fix.
 const CREATED_AT_SKEW_MS = 60_000;
+// Sentinel parked in the poll's `lastState` while control-plane reads are
+// failing, so the next successful read re-announces the real state even if it
+// has not changed. No branch_state can collide with it.
+const UNREACHABLE_STATE = '__control-plane-unreachable__';
+// Retries for the post-timeout read that decides the command's verdict. Inside
+// the loop the interval is the retry; this one has no second chance.
+const FINAL_READ_ATTEMPTS = 3;
 
 export function registerBranchCreateCommand(branch: Command): void {
   branch
@@ -213,12 +221,26 @@ export function registerBranchCreateCommand(branch: Command): void {
  * on `createBranchApi`; until that exists, this is the tightest client-side
  * guard.
  * Reported upstream: InsForge/InsForge#1790.
+ *
+ * When no matching branch turns up, the original error is rethrown unchanged —
+ * so guard 1 accepting proxy statuses cannot mask a request the backend never
+ * acted on.
+ *
+ * Deliberately NARROWER than `isTransientApiError`, which the poll uses:
+ *   - 500 is excluded. That is the application's own answer, so it is more
+ *     likely an authoritative rejection than a lost response, and adopting on
+ *     it would widen the window in which a collaborator's same-name branch
+ *     could be picked up and switched into (the residual collision above).
+ *     Re-reading a status after a 500 is free; adopting after one is not.
+ *   - 408/429 are excluded. A rate limit or a timeout on the POST means the
+ *     request was refused, not lost — nothing was created to adopt.
  */
+const PROXY_STATUSES = new Set([502, 503, 504]);
+
 function isAmbiguousCreateFailure(err: unknown): boolean {
-  return (
-    err instanceof CLIError &&
-    (err.code === NETWORK_ERROR_CODE || err.statusCode === 502 || err.statusCode === 503 || err.statusCode === 504)
-  );
+  if (!(err instanceof CLIError)) return false;
+  if (err.code === NETWORK_ERROR_CODE) return true;
+  return err.statusCode !== undefined && PROXY_STATUSES.has(err.statusCode);
 }
 
 async function createBranchOrAdopt(
@@ -272,6 +294,16 @@ async function waitUntilServing(
   return false;
 }
 
+/**
+ * Poll the control plane until the branch reaches a terminal state.
+ *
+ * A failed READ is not a failed branch. The control plane returning 502 once
+ * mid-poll used to end the command on the spot, while the backend went on to
+ * mark the branch ready ~15s later — leaving a real, billing branch behind a
+ * non-zero exit (agent-e2e runs 31832239687 and 32055449431). Transient
+ * failures therefore consume a poll interval and nothing more; only a real
+ * rejection (auth, 404, a terminal branch state) ends the loop early.
+ */
 async function pollUntilReady(
   branchId: string,
   apiUrl: string | undefined,
@@ -279,8 +311,23 @@ async function pollUntilReady(
 ): Promise<Branch> {
   const start = Date.now();
   let lastState = '';
+  // Last state actually observed, so a read failure at the very end of the
+  // budget still reports what the branch was doing instead of an API error.
+  let lastBranch: Branch | null = null;
   while (Date.now() - start < POLL_TIMEOUT_MS) {
-    const branch = await getBranchApi(branchId, apiUrl);
+    let branch: Branch;
+    try {
+      branch = await getBranchApi(branchId, apiUrl);
+    } catch (err) {
+      if (!isTransientApiError(err)) throw err;
+      if (spinner && lastState !== UNREACHABLE_STATE) {
+        spinner.message('Control plane is not answering; still provisioning, retrying...');
+        lastState = UNREACHABLE_STATE;
+      }
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      continue;
+    }
+    lastBranch = branch;
     if (branch.branch_state === 'ready') return branch;
     if (branch.branch_state === 'deleted' || branch.branch_state === 'conflicted') {
       throw new CLIError(`Branch creation failed (state: ${branch.branch_state})`);
@@ -292,8 +339,25 @@ async function pollUntilReady(
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
   // Timed out — re-check terminal failure states so a state flip just before
-  // the deadline is not silently reported as “still in state …”.
-  const branch = await getBranchApi(branchId, apiUrl);
+  // the deadline is not silently reported as “still in state …”. This read
+  // decides the command's verdict, so it gets its own retries: a branch that
+  // reached 'ready' right at the deadline would otherwise be reported as stuck
+  // — a genuine success inverted by one unlucky 502.
+  //
+  // Only if all of those fail does it fall back to the last observed state,
+  // rather than turning a timeout into an API error about a branch that
+  // exists: the caller needs the id and appkey printed to find and delete it.
+  // (`branch reset` has no identity to emit and exits 0 on a non-ready state,
+  // so it refuses to guess there instead.)
+  const branch = await readBranchWithRetry(
+    branchId,
+    apiUrl,
+    FINAL_READ_ATTEMPTS,
+    POLL_INTERVAL_MS,
+  ).catch((err: unknown) => {
+    if (!isTransientApiError(err) || !lastBranch) throw err;
+    return lastBranch;
+  });
   if (branch.branch_state === 'deleted' || branch.branch_state === 'conflicted') {
     throw new CLIError(`Branch creation failed (state: ${branch.branch_state})`);
   }
