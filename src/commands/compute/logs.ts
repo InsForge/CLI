@@ -141,11 +141,18 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           // same-millisecond arrivals aren't silently dropped; ordinary
           // advancing pages carry strictly newer timestamps and pass through
           // untouched.
-          const lineKey = (l: ComputeLogLine) => `${l.instance ?? ''}|${l.message}`;
+          const lineKey = (l: ComputeLogLine) => `${l.region ?? ''}|${l.instance ?? ''}|${l.message}`;
           let lastTs = result.lines.length > 0 ? result.lines[result.lines.length - 1].timestamp : 0;
-          const lastTsKeys = new Set(
-            result.lines.filter((l) => l.timestamp === lastTs).map(lineKey),
-          );
+          // Occurrence COUNTS, not a set: identical messages repeated at the
+          // boundary timestamp are real lines — suppress only as many as were
+          // already printed.
+          const lastTsCounts = new Map<string, number>();
+          for (const l of result.lines) {
+            if (l.timestamp === lastTs) {
+              const k = lineKey(l);
+              lastTsCounts.set(k, (lastTsCounts.get(k) ?? 0) + 1);
+            }
+          }
           let pollFailures = 0;
           for (;;) {
             await new Promise((r) => setTimeout(r, FOLLOW_INTERVAL_MS));
@@ -161,18 +168,32 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
               await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** pollFailures, 30_000)));
               continue;
             }
-            const fresh = page.lines.filter(
-              (l) => l.timestamp > lastTs || (l.timestamp === lastTs && !lastTsKeys.has(lineKey(l))),
-            );
+            const suppress = new Map(lastTsCounts);
+            const fresh: ComputeLogLine[] = [];
+            for (const l of page.lines) {
+              if (l.timestamp < lastTs) continue;
+              if (l.timestamp === lastTs) {
+                const k = lineKey(l);
+                const remaining = suppress.get(k) ?? 0;
+                if (remaining > 0) {
+                  suppress.set(k, remaining - 1);
+                  continue;
+                }
+              }
+              fresh.push(l);
+            }
             print(fresh);
             if (fresh.length > 0) {
               const newTs = fresh[fresh.length - 1].timestamp;
               if (newTs !== lastTs) {
                 lastTs = newTs;
-                lastTsKeys.clear();
+                lastTsCounts.clear();
               }
               for (const l of fresh) {
-                if (l.timestamp === lastTs) lastTsKeys.add(lineKey(l));
+                if (l.timestamp === lastTs) {
+                  const k = lineKey(l);
+                  lastTsCounts.set(k, (lastTsCounts.get(k) ?? 0) + 1);
+                }
               }
             }
             // Take the cursor as the server reports it, including null: a

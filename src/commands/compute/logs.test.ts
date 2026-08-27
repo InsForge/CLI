@@ -153,6 +153,25 @@ describe('compute logs', () => {
     expect(printed.some((l: string) => l.includes('three'))).toBe(true);
   });
 
+  it('--follow keeps genuinely repeated identical lines at the boundary timestamp', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([
+      { timestamp: 5, message: 'dup' },
+      { timestamp: 5, message: 'dup' },
+    ], null));
+    ossFetchMock.mockResolvedValueOnce(page([
+      { timestamp: 5, message: 'dup' },
+      { timestamp: 5, message: 'dup' },
+      { timestamp: 5, message: 'dup' },
+    ], null));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.filter((l: string) => l.includes('dup'))).toHaveLength(3);
+  });
+
   it('--follow retries transient poll failures and keeps tailing', async () => {
     vi.useFakeTimers();
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));
