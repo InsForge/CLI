@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type * as ErrorsModule from '../../lib/errors.js';
+import { CLIError } from '../../lib/errors.js';
 
 const ossFetchMock = vi.hoisted(() => vi.fn());
 const outputJsonMock = vi.hoisted(() => vi.fn());
@@ -112,6 +113,20 @@ describe('compute logs', () => {
     expect(printed.some((l: string) => l.includes('fresh'))).toBe(true);
   });
 
+  it('--follow retries transient poll failures and keeps tailing', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));
+    ossFetchMock.mockRejectedValueOnce(new CLIError('rate limited', 1, 'RATE_LIMITED', 429));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 2, message: 'two' }], 'tokB'));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000); // poll 1 -> 429
+    await vi.advanceTimersByTimeAsync(4000); // backoff
+    await vi.advanceTimersByTimeAsync(2000); // poll 2 -> succeeds
+    expect(logSpy).toHaveBeenCalledWith('1970-01-01T00:00:00.002Z  two');
+  });
+
   it('--json --follow emits NDJSON per line', async () => {
     vi.useFakeTimers();
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'a' }], 'tok'));
@@ -127,7 +142,7 @@ describe('sanitizeLogMessage', () => {
   it('strips ANSI CSI/OSC sequences and control chars, keeps tabs', () => {
     expect(sanitizeLogMessage(`${ESC}[31mred${ESC}[0m ok`)).toBe('red ok');
     expect(sanitizeLogMessage(`${ESC}]0;evil title${BEL}text`)).toBe('text');
-    expect(sanitizeLogMessage('a\rb\nc')).toBe('abc');
+    expect(sanitizeLogMessage('a\rb\nc')).toBe('a b c');
     expect(sanitizeLogMessage('keep\ttabs')).toBe('keep\ttabs');
   });
 

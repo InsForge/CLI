@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
-import { handleError, getRootOpts } from '../../lib/errors.js';
+import { handleError, getRootOpts, isTransientApiError } from '../../lib/errors.js';
 import { outputJson } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
@@ -29,18 +29,29 @@ export interface ComputeLogsResult {
 
 const FOLLOW_INTERVAL_MS = 2000;
 const DEFAULT_LIMIT = 100;
+// A long-running tail will meet a 429 (the logs limiter is shared per-IP) or
+// a passing 5xx; retry those with backoff and only give up after a run of
+// consecutive failures. Non-transient errors (401/403/404) still fail fast.
+const MAX_CONSECUTIVE_POLL_FAILURES = 5;
 
 // Container output is attacker-adjacent data: a compromised (or just chatty)
 // app can emit ANSI/OSC escape sequences that reprogram the reader's
-// terminal. Strip ESC-led sequences, C0 controls except tab, and 8-bit C1
-// controls (which encode CSI/OSC without ESC). Applied at the fetch boundary
-// so every output mode — including --json, where JSON.stringify leaves C1
-// bytes raw — is covered.
+// terminal. Strip ESC-led sequences (a trailing bare-ESC arm defangs any
+// form the specific arms miss) and 8-bit C1 controls (which encode CSI/OSC
+// without ESC); collapse remaining C0 controls except tab to a space.
+// Applied at the fetch boundary so every output mode — including --json,
+// where JSON.stringify leaves C1 bytes raw — is covered.
 // eslint-disable-next-line no-control-regex
-const TERMINAL_CONTROLS = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-_]|[\u0000-\u0008\u000a-\u001f\u007f\u0080-\u009f]/g;
+const TERMINAL_SEQUENCES = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-_]|[\u0080-\u009f]|\u001b/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL_RUNS = /[\u0000-\u0008\u000a-\u001f\u007f]+/g;
 
 export function sanitizeLogMessage(message: string): string {
-  return message.replace(TERMINAL_CONTROLS, '');
+  // Sequences (and their C1 single-byte introducers) vanish outright; runs of
+  // remaining C0 controls become one space so a multi-line message (a stack
+  // trace delivered as a single entry) stays readable instead of gluing
+  // "line1line2" together.
+  return message.replace(TERMINAL_SEQUENCES, '').replace(CONTROL_RUNS, ' ');
 }
 
 // Exact 1-1000 contract: malformed input falls back to the default (same as
@@ -122,9 +133,21 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           // already printed so they don't repeat. Cursor-based pages don't
           // overlap, so no filter is applied while a token advances.
           let lastTs = result.lines.length > 0 ? result.lines[result.lines.length - 1].timestamp : 0;
+          let pollFailures = 0;
           for (;;) {
             await new Promise((r) => setTimeout(r, FOLLOW_INTERVAL_MS));
-            const page = await fetchComputeLogs(id, { limit, nextToken: token ?? undefined });
+            let page: ComputeLogsResult;
+            try {
+              page = await fetchComputeLogs(id, { limit, nextToken: token ?? undefined });
+              pollFailures = 0;
+            } catch (pollErr) {
+              pollFailures += 1;
+              if (!isTransientApiError(pollErr) || pollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+                throw pollErr;
+              }
+              await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** pollFailures, 30_000)));
+              continue;
+            }
             const fresh = token ? page.lines : page.lines.filter((l) => l.timestamp > lastTs);
             print(fresh);
             if (fresh.length > 0) {
