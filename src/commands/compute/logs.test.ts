@@ -71,3 +71,13 @@ describe('compute logs', () => {
     expect(formatLogLine({ timestamp: 0, message: 'm' })).toBe('1970-01-01T00:00:00.000Z  m');
   });
 });
+
+describe('sanitizeLogMessage', () => {
+  it('strips ANSI CSI/OSC sequences and control chars, keeps tabs', async () => {
+    const { sanitizeLogMessage } = await import('./logs.js');
+    expect(sanitizeLogMessage('\u001b[31mred\u001b[0m ok')).toBe('red ok');
+    expect(sanitizeLogMessage('\u001b]0;evil title\u0007text')).toBe('text');
+    expect(sanitizeLogMessage('a\u0008b\rc')).toBe('abc');
+    expect(sanitizeLogMessage('keep\ttabs')).toBe('keep\ttabs');
+  });
+});

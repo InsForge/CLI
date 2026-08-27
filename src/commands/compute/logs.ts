@@ -29,10 +29,22 @@ export interface ComputeLogsResult {
 
 const FOLLOW_INTERVAL_MS = 2000;
 
+// Container output is attacker-adjacent data: a compromised (or just chatty)
+// app can emit ANSI/OSC escape sequences that reprogram the reader's
+// terminal. Strip ESC-led sequences and all C0 controls except tab before
+// printing. JSON mode is safe as-is — JSON.stringify escapes controls.
+// eslint-disable-next-line no-control-regex
+const TERMINAL_CONTROLS = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-_]|[\u0000-\u0008\u000a-\u001f\u007f]/g;
+
+export function sanitizeLogMessage(message: string): string {
+  return message.replace(TERMINAL_CONTROLS, '');
+}
+
 export function formatLogLine(line: ComputeLogLine): string {
   const ts = new Date(line.timestamp).toISOString();
   const where = [line.region, line.instance].filter(Boolean).join(' ');
-  return where ? `${ts}  [${where}]  ${line.message}` : `${ts}  ${line.message}`;
+  const msg = sanitizeLogMessage(line.message);
+  return where ? `${ts}  [${where}]  ${msg}` : `${ts}  ${msg}`;
 }
 
 export async function fetchComputeLogs(
@@ -56,7 +68,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
     .command('logs <id>')
     .description('Get compute service container logs (stdout/stderr)')
     .option('--limit <n>', 'Max number of log lines per fetch (1-1000)', '100')
-    .option('-f, --follow', 'Keep polling for new lines (Ctrl+C to stop)')
+    .option('-f, --follow', 'Keep polling for new lines (Ctrl+C to stop). With --json, emits NDJSON: one log-line object per line')
     .option('--next-token <token>', 'Resume from a cursor returned by a previous --json call')
     .action(async (id: string, opts, cmd) => {
       const { json } = getRootOpts(cmd);
