@@ -177,7 +177,21 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           // far in the future — is treated as undated everywhere, so it can
           // neither pin the watermark nor slip past the dedupe and reprint on
           // every poll.
-          const positionable = (ts: number) => Number.isFinite(ts) && ts <= Date.now() + CLOCK_SKEW_MS;
+          //
+          // The future bound is scoped PER PAGE, not to the local clock alone:
+          // Date.now() is the reader's clock while the timestamps are the
+          // provider's. If a laptop resumed from sleep is minutes behind NTP,
+          // a global bound would reject every legitimate line and drop the
+          // whole tail into content-only dedupe — a silent dead tail on
+          // exactly the crash loop you ran `-f` to watch. So if nothing in
+          // the page looks plausible, the disagreement is with our clock and
+          // the bound is not applied.
+          const positionableFor = (lines: ComputeLogLine[]) => {
+            const bound = Date.now() + CLOCK_SKEW_MS;
+            const clockTrusted = lines.some((l) => Number.isFinite(l.timestamp) && l.timestamp <= bound);
+            return (ts: number) => Number.isFinite(ts) && (!clockTrusted || ts <= bound);
+          };
+          let positionable = positionableFor(result.lines);
           const maxTs = (lines: ComputeLogLine[]) => lines.reduce(
             (m, l) => (positionable(l.timestamp) && l.timestamp > m ? l.timestamp : m),
             0,
@@ -222,6 +236,8 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
               await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** pollFailures, 30_000)));
               continue;
             }
+            // Re-scope the plausibility bound to this page before any use.
+            positionable = positionableFor(page.lines);
             // `token` still holds the cursor this request was made with, so a
             // frozen token (nextToken === token) and a null token both keep
             // the dedupe.

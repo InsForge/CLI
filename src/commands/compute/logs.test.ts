@@ -260,6 +260,27 @@ describe('compute logs', () => {
     expect(printed.filter((l: string) => l.includes('dated') && !l.includes('undated'))).toHaveLength(1);
   });
 
+  it('--follow keeps tailing when the local clock is far behind the provider', async () => {
+    vi.useFakeTimers();
+    // Reader's clock 10 minutes behind the timestamps the server sends.
+    const serverNow = 1_700_000_000_000;
+    vi.setSystemTime(serverNow - 10 * 60 * 1000);
+    const win = (n: number) => page([
+      { timestamp: serverNow + n, message: 'EADDRINUSE, retrying' },
+    ], null);
+    ossFetchMock.mockResolvedValueOnce(win(0));
+    ossFetchMock.mockResolvedValueOnce(win(1));
+    ossFetchMock.mockResolvedValueOnce(win(2));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    // All three distinct lines must appear; a global clock bound printed only the first.
+    expect(printed.filter((l: string) => l.includes('EADDRINUSE'))).toHaveLength(3);
+  });
+
   it('emits stable telemetry for the command', async () => {
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'x' }], null));
     await run(['compute', 'logs', 'svc']);
