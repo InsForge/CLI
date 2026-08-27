@@ -33,6 +33,9 @@ const DEFAULT_LIMIT = 100;
 // a passing 5xx; retry those with backoff and only give up after a run of
 // consecutive failures. Non-transient errors (401/403/404) still fail fast.
 const MAX_CONSECUTIVE_POLL_FAILURES = 5;
+// Tolerance for provider/client clock disagreement when deciding whether a
+// timestamp is plausible enough to advance the follow watermark.
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 // Container output is attacker-adjacent data: a compromised (or just chatty)
 // app can emit ANSI/OSC escape sequences that reprogram the reader's
@@ -86,6 +89,11 @@ export async function fetchComputeLogs(
   // Normalize to the documented shape and sanitize every printable string
   // field — region/instance come from the provider API rather than container
   // output, but they end up on the same terminal line.
+  //
+  // `timestamp` is deliberately NOT coerced to 0 the way the backend does:
+  // an unusable timestamp has to stay distinguishable from a genuine 0 so
+  // the follow loop prints it once instead of dropping it below the
+  // watermark. formatLogLine and maxTs both handle non-finite values.
   const lines = (Array.isArray(body?.lines) ? body.lines : []).map((l): ComputeLogLine => ({
     timestamp: l.timestamp,
     message: sanitizeLogMessage(String(l.message ?? '')),
@@ -159,8 +167,17 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           // genuinely repeated identical messages still print.
           const lineKey = (l: ComputeLogLine) => `${l.region ?? ''}|${l.instance ?? ''}|${l.message}`;
           // Max, not last: a page arriving unsorted must not move the
-          // watermark backwards.
-          const maxTs = (lines: ComputeLogLine[]) => lines.reduce((m, l) => Math.max(m, l.timestamp), 0);
+          // watermark backwards. Non-finite timestamps are skipped (they'd
+          // poison the max into NaN, which compares false against everything
+          // and reprints the whole page), and so are implausibly future ones
+          // — a single year-2100 line would otherwise pin the watermark and
+          // silently drop every real line after it.
+          const maxTs = (lines: ComputeLogLine[]) => lines.reduce(
+            (m, l) => (Number.isFinite(l.timestamp) && l.timestamp > m && l.timestamp <= Date.now() + CLOCK_SKEW_MS
+              ? l.timestamp
+              : m),
+            0,
+          );
           let lastTs = maxTs(result.lines);
           // Occurrence COUNTS, not a set: identical messages repeated at the
           // boundary timestamp are real lines — suppress only as many as were
@@ -238,8 +255,11 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
             // An advanced cursor means the next page can't overlap this one.
             prevUndated = cursorAdvanced ? new Map() : undatedCounts(page.lines);
             if (fresh.length > 0) {
+              // Monotonic: a page whose fresh lines are all undated yields
+              // maxTs 0, and letting the watermark retreat would reprint
+              // everything above it on the next poll.
               const newTs = maxTs(fresh);
-              if (newTs !== lastTs) {
+              if (newTs > lastTs) {
                 lastTs = newTs;
                 lastTsCounts.clear();
               }

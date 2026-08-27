@@ -214,6 +214,35 @@ describe('compute logs', () => {
     expect(printed.filter((l: string) => l.includes('no-ts'))).toHaveLength(1);
   });
 
+  it('--follow ignores an implausibly future timestamp when advancing the watermark', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([
+      { timestamp: 1000, message: 'real' },
+      { timestamp: 4102444800000, message: 'year-2100' },
+    ], null));
+    ossFetchMock.mockResolvedValue(page([{ timestamp: 2000, message: 'later-real' }], null));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.some((l: string) => l.includes('later-real'))).toBe(true);
+  });
+
+  it('--follow does not reprint dated lines when a page also carries an undated one', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1000, message: 'dated' }], null));
+    ossFetchMock.mockResolvedValue(page([
+      { timestamp: 1000, message: 'dated' },
+      { timestamp: null, message: 'undated' },
+    ], null));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.filter((l: string) => l.includes('dated') && !l.includes('undated'))).toHaveLength(1);
+  });
+
   it('emits stable telemetry for the command', async () => {
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'x' }], null));
     await run(['compute', 'logs', 'svc']);
@@ -245,6 +274,29 @@ describe('compute logs', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(logSpy).toHaveBeenCalledWith(JSON.stringify({ timestamp: 1, message: 'a' }));
     expect(outputJsonMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchComputeLogs boundary', () => {
+  it('normalizes the shape, sanitizes strings, and drops an empty cursor to null', async () => {
+    ossFetchMock.mockResolvedValueOnce({
+      json: async () => ({
+        lines: [{ timestamp: 7, message: `a${ESC}[31mb`, region: `s${ESC}[0mjc`, instance: 'i1', extra: 'dropped' }],
+        nextToken: '',
+      }),
+    });
+    const { fetchComputeLogs } = await import('./logs.js');
+    const out = await fetchComputeLogs('svc', { limit: 10 });
+    expect(out).toEqual({
+      lines: [{ timestamp: 7, message: 'ab', region: 'sjc', instance: 'i1' }],
+      nextToken: null,
+    });
+  });
+
+  it('tolerates a malformed body', async () => {
+    ossFetchMock.mockResolvedValueOnce({ json: async () => null });
+    const { fetchComputeLogs } = await import('./logs.js');
+    expect(await fetchComputeLogs('svc', { limit: 10 })).toEqual({ lines: [], nextToken: null });
   });
 });
 
