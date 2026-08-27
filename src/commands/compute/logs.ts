@@ -133,12 +133,14 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
         if (opts.follow) {
           if (!json) console.error('Following logs... (Ctrl+C to stop)');
           let token = result.nextToken;
-          // When the provider stops returning a cursor, each poll re-fetches
-          // the recent window; drop lines already printed so they don't
-          // repeat. Timestamps are the boundary, with a key set for the lines
-          // sharing the newest timestamp so same-millisecond arrivals aren't
-          // silently dropped. Cursor-based pages don't overlap, so no filter
-          // is applied while a token advances.
+          // Dedupe every poll against what was already printed: a cursorless
+          // poll re-fetches the recent window, and a frozen cursor (the
+          // server handing back the same token with the same lines) would
+          // otherwise repeat its batch forever. Timestamps are the boundary,
+          // with a key set for the lines sharing the newest timestamp so
+          // same-millisecond arrivals aren't silently dropped; ordinary
+          // advancing pages carry strictly newer timestamps and pass through
+          // untouched.
           const lineKey = (l: ComputeLogLine) => `${l.instance ?? ''}|${l.message}`;
           let lastTs = result.lines.length > 0 ? result.lines[result.lines.length - 1].timestamp : 0;
           const lastTsKeys = new Set(
@@ -159,11 +161,9 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
               await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** pollFailures, 30_000)));
               continue;
             }
-            const fresh = token
-              ? page.lines
-              : page.lines.filter(
-                (l) => l.timestamp > lastTs || (l.timestamp === lastTs && !lastTsKeys.has(lineKey(l))),
-              );
+            const fresh = page.lines.filter(
+              (l) => l.timestamp > lastTs || (l.timestamp === lastTs && !lastTsKeys.has(lineKey(l))),
+            );
             print(fresh);
             if (fresh.length > 0) {
               const newTs = fresh[fresh.length - 1].timestamp;

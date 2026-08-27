@@ -115,6 +115,24 @@ describe('compute logs', () => {
     expect(printed.some((l: string) => l.includes('fresh'))).toBe(true);
   });
 
+  it('--follow does not reprint a frozen cursor batch', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));
+    ossFetchMock.mockResolvedValueOnce(page([
+      { timestamp: 1, message: 'one' },
+      { timestamp: 2, message: 'two' },
+    ], 'tokA'));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.filter((l: string) => l.includes('one'))).toHaveLength(1);
+    expect(printed.filter((l: string) => l.includes('two'))).toHaveLength(1);
+  });
+
   it('--follow clears a stale cursor when the server stops returning one', async () => {
     vi.useFakeTimers();
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));
