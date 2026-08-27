@@ -115,6 +115,26 @@ describe('compute logs', () => {
     expect(printed.some((l: string) => l.includes('fresh'))).toBe(true);
   });
 
+  it('--follow clears a stale cursor when the server stops returning one', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 2, message: 'two' }], null));
+    ossFetchMock.mockResolvedValueOnce(page([
+      { timestamp: 2, message: 'two' },
+      { timestamp: 3, message: 'three' },
+    ], null));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000); // poll 1: uses tokA, returns null cursor
+    await vi.advanceTimersByTimeAsync(2000); // poll 2: must NOT reuse tokA
+    expect(ossFetchMock.mock.calls[1][0]).toBe('/api/compute/services/svc/logs?limit=100&next_token=tokA');
+    expect(ossFetchMock.mock.calls[2][0]).toBe('/api/compute/services/svc/logs?limit=100');
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.filter((l: string) => l.includes('two'))).toHaveLength(1);
+    expect(printed.some((l: string) => l.includes('three'))).toBe(true);
+  });
+
   it('--follow retries transient poll failures and keeps tailing', async () => {
     vi.useFakeTimers();
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));

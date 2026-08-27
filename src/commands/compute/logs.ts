@@ -175,7 +175,11 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
                 if (l.timestamp === lastTs) lastTsKeys.add(lineKey(l));
               }
             }
-            if (page.nextToken) token = page.nextToken;
+            // Take the cursor as the server reports it, including null: a
+            // stale token must not survive the transition, or the loop keeps
+            // re-fetching from a cursor the provider has abandoned and the
+            // no-cursor dedupe above never engages.
+            token = page.nextToken;
           }
         }
       } catch (err) {
