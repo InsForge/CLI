@@ -172,10 +172,14 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           // and reprints the whole page), and so are implausibly future ones
           // — a single year-2100 line would otherwise pin the watermark and
           // silently drop every real line after it.
+          // A timestamp is "positionable" only if it can be compared against
+          // the watermark at all. Anything else — non-finite, or implausibly
+          // far in the future — is treated as undated everywhere, so it can
+          // neither pin the watermark nor slip past the dedupe and reprint on
+          // every poll.
+          const positionable = (ts: number) => Number.isFinite(ts) && ts <= Date.now() + CLOCK_SKEW_MS;
           const maxTs = (lines: ComputeLogLine[]) => lines.reduce(
-            (m, l) => (Number.isFinite(l.timestamp) && l.timestamp > m && l.timestamp <= Date.now() + CLOCK_SKEW_MS
-              ? l.timestamp
-              : m),
+            (m, l) => (positionable(l.timestamp) && l.timestamp > m ? l.timestamp : m),
             0,
           );
           let lastTs = maxTs(result.lines);
@@ -196,7 +200,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           const undatedCounts = (lines: ComputeLogLine[]) => {
             const m = new Map<string, number>();
             for (const l of lines) {
-              if (Number.isFinite(l.timestamp)) continue;
+              if (positionable(l.timestamp)) continue;
               const k = lineKey(l);
               m.set(k, (m.get(k) ?? 0) + 1);
             }
@@ -230,7 +234,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
                 fresh.push(l);
                 continue;
               }
-              if (!Number.isFinite(l.timestamp)) {
+              if (!positionable(l.timestamp)) {
                 const k = lineKey(l);
                 const seen = undatedSuppress.get(k) ?? 0;
                 if (seen > 0) {

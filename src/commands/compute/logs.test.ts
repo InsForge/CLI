@@ -228,6 +228,23 @@ describe('compute logs', () => {
     expect(printed.some((l: string) => l.includes('later-real'))).toBe(true);
   });
 
+  it('--follow does not reprint a future-dated line on every poll', async () => {
+    vi.useFakeTimers();
+    const future = Date.now() + 60 * 60 * 1000;
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1000, message: 'real' }], null));
+    ossFetchMock.mockResolvedValue(page([
+      { timestamp: 1000, message: 'real' },
+      { timestamp: future, message: 'from-the-future' },
+    ], null));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.filter((l: string) => l.includes('from-the-future'))).toHaveLength(1);
+  });
+
   it('--follow does not reprint dated lines when a page also carries an undated one', async () => {
     vi.useFakeTimers();
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1000, message: 'dated' }], null));
