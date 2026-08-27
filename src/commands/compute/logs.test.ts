@@ -101,6 +101,7 @@ describe('compute logs', () => {
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 5, message: 'seen' }], null));
     ossFetchMock.mockResolvedValueOnce(page([
       { timestamp: 5, message: 'seen' },
+      { timestamp: 5, message: 'sibling' },
       { timestamp: 9, message: 'fresh' },
     ], null));
     ossFetchMock.mockResolvedValue(page([]));
@@ -110,6 +111,7 @@ describe('compute logs', () => {
     expect(ossFetchMock.mock.calls[1][0]).toBe('/api/compute/services/svc/logs?limit=100');
     const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
     expect(printed.filter((l: string) => l.includes('seen'))).toHaveLength(1);
+    expect(printed.filter((l: string) => l.includes('sibling'))).toHaveLength(1);
     expect(printed.some((l: string) => l.includes('fresh'))).toBe(true);
   });
 

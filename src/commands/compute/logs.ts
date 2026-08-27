@@ -78,9 +78,14 @@ export async function fetchComputeLogs(
     `/api/compute/services/${encodeURIComponent(id)}/logs?${params.toString()}`,
   );
   const body = await res.json() as Partial<ComputeLogsResult> | null;
-  const lines = (Array.isArray(body?.lines) ? body.lines : []).map((l) => ({
-    ...l,
+  // Normalize to the documented shape and sanitize every printable string
+  // field — region/instance come from the provider API rather than container
+  // output, but they end up on the same terminal line.
+  const lines = (Array.isArray(body?.lines) ? body.lines : []).map((l): ComputeLogLine => ({
+    timestamp: l.timestamp,
     message: sanitizeLogMessage(String(l.message ?? '')),
+    ...(l.instance !== undefined ? { instance: sanitizeLogMessage(String(l.instance)) } : {}),
+    ...(l.region !== undefined ? { region: sanitizeLogMessage(String(l.region)) } : {}),
   }));
   return {
     lines,
@@ -129,10 +134,16 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           if (!json) console.error('Following logs... (Ctrl+C to stop)');
           let token = result.nextToken;
           // When the provider stops returning a cursor, each poll re-fetches
-          // the recent window; drop lines at or before the newest timestamp
-          // already printed so they don't repeat. Cursor-based pages don't
-          // overlap, so no filter is applied while a token advances.
+          // the recent window; drop lines already printed so they don't
+          // repeat. Timestamps are the boundary, with a key set for the lines
+          // sharing the newest timestamp so same-millisecond arrivals aren't
+          // silently dropped. Cursor-based pages don't overlap, so no filter
+          // is applied while a token advances.
+          const lineKey = (l: ComputeLogLine) => `${l.instance ?? ''}|${l.message}`;
           let lastTs = result.lines.length > 0 ? result.lines[result.lines.length - 1].timestamp : 0;
+          const lastTsKeys = new Set(
+            result.lines.filter((l) => l.timestamp === lastTs).map(lineKey),
+          );
           let pollFailures = 0;
           for (;;) {
             await new Promise((r) => setTimeout(r, FOLLOW_INTERVAL_MS));
@@ -148,10 +159,21 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
               await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** pollFailures, 30_000)));
               continue;
             }
-            const fresh = token ? page.lines : page.lines.filter((l) => l.timestamp > lastTs);
+            const fresh = token
+              ? page.lines
+              : page.lines.filter(
+                (l) => l.timestamp > lastTs || (l.timestamp === lastTs && !lastTsKeys.has(lineKey(l))),
+              );
             print(fresh);
             if (fresh.length > 0) {
-              lastTs = Math.max(lastTs, fresh[fresh.length - 1].timestamp);
+              const newTs = fresh[fresh.length - 1].timestamp;
+              if (newTs !== lastTs) {
+                lastTs = newTs;
+                lastTsKeys.clear();
+              }
+              for (const l of fresh) {
+                if (l.timestamp === lastTs) lastTsKeys.add(lineKey(l));
+              }
             }
             if (page.nextToken) token = page.nextToken;
           }
