@@ -6,7 +6,8 @@ const ossFetchMock = vi.hoisted(() => vi.fn());
 const outputJsonMock = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/api/oss.js', () => ({ ossFetch: ossFetchMock }));
 vi.mock('../../lib/credentials.js', () => ({ requireAuth: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('../../lib/command-telemetry.js', () => ({ trackCommandUsage: vi.fn() }));
+const trackCommandUsageMock = vi.hoisted(() => vi.fn());
+vi.mock('../../lib/command-telemetry.js', () => ({ trackCommandUsage: trackCommandUsageMock }));
 vi.mock('../../lib/output.js', () => ({ outputJson: outputJsonMock }));
 vi.mock('../../lib/errors.js', async (importOriginal) => {
   const actual = await importOriginal<typeof ErrorsModule>();
@@ -17,7 +18,7 @@ vi.mock('../../lib/errors.js', async (importOriginal) => {
 });
 
 import { Command } from 'commander';
-import { registerComputeLogsCommand, sanitizeLogMessage, parseLimit } from './logs.js';
+import { registerComputeLogsCommand, sanitizeLogMessage, parseLimit, formatLogLine } from './logs.js';
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
@@ -42,6 +43,7 @@ describe('compute logs', () => {
   beforeEach(() => {
     ossFetchMock.mockReset();
     outputJsonMock.mockReset();
+    trackCommandUsageMock.mockReset();
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -172,6 +174,40 @@ describe('compute logs', () => {
     expect(printed.filter((l: string) => l.includes('dup'))).toHaveLength(3);
   });
 
+  it('--follow prints an advancing-cursor page verbatim, even within one millisecond', async () => {
+    vi.useFakeTimers();
+    // Docker cursors are nanosecond precision; both pages share a millisecond.
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1000, message: 'tick' }], 'ns1'));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1000, message: 'tick' }], 'ns2'));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.filter((l: string) => l.includes('tick'))).toHaveLength(2);
+  });
+
+  it('--follow prints an older-timestamp line arriving behind a new cursor', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 5000, message: 'newer' }], 'ns1'));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 0, message: 'unparseable-ts' }], 'ns2'));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.some((l: string) => l.includes('unparseable-ts'))).toBe(true);
+  });
+
+  it('emits stable telemetry for the command', async () => {
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'x' }], null));
+    await run(['compute', 'logs', 'svc']);
+    expect(trackCommandUsageMock).toHaveBeenCalledWith('compute', 'logs', true, {
+      result_count: 1,
+      follow: false,
+    });
+  });
+
   it('--follow retries transient poll failures and keeps tailing', async () => {
     vi.useFakeTimers();
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'one' }], 'tokA'));
@@ -211,11 +247,19 @@ describe('sanitizeLogMessage', () => {
   });
 });
 
+describe('formatLogLine', () => {
+  it('falls back to the raw value instead of throwing on a bad timestamp', () => {
+    expect(formatLogLine({ timestamp: Number.NaN, message: 'm' })).toContain('m');
+    expect(() => formatLogLine({ timestamp: undefined as unknown as number, message: 'm' })).not.toThrow();
+  });
+});
+
 describe('parseLimit', () => {
   it('clamps into 1-1000 and defaults malformed input', () => {
     expect(parseLimit('0')).toBe(1);
     expect(parseLimit('5000')).toBe(1000);
     expect(parseLimit('abc')).toBe(100);
+    expect(parseLimit('')).toBe(100);
     expect(parseLimit(undefined)).toBe(100);
     expect(parseLimit('250')).toBe(250);
   });

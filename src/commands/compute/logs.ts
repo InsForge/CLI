@@ -57,13 +57,18 @@ export function sanitizeLogMessage(message: string): string {
 // Exact 1-1000 contract: malformed input falls back to the default (same as
 // omitting the flag); finite values clamp into range, so `--limit 0` -> 1.
 export function parseLimit(raw: unknown): number {
+  if (raw === '' || raw === null || raw === undefined) return DEFAULT_LIMIT;
   const n = Number(raw);
   if (!Number.isFinite(n)) return DEFAULT_LIMIT;
   return Math.max(1, Math.min(Math.trunc(n), 1000));
 }
 
 export function formatLogLine(line: ComputeLogLine): string {
-  const ts = new Date(line.timestamp).toISOString();
+  // A missing/NaN timestamp would make toISOString throw, and in --follow
+  // that happens outside the poll try/catch, killing the tail. Fall back to
+  // the raw value the way the dashboard does.
+  const d = new Date(line.timestamp);
+  const ts = Number.isNaN(d.getTime()) ? String(line.timestamp) : d.toISOString();
   const where = [line.region, line.instance].filter(Boolean).join(' ');
   return where ? `${ts}  [${where}]  ${line.message}` : `${ts}  ${line.message}`;
 }
@@ -133,16 +138,23 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
         if (opts.follow) {
           if (!json) console.error('Following logs... (Ctrl+C to stop)');
           let token = result.nextToken;
-          // Dedupe every poll against what was already printed: a cursorless
-          // poll re-fetches the recent window, and a frozen cursor (the
-          // server handing back the same token with the same lines) would
-          // otherwise repeat its batch forever. Timestamps are the boundary,
-          // with a key set for the lines sharing the newest timestamp so
-          // same-millisecond arrivals aren't silently dropped; ordinary
-          // advancing pages carry strictly newer timestamps and pass through
-          // untouched.
+          // Dedupe only when the cursor did NOT advance: a cursorless poll
+          // re-fetches the recent window, and a frozen cursor (the server
+          // handing back the token it was given) would otherwise repeat its
+          // batch forever. When the cursor advances the server guarantees a
+          // non-overlapping page, so it prints verbatim — filtering it on a
+          // millisecond watermark would silently drop lines whose provider
+          // timestamps share a millisecond (docker cursors are nanosecond
+          // precision) or arrive out of order.
+          //
+          // Within a re-sent window the watermark is the newest timestamp
+          // seen, plus per-key occurrence COUNTS for the lines sharing it, so
+          // genuinely repeated identical messages still print.
           const lineKey = (l: ComputeLogLine) => `${l.region ?? ''}|${l.instance ?? ''}|${l.message}`;
-          let lastTs = result.lines.length > 0 ? result.lines[result.lines.length - 1].timestamp : 0;
+          // Max, not last: a page arriving unsorted must not move the
+          // watermark backwards.
+          const maxTs = (lines: ComputeLogLine[]) => lines.reduce((m, l) => Math.max(m, l.timestamp), 0);
+          let lastTs = maxTs(result.lines);
           // Occurrence COUNTS, not a set: identical messages repeated at the
           // boundary timestamp are real lines — suppress only as many as were
           // already printed.
@@ -168,9 +180,17 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
               await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** pollFailures, 30_000)));
               continue;
             }
+            // `token` still holds the cursor this request was made with, so a
+            // frozen token (nextToken === token) and a null token both keep
+            // the dedupe.
+            const cursorAdvanced = page.nextToken !== null && page.nextToken !== token;
             const suppress = new Map(lastTsCounts);
             const fresh: ComputeLogLine[] = [];
             for (const l of page.lines) {
+              if (cursorAdvanced) {
+                fresh.push(l);
+                continue;
+              }
               if (l.timestamp < lastTs) continue;
               if (l.timestamp === lastTs) {
                 const k = lineKey(l);
@@ -184,7 +204,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
             }
             print(fresh);
             if (fresh.length > 0) {
-              const newTs = fresh[fresh.length - 1].timestamp;
+              const newTs = maxTs(fresh);
               if (newTs !== lastTs) {
                 lastTs = newTs;
                 lastTsCounts.clear();
