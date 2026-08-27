@@ -199,6 +199,21 @@ describe('compute logs', () => {
     expect(printed.some((l: string) => l.includes('unparseable-ts'))).toBe(true);
   });
 
+  it('--follow prints a line with an unusable timestamp instead of dropping it', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 5000, message: 'newer' }], null));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: null, message: 'no-ts' }], null));
+    // Same window re-sent: the undated line must not repeat.
+    ossFetchMock.mockResolvedValue(page([{ timestamp: null, message: 'no-ts' }], null));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.filter((l: string) => l.includes('no-ts'))).toHaveLength(1);
+  });
+
   it('emits stable telemetry for the command', async () => {
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'x' }], null));
     await run(['compute', 'logs', 'svc']);

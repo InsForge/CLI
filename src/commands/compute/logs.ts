@@ -113,10 +113,17 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
         const limit = parseLimit(opts.limit);
         const result = await fetchComputeLogs(id, { limit, nextToken: opts.nextToken });
 
-        await trackCommandUsage('compute', 'logs', true, {
+        // Emitted before the tail starts, because a --follow run never
+        // reaches the end of the action. NOT awaited in follow mode:
+        // trackCommandUsage ends by flushing and shutting down the PostHog
+        // client over the network, which stalls the tail before its first
+        // poll (observed live: nothing printed and no second request while
+        // the flush retried).
+        const usage = trackCommandUsage('compute', 'logs', true, {
           result_count: result.lines.length,
           follow: Boolean(opts.follow),
         });
+        if (!opts.follow) await usage;
 
         if (json && !opts.follow) {
           outputJson(result);
@@ -165,6 +172,20 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
               lastTsCounts.set(k, (lastTsCounts.get(k) ?? 0) + 1);
             }
           }
+          // Lines whose timestamp is unusable (the Fly driver maps an
+          // unparseable one to 0/NaN) can't be positioned against the
+          // watermark, so a re-sent window is deduped against the previous
+          // page's occurrences of the same line instead.
+          const undatedCounts = (lines: ComputeLogLine[]) => {
+            const m = new Map<string, number>();
+            for (const l of lines) {
+              if (Number.isFinite(l.timestamp)) continue;
+              const k = lineKey(l);
+              m.set(k, (m.get(k) ?? 0) + 1);
+            }
+            return m;
+          };
+          let prevUndated = undatedCounts(result.lines);
           let pollFailures = 0;
           for (;;) {
             await new Promise((r) => setTimeout(r, FOLLOW_INTERVAL_MS));
@@ -185,9 +206,20 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
             // the dedupe.
             const cursorAdvanced = page.nextToken !== null && page.nextToken !== token;
             const suppress = new Map(lastTsCounts);
+            const undatedSuppress = new Map(prevUndated);
             const fresh: ComputeLogLine[] = [];
             for (const l of page.lines) {
               if (cursorAdvanced) {
+                fresh.push(l);
+                continue;
+              }
+              if (!Number.isFinite(l.timestamp)) {
+                const k = lineKey(l);
+                const seen = undatedSuppress.get(k) ?? 0;
+                if (seen > 0) {
+                  undatedSuppress.set(k, seen - 1);
+                  continue;
+                }
                 fresh.push(l);
                 continue;
               }
@@ -203,6 +235,8 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
               fresh.push(l);
             }
             print(fresh);
+            // An advanced cursor means the next page can't overlap this one.
+            prevUndated = cursorAdvanced ? new Map() : undatedCounts(page.lines);
             if (fresh.length > 0) {
               const newTs = maxTs(fresh);
               if (newTs !== lastTs) {
