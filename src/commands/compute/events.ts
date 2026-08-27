@@ -7,9 +7,9 @@ import { reportCliUsage } from '../../lib/skills.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
 // `compute events <id>` returns Fly machine lifecycle events (start/stop/exit/
-// restart) — not container stdout/stderr. The previous name `compute logs`
-// was misleading; container log streaming is roadmap work and will reuse the
-// freshly-vacated `logs` command name when it lands.
+// restart) — not container stdout/stderr. For container logs use
+// `compute logs <id>`. (This command was originally named `compute logs`,
+// which was misleading.)
 export function registerComputeEventsCommand(computeCmd: Command): void {
   computeCmd
     .command('events <id>')
