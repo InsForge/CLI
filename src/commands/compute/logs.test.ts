@@ -16,7 +16,7 @@ vi.mock('../../lib/errors.js', async (importOriginal) => {
 });
 
 import { Command } from 'commander';
-import { registerComputeLogsCommand, formatLogLine, sanitizeLogMessage, parseLimit } from './logs.js';
+import { registerComputeLogsCommand, sanitizeLogMessage, parseLimit } from './logs.js';
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);

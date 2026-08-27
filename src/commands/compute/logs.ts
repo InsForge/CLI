@@ -90,7 +90,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
         await requireAuth();
 
         const limit = parseLimit(opts.limit);
-        let result = await fetchComputeLogs(id, { limit, nextToken: opts.nextToken });
+        const result = await fetchComputeLogs(id, { limit, nextToken: opts.nextToken });
 
         await trackCommandUsage('compute', 'logs', true, {
           result_count: result.lines.length,
