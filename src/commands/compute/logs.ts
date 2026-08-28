@@ -134,10 +134,18 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
             } catch (err) {
               failures += 1;
               if (!isTransientApiError(err) || failures >= MAX_CONSECUTIVE_POLL_FAILURES) throw err;
-              await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** failures, 30_000)));
+              const wait = Math.min(FOLLOW_INTERVAL_MS * 2 ** failures, 30_000);
+              // Say so, or backoff makes a retrying tail look hung — the
+              // first page can be up to ~a minute away on a 429.
+              console.error(`Request failed (attempt ${failures}), retrying in ${Math.round(wait / 1000)}s...`);
+              await new Promise((r) => setTimeout(r, wait));
             }
           }
         };
+
+        // Printed before the first fetch so --follow acknowledges it is alive
+        // even while the initial request is still retrying.
+        if (opts.follow) console.error('Following logs... (Ctrl+C to stop)');
 
         const result = await fetchPage(opts.nextToken);
 
@@ -171,7 +179,6 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
         print(result.lines);
 
         if (opts.follow) {
-          if (!json) console.error('Following logs... (Ctrl+C to stop)');
           let token = result.nextToken;
           // Dedupe only when the cursor did NOT advance: a cursorless poll
           // re-fetches the recent window, and a frozen cursor (the server
