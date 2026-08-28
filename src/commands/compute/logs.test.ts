@@ -265,7 +265,12 @@ describe('compute logs', () => {
     // Reader's clock 10 minutes behind the timestamps the server sends.
     const serverNow = 1_700_000_000_000;
     vi.setSystemTime(serverNow - 10 * 60 * 1000);
+    // The window also carries an OLD line, the way a real scrolling window
+    // does — that older line satisfies the plausibility bound even on a slow
+    // clock, so without a timestamp-keyed undated dedupe the live lines
+    // collapse into one and the tail goes silent.
     const win = (n: number) => page([
+      { timestamp: serverNow - 10 * 60 * 1000, message: 'listening on :8080' },
       { timestamp: serverNow + n, message: 'EADDRINUSE, retrying' },
     ], null);
     ossFetchMock.mockResolvedValueOnce(win(0));

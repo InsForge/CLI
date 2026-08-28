@@ -166,6 +166,13 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           // seen, plus per-key occurrence COUNTS for the lines sharing it, so
           // genuinely repeated identical messages still print.
           const lineKey = (l: ComputeLogLine) => `${l.region ?? ''}|${l.instance ?? ''}|${l.message}`;
+          // A timestamp that can't be ordered against the watermark is still a
+          // stable identifier for the line. Keying the undated dedupe on it
+          // keeps identical messages at DIFFERENT timestamps distinct, so a
+          // crash loop emitting the same text every second is never collapsed
+          // into a single printed line; a genuinely re-sent line (same
+          // timestamp, same text) is still suppressed.
+          const undatedKey = (l: ComputeLogLine) => `${String(l.timestamp)}|${lineKey(l)}`;
           // Max, not last: a page arriving unsorted must not move the
           // watermark backwards. Non-finite timestamps are skipped (they'd
           // poison the max into NaN, which compares false against everything
@@ -221,7 +228,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
             const m = new Map<string, number>();
             for (const l of lines) {
               if (positionable(l.timestamp)) continue;
-              const k = lineKey(l);
+              const k = undatedKey(l);
               m.set(k, (m.get(k) ?? 0) + 1);
             }
             return m;
@@ -257,7 +264,7 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
                 continue;
               }
               if (!positionable(l.timestamp)) {
-                const k = lineKey(l);
+                const k = undatedKey(l);
                 const seen = undatedSuppress.get(k) ?? 0;
                 if (seen > 0) {
                   undatedSuppress.set(k, seen - 1);
