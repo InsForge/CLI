@@ -119,7 +119,27 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
         await requireAuth();
 
         const limit = parseLimit(opts.limit);
-        const result = await fetchComputeLogs(id, { limit, nextToken: opts.nextToken });
+
+        // In follow mode every fetch — including the first — rides out
+        // transient failures. The logs limiter is shared per-IP with the
+        // dashboard, so an initial 429 is ordinary; without this the tail
+        // died before it ever reached the resilient loop. Non-transient
+        // errors (401/403/404) still fail fast.
+        const fetchPage = async (nextToken?: string): Promise<ComputeLogsResult> => {
+          if (!opts.follow) return fetchComputeLogs(id, { limit, nextToken });
+          let failures = 0;
+          for (;;) {
+            try {
+              return await fetchComputeLogs(id, { limit, nextToken });
+            } catch (err) {
+              failures += 1;
+              if (!isTransientApiError(err) || failures >= MAX_CONSECUTIVE_POLL_FAILURES) throw err;
+              await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** failures, 30_000)));
+            }
+          }
+        };
+
+        const result = await fetchPage(opts.nextToken);
 
         // Emitted before the tail starts, because a --follow run never
         // reaches the end of the action. NOT awaited in follow mode:
@@ -234,21 +254,9 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
             return m;
           };
           let prevUndated = undatedCounts(result.lines);
-          let pollFailures = 0;
           for (;;) {
             await new Promise((r) => setTimeout(r, FOLLOW_INTERVAL_MS));
-            let page: ComputeLogsResult;
-            try {
-              page = await fetchComputeLogs(id, { limit, nextToken: token ?? undefined });
-              pollFailures = 0;
-            } catch (pollErr) {
-              pollFailures += 1;
-              if (!isTransientApiError(pollErr) || pollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
-                throw pollErr;
-              }
-              await new Promise((r) => setTimeout(r, Math.min(FOLLOW_INTERVAL_MS * 2 ** pollFailures, 30_000)));
-              continue;
-            }
+            const page = await fetchPage(token ?? undefined);
             // Re-scope the plausibility bound to this page before any use.
             positionable = positionableFor(page.lines);
             // `token` still holds the cursor this request was made with, so a

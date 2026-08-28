@@ -305,6 +305,24 @@ describe('compute logs', () => {
     expect(printed.some((l: string) => l.includes('real-3'))).toBe(true);
   });
 
+  it('--follow retries a transient failure on the INITIAL fetch', async () => {
+    vi.useFakeTimers();
+    ossFetchMock.mockRejectedValueOnce(new CLIError('rate limited', 1, 'RATE_LIMITED', 429));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'after-429' }], null));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(4000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.some((l: string) => l.includes('after-429'))).toBe(true);
+  });
+
+  it('does NOT retry the initial fetch without --follow', async () => {
+    ossFetchMock.mockRejectedValueOnce(new CLIError('rate limited', 1, 'RATE_LIMITED', 429));
+    await expect(run(['compute', 'logs', 'svc'])).rejects.toThrow('rate limited');
+    expect(ossFetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('emits stable telemetry for the command', async () => {
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'x' }], null));
     await run(['compute', 'logs', 'svc']);
