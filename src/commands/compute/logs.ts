@@ -186,9 +186,15 @@ export function registerComputeLogsCommand(computeCmd: Command): void {
           // exactly the crash loop you ran `-f` to watch. So if nothing in
           // the page looks plausible, the disagreement is with our clock and
           // the bound is not applied.
+          // Trust is STICKY: a page can earn it but never give it back.
+          // Recomputing per page would let a page in which every line is
+          // implausibly future disable the bound outright — the very state
+          // the bound exists to prevent — and re-pin the watermark to a bogus
+          // timestamp, killing the tail permanently.
+          let clockTrusted = false;
           const positionableFor = (lines: ComputeLogLine[]) => {
             const bound = Date.now() + CLOCK_SKEW_MS;
-            const clockTrusted = lines.some((l) => Number.isFinite(l.timestamp) && l.timestamp <= bound);
+            clockTrusted = clockTrusted || lines.some((l) => Number.isFinite(l.timestamp) && l.timestamp <= bound);
             return (ts: number) => Number.isFinite(ts) && (!clockTrusted || ts <= bound);
           };
           let positionable = positionableFor(result.lines);

@@ -281,6 +281,25 @@ describe('compute logs', () => {
     expect(printed.filter((l: string) => l.includes('EADDRINUSE'))).toHaveLength(3);
   });
 
+  it('--follow survives a page in which every line is implausibly future', async () => {
+    vi.useFakeTimers();
+    const future = Date.now() + 365 * 24 * 60 * 60 * 1000;
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1000, message: 'real-1' }], null));
+    // A uniform all-future page must not disable the bound for later polls.
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: future, message: 'bogus-future' }], null));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 2000, message: 'real-2' }], null));
+    ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 3000, message: 'real-3' }], null));
+    ossFetchMock.mockResolvedValue(page([]));
+    void run(['compute', 'logs', 'svc', '--follow']);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(2000);
+    const printed = logSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(printed.some((l: string) => l.includes('real-2'))).toBe(true);
+    expect(printed.some((l: string) => l.includes('real-3'))).toBe(true);
+  });
+
   it('emits stable telemetry for the command', async () => {
     ossFetchMock.mockResolvedValueOnce(page([{ timestamp: 1, message: 'x' }], null));
     await run(['compute', 'logs', 'svc']);
