@@ -1091,6 +1091,17 @@ Get compute service machine events (start/stop/exit/restart).
 npx @insforge/cli compute events my-api --limit 50
 ```
 
+#### `npx @insforge/cli compute logs <id>`
+
+Get container stdout/stderr (application logs) — the same data as the dashboard's Logs panel. Use `compute events` for machine lifecycle events instead.
+
+```bash
+npx @insforge/cli compute logs my-api --limit 200
+npx @insforge/cli compute logs my-api --follow            # poll for new lines every 2s
+npx @insforge/cli --json compute logs my-api              # { lines, nextToken } — pass nextToken back via --next-token to page forward
+npx @insforge/cli --json compute logs my-api --follow     # NDJSON: one {timestamp, message, ...} object per line
+```
+
 #### `npx @insforge/cli compute delete <id>`
 
 Delete a compute service and its Fly.io resources.

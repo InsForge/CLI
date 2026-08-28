@@ -97,6 +97,19 @@ describe.skipIf(!integrationEnabled)('CLI Compute Services Integration', () => {
     expect(Array.isArray(payload)).toBe(true);
   });
 
+  it('compute logs --json should return lines and cursor', async () => {
+    expect(createdServiceId).toBeDefined();
+
+    const result = await runCli(['--json', 'compute', 'logs', createdServiceId!, '--limit', '5'], { apiUrl });
+    expectCliSuccess(result);
+
+    const payload = parseJsonOutput(result.stdout) as Record<string, unknown>;
+    expectNoErrorPayload(payload);
+
+    expect(Array.isArray(payload.lines)).toBe(true);
+    expect('nextToken' in payload).toBe(true);
+  });
+
   it('compute stop --json should stop the service', async () => {
     expect(createdServiceId).toBeDefined();
 
