@@ -5,6 +5,7 @@ import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { reportCliUsage } from '../../lib/skills.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
+import { withStaleImageHint } from '../../lib/fly-registry.js';
 
 const ENV_KEY_REGEX = /^[A-Z_][A-Z0-9_]*$/;
 
@@ -122,10 +123,23 @@ export function registerComputeUpdateCommand(computeCmd: Command): void {
           );
         }
 
-        const res = await ossFetch(`/api/compute/services/${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          body: JSON.stringify(body),
-        });
+        let res;
+        try {
+          res = await ossFetch(`/api/compute/services/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(body),
+          });
+        } catch (updateErr) {
+          // A timeout on a registry.fly.io image usually means the tag was
+          // deleted along with a previous service — say so instead of
+          // "cloud unavailable". Known gap: an update without --image
+          // relaunches against the service's *stored* image, which can be a
+          // dead registry.fly.io tag too, but the CLI doesn't know that URL
+          // without an extra fetch — those timeouts pass through unhinted.
+          throw opts.image
+            ? withStaleImageHint(updateErr, String(opts.image))
+            : updateErr;
+        }
         const service = await res.json() as Record<string, unknown>;
 
         await trackCommandUsage('compute', 'update', true);
