@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from 'vitest';
-import { describeExecError, reportCliUsage, PROVIDER_SKILLS } from './skills.js';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describeExecError, reportCliUsage, updateGitignore, PROVIDER_SKILLS } from './skills.js';
 
 test('apify provider installs apify/agent-skills', () => {
   expect(PROVIDER_SKILLS.apify).toEqual({ repo: 'apify/agent-skills', label: 'Apify skills' });
@@ -146,5 +149,62 @@ describe('reportCliUsage', () => {
     await reportCliUsage('cli.link', false, 1, explicitConfig);
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
     expect(body.success).toBe(false);
+  });
+});
+
+describe('updateGitignore', () => {
+  let dir: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'cli-gitignore-'));
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+  });
+
+  afterEach(() => {
+    cwdSpy.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const read = (): string => readFileSync(join(dir, '.gitignore'), 'utf-8');
+
+  it('ignores .env.local alongside the agent directories', () => {
+    updateGitignore();
+
+    const gitignore = read();
+    expect(gitignore).toContain('.insforge');
+    expect(gitignore).toContain('.env*.local');
+  });
+
+  it('does not add an env pattern when one already covers the file', () => {
+    writeFileSync(join(dir, '.gitignore'), '.env*\n');
+    updateGitignore();
+
+    expect(read().match(/^\.env.*$/gm)).toEqual(['.env*']);
+  });
+
+  it('still ignores .env.local when every agent entry is already present', () => {
+    writeFileSync(
+      join(dir, '.gitignore'),
+      [
+        '.insforge', '.agent', '.agents', '.augment', '.claude', '.cline',
+        '.github/copilot*', '.kilocode', '.qoder', '.qwen', '.roo', '.trae', '.windsurf',
+      ].join('\n') + '\n',
+    );
+    updateGitignore();
+
+    // Guards the precondition: if GITIGNORE_ENTRIES grows and the fixture above
+    // goes stale, the agent block gets appended and this fails, rather than the
+    // test quietly passing while no longer exercising the early-return path.
+    expect(read()).not.toContain('# InsForge & AI agent skills');
+    expect(read()).toContain('.env*.local');
+  });
+
+  it('is idempotent across repeated runs', () => {
+    updateGitignore();
+    const afterFirst = read();
+    updateGitignore();
+
+    expect(read()).toBe(afterFirst);
   });
 });

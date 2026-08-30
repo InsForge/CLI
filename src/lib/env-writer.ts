@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
 export interface EnvUpdateResult {
   /** Variables that were appended (key was not already set). */
@@ -77,4 +78,51 @@ export function upsertEnvFile(
   }
 
   return result;
+}
+
+/** True for the local env files git is expected to ignore: `.env.local` and
+ *  `.env.<name>.local`. A plain `.env` is deliberately excluded — some projects
+ *  commit a non-secret one on purpose, so we never touch it. */
+export function isLocalEnvFile(envFile: string): boolean {
+  const normalized = envFile.replace(/\\/g, '/');
+  const basename = normalized.split('/').pop() ?? normalized;
+  return basename === '.env.local' || /^\.env\..+\.local$/.test(basename);
+}
+
+/**
+ * Make sure a local env file we just wrote credentials into is gitignored.
+ * Shared by `ai setup` (which writes OPENROUTER_API_KEY) and the skills
+ * install used by `link`/`create` (which seed .env.local and then point
+ * AGENTS.md at it), so the ignore rule lives in exactly one place.
+ *
+ * No-ops when the file is not a local env file, when it resolves outside
+ * `cwd` (nothing we should be editing a .gitignore for), or when an existing
+ * pattern already covers it. Returns `true` only if .gitignore was written.
+ */
+export function ensureLocalEnvIgnored(cwd: string, envFile: string): boolean {
+  if (!isLocalEnvFile(envFile)) return false;
+
+  const envPath = resolve(cwd, envFile);
+  const relEnvPath = relative(cwd, envPath);
+  if (!relEnvPath || relEnvPath.startsWith('..') || isAbsolute(relEnvPath)) {
+    return false;
+  }
+
+  const gitignorePath = join(cwd, '.gitignore');
+  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
+  const lines = new Set(existing.split(/\r?\n/).map((line) => line.trim()));
+  const envBasename = envFile.replace(/\\/g, '/').split('/').pop() ?? envFile;
+  if (
+    lines.has('.env*') ||
+    lines.has('.env.*') ||
+    lines.has('.env*.local') ||
+    (lines.has('.env.local') && envBasename === '.env.local')
+  ) {
+    return false;
+  }
+
+  const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+  const spacer = existing.length > 0 ? '\n' : '';
+  appendFileSync(gitignorePath, `${prefix}${spacer}# Local environment secrets\n.env*.local\n`);
+  return true;
 }

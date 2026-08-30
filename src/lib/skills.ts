@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import * as clack from '@clack/prompts';
 import { writeLocalAgentsMd } from './agents-md.js';
 import { getProjectConfig } from './config.js';
+import { ensureLocalEnvIgnored } from './env-writer.js';
 
 const execAsync = promisify(exec);
 
@@ -57,16 +58,25 @@ const GITIGNORE_ENTRIES = [
   '.windsurf',
 ];
 
-function updateGitignore(): void {
+/** Exported for tests; call sites go through `installSkills`. */
+export function updateGitignore(): void {
   const gitignorePath = join(process.cwd(), '.gitignore');
   const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
   const lines = new Set(existing.split('\n').map((l) => l.trim()));
 
   const missing = GITIGNORE_ENTRIES.filter((entry) => !lines.has(entry));
-  if (!missing.length) return;
+  if (missing.length) {
+    const block = `\n# InsForge & AI agent skills\n${missing.join('\n')}\n`;
+    appendFileSync(gitignorePath, block);
+  }
 
-  const block = `\n# InsForge & AI agent skills\n${missing.join('\n')}\n`;
-  appendFileSync(gitignorePath, block);
+  // `create` seeds .env.local with the project URL and anon key, and the
+  // AGENTS.md we write next tells app code to read its keys from there — so it
+  // needs the same protection `ai setup` already gives it. Shared helper rather
+  // than a GITIGNORE_ENTRIES entry: it knows the existing patterns that already
+  // cover the file, which the exact-match filter above does not. Runs even when
+  // every agent entry is present, since those are unrelated to the env file.
+  ensureLocalEnvIgnored(process.cwd(), '.env.local');
 }
 
 // Agents that the `npx skills add -a <agent>` CLI knows how to target. Kept
