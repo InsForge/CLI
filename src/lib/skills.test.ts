@@ -193,6 +193,10 @@ describe('updateGitignore', () => {
     );
     updateGitignore();
 
+    // Guards the precondition: if GITIGNORE_ENTRIES grows and the fixture above
+    // goes stale, the agent block gets appended and this fails, rather than the
+    // test quietly passing while no longer exercising the early-return path.
+    expect(read()).not.toContain('# InsForge & AI agent skills');
     expect(read()).toContain('.env*.local');
   });
 
