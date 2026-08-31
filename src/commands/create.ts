@@ -14,7 +14,7 @@ import {
 } from '../lib/api/platform.js';
 import { getAnonKey, runRawSql } from '../lib/api/oss.js';
 import { applyAuthProvider, VALID_AUTH_PROVIDERS, type AuthProvider } from '../auth-providers/apply.js';
-import { getGlobalConfig, saveGlobalConfig, saveProjectConfig, getFrontendUrl, buildOssHost } from '../lib/config.js';
+import { getGlobalConfig, saveGlobalConfig, getProjectConfig, saveProjectConfig, getFrontendUrl, buildOssHost } from '../lib/config.js';
 import { requireAuth } from '../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../lib/errors.js';
 import { outputJson } from '../lib/output.js';
@@ -134,6 +134,17 @@ async function animateBanner(): Promise<void> {
     process.stderr.write(`\x1b[97m${line}\x1b[0m\n`);
   }
   process.stderr.write('\n');
+}
+
+/**
+ * Returns the previously linked project config when `create` is about to
+ * overwrite `.insforge/project.json` with a DIFFERENT project (a silent
+ * relink), or null when the directory was unlinked or already points at
+ * the new project.
+ */
+export function detectRelink(previous: ProjectConfig | null, newProjectId: string): ProjectConfig | null {
+  if (previous && previous.project_id !== newProjectId) return previous;
+  return null;
 }
 
 function getDefaultProjectName(): string {
@@ -355,6 +366,11 @@ export function registerCreateCommand(program: Command): void {
 
         // 6. Fetch API key and link project
         const apiKey = await getProjectApiKey(project.id, apiUrl);
+        // Blank projects link in cwd, so an existing .insforge/project.json
+        // pointing at another project is about to be silently overwritten —
+        // detect it BEFORE saving so we can warn loudly (otherwise later
+        // db query/export commands hit the wrong project unnoticed).
+        const previousLink = detectRelink(getProjectConfig(), project.id);
         const projectConfig: ProjectConfig = {
           project_id: project.id,
           project_name: project.name,
@@ -368,6 +384,14 @@ export function registerCreateCommand(program: Command): void {
         projectLinked = true;
 
         s?.stop(`Project "${project.name}" created and linked`);
+
+        if (previousLink && !json) {
+          clack.log.warn(
+            `LINK CHANGED: this directory was linked to "${previousLink.project_name}" (${previousLink.project_id}) ` +
+              `and now points to "${project.name}" (${project.id}).\n` +
+              `Subsequent db/storage commands run here will target the new project.`,
+          );
+        }
 
         // 7. Download template or seed env for blank projects
         const githubTemplates = ['chatbot', 'crm', 'e-commerce', 'nextjs', 'react', 'todo'];
@@ -511,6 +535,14 @@ export function registerCreateCommand(program: Command): void {
             project: { id: project.id, name: project.name, appkey: project.appkey, region: project.region },
             template,
             ...(dirName ? { directory: dirName } : {}),
+            ...(previousLink
+              ? {
+                  linkChanged: {
+                    previousProjectId: previousLink.project_id,
+                    previousProjectName: previousLink.project_name,
+                  },
+                }
+              : {}),
             urls: {
               dashboard: dashboardUrl,
               ...(liveUrl ? { liveSite: liveUrl } : {}),
