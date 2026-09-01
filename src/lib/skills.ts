@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import * as clack from '@clack/prompts';
 import { writeLocalAgentsMd } from './agents-md.js';
+import { isTelemetryDisabled } from './analytics.js';
 import { getProjectConfig } from './config.js';
 
 const execAsync = promisify(exec);
@@ -178,6 +179,9 @@ export async function reportCliUsage(
   maxRetries = 1,
   explicitConfig?: { oss_host: string; api_key: string },
 ): Promise<void> {
+  // Honor the same opt-out as PostHog analytics (`insforge telemetry disable`,
+  // DO_NOT_TRACK, INSFORGE_TELEMETRY_DISABLED) — this is usage tracking too.
+  if (isTelemetryDisabled()) return;
   let config: { oss_host: string; api_key: string } | null | undefined = explicitConfig;
   if (!config) {
     try {

@@ -29,10 +29,6 @@ import { registerDbExportCommand } from './commands/db/export.js';
 import { registerDbImportCommand } from './commands/db/import.js';
 import { registerDbMigrationsCommand } from './commands/db/migrations.js';
 import { registerDbConnectionStringCommand } from './commands/db/connection-string.js';
-import { registerRecordsCommands } from './commands/records/list.js';
-import { registerRecordsCreateCommand } from './commands/records/create.js';
-import { registerRecordsUpdateCommand } from './commands/records/update.js';
-import { registerRecordsDeleteCommand } from './commands/records/delete.js';
 import { registerFunctionsCommands } from './commands/functions/list.js';
 import { registerFunctionsDeployCommand } from './commands/functions/deploy.js';
 import { registerFunctionsInvokeCommand } from './commands/functions/invoke.js';
@@ -57,6 +53,7 @@ import { registerDeploymentsSlugCommand } from './commands/deployments/slug.js';
 
 import { registerDocsCommand } from './commands/docs.js';
 import { registerFeedbackCommand } from './commands/feedback.js';
+import { registerTelemetryCommand } from './commands/telemetry.js';
 import { registerSecretsListCommand } from './commands/secrets/list.js';
 import { registerSecretsGetCommand } from './commands/secrets/get.js';
 import { registerSecretsAddCommand } from './commands/secrets/add.js';
@@ -165,6 +162,7 @@ registerContextCommand(program);
 registerListCommand(program);
 registerDocsCommand(program);
 registerFeedbackCommand(program);
+registerTelemetryCommand(program);
 registerProjectLinkCommand(program);
 
 // Orgs commands
@@ -193,13 +191,6 @@ registerDbExportCommand(dbCmd);
 registerDbImportCommand(dbCmd);
 registerDbMigrationsCommand(dbCmd);
 registerDbConnectionStringCommand(dbCmd);
-
-// Records commands (hidden — do not use for now)
-const recordsCmd = program.command('records', { hidden: true }).description('CRUD operations on table records');
-registerRecordsCommands(recordsCmd);
-registerRecordsCreateCommand(recordsCmd);
-registerRecordsUpdateCommand(recordsCmd);
-registerRecordsDeleteCommand(recordsCmd);
 
 // Functions commands
 const functionsCmd = program.command('functions').description('Manage edge functions');
