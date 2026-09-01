@@ -117,7 +117,16 @@ export function listLocalMigrationFilenames(cwd: string = process.cwd()): string
     return [];
   }
 
-  return readdirSync(migrationsDir).sort((left, right) => left.localeCompare(right));
+  // Only `.sql` files are migrations. Subdirectories (e.g. `migrations/_archive/`
+  // holding superseded SQL) and stray non-SQL files must never reach
+  // parseStrictLocalMigrations, which rejects anything that isn't
+  // <migration_version>_<migration-name>.sql. Filter on !isDirectory() rather
+  // than isFile() so a symlinked migration file is still picked up instead of
+  // being silently skipped.
+  return readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => !entry.isDirectory() && entry.name.endsWith('.sql'))
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 export function parseStrictLocalMigrations(filenames: string[]): ParsedMigrationFile[] {
