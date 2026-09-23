@@ -117,6 +117,37 @@ describe('branch list', () => {
     expect(parsed.data[0].name).toBe('feat-x');
   });
 
+  it('json mode leaves out each branch database_password', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+    });
+    const { listBranchesApi } = await import('../../lib/api/platform.js');
+    (listBranchesApi as Mock).mockResolvedValueOnce([
+      {
+        id: 'b1',
+        name: 'feat-x',
+        branch_state: 'ready',
+        organization_id: 'o1',
+        parent_project_id: 'p1',
+        appkey: 'k1',
+        region: 'us-east',
+        branch_created_at: '2026-04-29T00:00:00Z',
+        branch_metadata: { mode: 'full' },
+        database_password: 'plaintext-secret',
+      },
+    ]);
+    const program = makeProgram();
+    const logs = await runWithCapturedLog(program, ['list', '--json']);
+    const out = logs.join('\n');
+    expect(out).not.toContain('plaintext-secret');
+    const parsed = JSON.parse(out);
+    expect(parsed.data[0].name).toBe('feat-x');
+    expect(parsed.data[0]).not.toHaveProperty('database_password');
+  });
+
   it('table mode marks the current branch with `*`', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
     (getProjectConfig as Mock).mockReturnValue({

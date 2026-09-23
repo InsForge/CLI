@@ -5,6 +5,7 @@ import { requireAuth } from '../../lib/credentials.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputTable, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
+import { redactBranch } from './redact.js';
 
 export function registerBranchListCommand(branch: Command): void {
   branch
@@ -24,7 +25,7 @@ export function registerBranchListCommand(branch: Command): void {
         captureEvent(parentId, 'cli_branch_list', { count: branches.length });
 
         if (json) {
-          outputJson({ data: branches });
+          outputJson({ data: branches.map(redactBranch) });
           return;
         }
         if (branches.length === 0) {

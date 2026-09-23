@@ -202,6 +202,53 @@ describe('branch create', () => {
     expect(out).toContain('feat-x');
   });
 
+  it('--json output leaves out the branch database_password', async () => {
+    const { getProjectConfig } = await import('../../lib/config.js');
+    (getProjectConfig as Mock).mockReturnValue({
+      project_id: 'p1',
+      project_name: 'parent',
+      org_id: 'o1',
+      appkey: 'p1ky',
+      region: 'us-east',
+      api_key: 'k',
+      oss_host: 'p1ky.us-east.insforge.app',
+    });
+    const { getBranchApi } = await import('../../lib/api/platform.js');
+    (getBranchApi as Mock).mockResolvedValueOnce({
+      id: 'branch-id',
+      parent_project_id: 'p1',
+      organization_id: 'o1',
+      name: 'feat-x',
+      appkey: 'p1ky-x9p',
+      region: 'us-east',
+      branch_state: 'ready',
+      branch_created_at: new Date().toISOString(),
+      branch_metadata: { mode: 'schema-only' },
+      database_password: 'plaintext-secret',
+    });
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchCreateCommand(program);
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(' '));
+    };
+    try {
+      await program.parseAsync(
+        ['create', 'feat-x', '--mode', 'schema-only', '--no-switch', '--json'],
+        { from: 'user' },
+      );
+    } finally {
+      console.log = origLog;
+    }
+    const out = logs.join('\n');
+    expect(out).not.toContain('plaintext-secret');
+    const parsed = JSON.parse(out);
+    expect(parsed.branch.id).toBe('branch-id');
+    expect(parsed.branch).not.toHaveProperty('database_password');
+  });
+
   it('happy path without --no-switch invokes runBranchSwitch', async () => {
     const { getProjectConfig } = await import('../../lib/config.js');
     (getProjectConfig as Mock).mockReturnValue({

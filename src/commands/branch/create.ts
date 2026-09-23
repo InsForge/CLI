@@ -14,6 +14,7 @@ import { outputJson, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { runBranchSwitch } from './switch.js';
 import { readBranchWithRetry } from './poll.js';
+import { redactBranch } from './redact.js';
 import type { Branch, BranchMode } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
@@ -143,7 +144,7 @@ export function registerBranchCreateCommand(branch: Command): void {
         // exists and is billing, so a caller must be able to find and delete it
         // even when this command is about to exit non-zero.
         if (json) {
-          outputJson({ branch: ready, serving });
+          outputJson({ branch: redactBranch(ready), serving });
         } else if (ready.branch_state === 'ready' && serving) {
           if (opts.switch) {
             outputInfo(
