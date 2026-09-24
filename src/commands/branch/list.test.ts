@@ -138,14 +138,29 @@ describe('branch list', () => {
         branch_metadata: { mode: 'full' },
         database_password: 'plaintext-secret',
       },
+      {
+        id: 'b2',
+        name: 'feat-y',
+        branch_state: 'ready',
+        organization_id: 'o1',
+        parent_project_id: 'p1',
+        appkey: 'k2',
+        region: 'us-east',
+        branch_created_at: '2026-04-30T00:00:00Z',
+        branch_metadata: { mode: 'schema-only' },
+        database_password: 'second-secret',
+      },
     ]);
     const program = makeProgram();
     const logs = await runWithCapturedLog(program, ['list', '--json']);
     const out = logs.join('\n');
     expect(out).not.toContain('plaintext-secret');
+    expect(out).not.toContain('second-secret');
     const parsed = JSON.parse(out);
-    expect(parsed.data[0].name).toBe('feat-x');
-    expect(parsed.data[0]).not.toHaveProperty('database_password');
+    expect(parsed.data.map((b: { name: string }) => b.name)).toEqual(['feat-x', 'feat-y']);
+    for (const branch of parsed.data) {
+      expect(branch).not.toHaveProperty('database_password');
+    }
   });
 
   it('table mode marks the current branch with `*`', async () => {
