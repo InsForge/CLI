@@ -61,7 +61,7 @@ export async function requireAuth(apiUrl?: string, allowOssBypass = true): Promi
   }
 }
 
-export async function refreshAccessToken(apiUrl?: string): Promise<string> {
+export async function refreshAccessToken(apiUrl?: string, signal?: AbortSignal): Promise<string> {
   const creds = getCredentials();
   if (!creds) {
     throw new AuthError('Not logged in. Run `npx @insforge/cli login` first.');
@@ -100,6 +100,7 @@ export async function refreshAccessToken(apiUrl?: string): Promise<string> {
       platformUrl,
       refreshToken: creds.refresh_token,
       clientId,
+      signal,
     });
 
     const updated: StoredCredentials = {
@@ -110,11 +111,12 @@ export async function refreshAccessToken(apiUrl?: string): Promise<string> {
     };
     saveCredentials(updated);
     return data.access_token;
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err;
     // Token refresh failed — try re-authenticating interactively
     if (process.stdout.isTTY) {
       clack.log.warn('Session expired. Please log in again.');
-      const newCreds = await performOAuthLogin(apiUrl);
+      const newCreds = await performOAuthLogin(apiUrl, signal);
       return newCreds.access_token;
     }
     throw new AuthError('Failed to refresh token. Run `npx @insforge/cli login` again.');
