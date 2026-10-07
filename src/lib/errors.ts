@@ -35,28 +35,15 @@ export class ProjectNotLinkedError extends CLIError {
   }
 }
 
-export class NotFoundError extends CLIError {
-  constructor(resource: string) {
-    super(`${resource} not found.`, 4, 'NOT_FOUND');
-  }
-}
-
-export class PermissionError extends CLIError {
-  constructor(message: string = 'Permission denied.') {
-    super(message, 5, 'PERMISSION_DENIED');
-  }
-}
-
 /**
  * True when a CLASSIFIED API failure says nothing about the operation being
  * polled, so a caller in a poll loop should read again rather than give up.
  *
  * Gateway 5xx is the case this exists for: `insforge branch create` polls the
  * control plane every 3s for up to 15 minutes, and a SINGLE 502 anywhere in
- * that window used to abort a branch that the backend went on to finish
- * creating seconds later (observed twice in agent-e2e: CLI out at ~90s and
- * ~97s, branch ready at ~108s and ~113s). The branch still exists and still
- * bills, so exiting is both wrong and expensive.
+ * that window must not abort a branch the backend goes on to finish creating.
+ * The branch still exists and still bills, so exiting is both wrong and
+ * expensive.
  *
  * Terminal by design:
  *   - any CLIError with no `statusCode` — a locally raised error (a failed job,
@@ -149,14 +136,6 @@ export function handleError(err: unknown, json: boolean): never {
     console.error(`Error: ${message}`);
   }
   process.exit(1);
-}
-
-export function getJsonFlag(cmd: Command): boolean {
-  let root: Command = cmd;
-  while (root.parent) {
-    root = root.parent;
-  }
-  return root.opts().json ?? false;
 }
 
 export function getRootOpts(cmd: Command): { json: boolean; apiUrl?: string; yes: boolean } {

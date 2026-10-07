@@ -297,12 +297,11 @@ async function waitUntilServing(
 /**
  * Poll the control plane until the branch reaches a terminal state.
  *
- * A failed READ is not a failed branch. The control plane returning 502 once
- * mid-poll used to end the command on the spot, while the backend went on to
- * mark the branch ready ~15s later — leaving a real, billing branch behind a
- * non-zero exit (agent-e2e runs 31832239687 and 32055449431). Transient
- * failures therefore consume a poll interval and nothing more; only a real
- * rejection (auth, 404, a terminal branch state) ends the loop early.
+ * A failed READ is not a failed branch: a 502 mid-poll must not end the command
+ * while the backend goes on to mark the branch ready, leaving a real, billing
+ * branch behind a non-zero exit. Transient failures therefore consume a poll
+ * interval and nothing more; only a real rejection (auth, 404, a terminal
+ * branch state) ends the loop early.
  */
 async function pollUntilReady(
   branchId: string,
