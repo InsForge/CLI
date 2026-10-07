@@ -7,6 +7,7 @@ import { getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { readBranchWithRetry } from './poll.js';
+import { redactBranch } from './redact.js';
 import type { Branch } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
@@ -72,7 +73,7 @@ export function registerBranchResetCommand(branch: Command): void {
         const final = await pollUntilReady(target.id, name, apiUrl, !json, initial.branch_state);
 
         if (json) {
-          outputJson({ branch: final });
+          outputJson({ branch: redactBranch(final) });
         } else if (final.branch_state === 'ready') {
           outputSuccess(`Branch '${name}' is back to T0 and ready.`);
           outputInfo('⚠ Reminder: edge functions, website, and compute aren’t touched by reset; redeploy if needed.');
