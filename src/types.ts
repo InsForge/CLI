@@ -13,21 +13,12 @@ export interface LoginResponse {
   user: User;
 }
 
-export interface RefreshResponse {
-  token: string;
-}
-
 export interface Organization {
   id: string;
   name: string;
   type: string;
   created_at: string;
   updated_at: string;
-}
-
-export interface OrgMembership {
-  organization: Organization;
-  role: string;
 }
 
 export interface Project {
@@ -46,30 +37,8 @@ export interface Project {
   updated_at: string;
 }
 
-export interface ProjectAuthResponse {
-  code: string;
-  expires_in: number;
-  type: string;
-}
-
 export interface ApiKeyResponse {
   access_api_key: string;
-}
-
-export interface DatabasePasswordResponse {
-  databasePassword: string;
-}
-
-export interface ConnectionStringResponse {
-  connectionURL: string;
-  parameters: {
-    host: string;
-    port: number;
-    database: string;
-    user: string;
-    password: string;
-    sslmode: string;
-  };
 }
 
 // Stored credentials
@@ -196,13 +165,6 @@ export interface MergeConflictResponse {
   diff: DiffResult;
 }
 
-// API Error
-export interface ApiError {
-  code?: string;
-  error: string;
-  requestId?: string;
-}
-
 // OSS API types
 
 export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsResponse,
@@ -211,7 +173,7 @@ export type { ListFunctionsResponse, StorageBucketSchema, ListDeploymentsRespons
   CreateScheduleResponse, ListSchedulesResponse, GetScheduleResponse, ListExecutionLogsResponse,
   ListSecretsResponse, GetSecretValueResponse, CreateSecretResponse, DeleteSecretResponse, UpdateSecretResponse,
   CreateDeploymentResponse, CreateDirectDeploymentRequest, CreateDirectDeploymentResponse,
-  DeploymentManifestFileEntry, DeploymentManifestFile, UploadDeploymentFileResponse,
+  DeploymentManifestFileEntry, DeploymentManifestFile,
   StartDeploymentRequest, DeploymentSchema, DeploymentMetadataResponse
  } from '@insforge/shared-schemas';
 

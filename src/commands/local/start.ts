@@ -334,6 +334,3 @@ export function registerLocalStartCommand(localCmd: Command): void {
       }
     });
 }
-
-/** Exported for tests. */
-export const __testing = { parsePort, portOverrides, resolveStorage };

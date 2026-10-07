@@ -12,7 +12,7 @@ import type { Branch } from '../../types.js';
 const POLL_INTERVAL_MS = 3_000;
 // Reset re-runs pg_restore in-place, plus (for schema-only) the truncate
 // finalize. Same order of magnitude as create — minutes for a small DB,
-// longer for a populated one. Match create's 5-min budget.
+// longer for a populated one.
 const POLL_TIMEOUT_MS = 5 * 60 * 1_000;
 // Retries for the post-timeout read that decides the verdict. Inside the loop
 // the interval is the retry; this one has no second chance.

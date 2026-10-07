@@ -91,8 +91,9 @@ declarations at `dist/index.d.ts`. Local builds (outside CI) also emit
 
 Source maps are intentionally excluded from npm releases because they increase
 package size and are not required for normal CLI usage. The `files` field in
-`package.json` whitelists only `dist/index.js` and `dist/index.d.ts`, so
-`dist/index.js.map` is never published. If you add new build outputs under
+`package.json` whitelists only `dist/index.js`, `dist/index.d.ts`, and the
+copied assets (`dist/assets/forger.json`, `dist/assets/local/cli-overlay.yml`),
+so `dist/index.js.map` is never published. If you add new build outputs under
 `dist/`, update `package.json` `files` accordingly.
 
 Inspect what would be published with:

@@ -31,5 +31,3 @@ export function audit(entry: AuditEntry): void {
     /* auditing must never block the guard */
   }
 }
-
-export { AUDIT_FILE };

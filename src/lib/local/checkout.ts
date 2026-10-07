@@ -1,12 +1,9 @@
 /**
  * Fetch and run InsForge's own setup.sh to populate `.insforge/checkout/`.
  *
- * The CLI used to carry a 266-line copy of the compose file plus the four files
- * it inlines. That copy drifted within a day of being written — the connection
- * pool alignment added upstream never reached it. So the stack definition comes
- * from the repository now, through the script the repository already ships for
- * exactly this: it owns the file list, the layout the compose file's relative
- * mounts expect, and the secret generation.
+ * The stack definition is never vendored here: a copy drifts from upstream, and
+ * setup.sh owns the file list, the layout the compose file's relative mounts
+ * expect, and the secret generation.
  *
  * INSFORGE_NO_GIT=1 keeps `docker` the only thing a developer needs installed;
  * the script falls back to fetching each file over HTTPS.

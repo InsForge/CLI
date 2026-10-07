@@ -105,10 +105,9 @@ export function registerLocalStopCommand(localCmd: Command): void {
           }
         }
 
-        // Before the success event, and before the --json early return. Both
-        // used to run first, so a partial delete was recorded as a success and
-        // exited 0 — and the catch below could not correct it, since telemetry
-        // only reports once per process.
+        // Must precede the success event and the --json early return: telemetry
+        // reports once per process, so a partial delete recorded as a success
+        // cannot be corrected by the catch below.
         if (remainingVolumes.length > 0) {
           throw new CLIError(
             `The containers are stopped, but ${remainingVolumes.length} volume` +
