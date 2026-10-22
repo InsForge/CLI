@@ -75,6 +75,15 @@ vi.mock('../../lib/skills.js', () => ({
   reportCliUsage: vi.fn(async () => {}),
 }));
 
+// Apply-confirmation must go through the isInteractive-guarded wrapper, not
+// raw @clack/prompts directly — see export.test.ts for the matching case and
+// the Windows "uv_tty_init returned EINVAL" crash this guards against.
+const promptsConfirmMock = vi.fn(async () => false);
+vi.mock('../../lib/prompts.js', () => ({
+  confirm: (opts: unknown) => promptsConfirmMock(opts),
+  isCancel: (v: unknown) => v === 'CANCEL',
+}));
+
 vi.mock('../../lib/errors.js', async (orig) => {
   const actual = await orig<typeof ErrorsModule>();
   return {
@@ -715,6 +724,33 @@ describe('config apply — deployments.subdomain', () => {
     const putCalls = ossFetchMock.mock.calls.filter(
       (c) => c[0] === '/api/deployments/slug' && c[1]?.method === 'PUT',
     );
+    expect(putCalls).toHaveLength(0);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
+describe('config apply (confirmation prompt)', () => {
+  it('routes the apply-confirm prompt through the TTY-safe wrapper, not raw clack', async () => {
+    nextMetadataResponse = { auth: { allowedRedirectUrls: ['https://old.com'] } };
+    const tomlPath = join(tmp, 'insforge.toml');
+    writeFileSync(
+      tomlPath,
+      '[auth]\nallowed_redirect_urls = ["https://new.com", "https://old.com"]\n',
+    );
+
+    const program = makeProgram();
+    await program.parseAsync(['config', 'apply', '--file', tomlPath], { from: 'user' });
+
+    // The command must ask via lib/prompts.js's confirm() (isInteractive-
+    // guarded) rather than @clack/prompts directly — same fix as export.ts.
+    expect(promptsConfirmMock).toHaveBeenCalledTimes(1);
+    expect(promptsConfirmMock.mock.calls[0][0]).toMatchObject({
+      message: 'Apply these changes?',
+    });
+
+    // Declined (mock resolves false): no PUT must have been issued.
+    const putCalls = ossFetchMock.mock.calls.filter((c) => c[1]?.method === 'PUT');
     expect(putCalls).toHaveLength(0);
 
     rmSync(tmp, { recursive: true, force: true });

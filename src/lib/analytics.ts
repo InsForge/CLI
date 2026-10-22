@@ -10,7 +10,14 @@ let client: PostHog | null = null;
 function getClient(): PostHog | null {
   if (!POSTHOG_API_KEY) return null;
   if (!client) {
-    client = new PostHog(POSTHOG_API_KEY, { host: POSTHOG_HOST });
+    // The CLI only ever calls capture() — it never evaluates feature flags
+    // locally (no getFeatureFlag/isFeatureEnabled call anywhere in src/).
+    // Without this, posthog-node starts a background setTimeout poller that
+    // fires an immediate, unawaited flag-definitions fetch on construction;
+    // that request (and its underlying socket) can still be open when a
+    // command's handleError() calls process.exit() right after shutdown(),
+    // which only clears the *next* scheduled poll, not an in-flight one.
+    client = new PostHog(POSTHOG_API_KEY, { host: POSTHOG_HOST, enableLocalEvaluation: false });
   }
   return client;
 }
