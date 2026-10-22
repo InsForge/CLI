@@ -11,9 +11,11 @@ import { trackCommandUsage } from '../../lib/command-telemetry.js';
 // --data '{"key":"value"}' argument before it ever reaches process.argv, so
 // a malformed body here is often a quoting problem, not a typo. Validate
 // client-side with a hint instead of letting the server reject the body.
+// Quoting workarounds vary across PowerShell versions and argument modes, so
+// point at --data-file as the portable fix rather than prescribing one escape form.
 const JSON_QUOTING_HINT =
-  'Invalid JSON in --data. On PowerShell, use --data \'{\\"key\\":\\"value\\"}\' ' +
-  '(escaped inner quotes) or pass --data-file <path.json> instead.';
+  'Invalid JSON in --data. Your shell may have altered the quotes before the CLI saw them ' +
+  '(common on PowerShell) — use --data-file <path.json> to avoid shell quoting entirely.';
 
 export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
   functionsCmd
@@ -33,7 +35,7 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
 
-        if (opts.data && opts.dataFile) {
+        if (opts.data !== undefined && opts.dataFile !== undefined) {
           throw new CLIError(
             '--data and --data-file are mutually exclusive — pick one source for the body.'
           );
@@ -47,11 +49,14 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
 
         const fetchOpts: RequestInit = { method, headers };
 
-        if ((opts.data || opts.dataFile) && ['POST', 'PUT', 'PATCH'].includes(method)) {
+        if (
+          (opts.data !== undefined || opts.dataFile !== undefined) &&
+          ['POST', 'PUT', 'PATCH'].includes(method)
+        ) {
           let body: string;
-          if (opts.dataFile) {
+          if (opts.dataFile !== undefined) {
             try {
-              body = readFileSync(resolve(opts.dataFile), 'utf-8');
+              body = readFileSync(resolve(opts.dataFile), 'utf-8').replace(/^\uFEFF/, '');
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               throw new CLIError(`Could not read --data-file at ${opts.dataFile}: ${msg}`);
@@ -63,7 +68,11 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
           try {
             JSON.parse(body);
           } catch {
-            throw new CLIError(JSON_QUOTING_HINT);
+            throw new CLIError(
+              opts.dataFile !== undefined
+                ? `Invalid JSON in --data-file at ${opts.dataFile}`
+                : JSON_QUOTING_HINT
+            );
           }
 
           fetchOpts.body = body;
