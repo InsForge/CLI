@@ -1,5 +1,3 @@
-// CLI/src/lib/config-schema.ts
-
 import { validateSensitiveString } from './config-secrets.js';
 
 /**

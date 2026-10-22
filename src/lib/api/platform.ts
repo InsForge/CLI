@@ -85,7 +85,7 @@ export async function platformFetch(
   const fullUrl = `${baseUrl}${path}`;
   if (process.env.INSFORGE_DEBUG) {
     console.error(`[DEBUG] ${fetchOptions.method ?? 'GET'} ${fullUrl}`);
-    // Redact the bearer credential. For direct-key sessions it is now the
+    // Redact the bearer credential. For direct-key sessions it is the
     // long-lived, non-rotating uak_ (not a short-lived JWT), so never write it
     // in full — even behind the debug flag. Match the auth header in ANY case,
     // since a caller-provided lowercase `authorization` survives the spread.
@@ -253,7 +253,6 @@ export type DiagnosticEventHandler = (event: DiagnosticSSEEvent) => void;
 
 /**
  * Stream diagnostic analysis via SSE. Calls `onEvent` for each SSE event.
- * Returns the raw Response so the caller can handle errors before streaming.
  */
 export async function streamDiagnosticAnalysis(
   payload: DiagnosticRequest,

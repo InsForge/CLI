@@ -1,5 +1,3 @@
-// CLI/src/lib/config-secrets.ts
-//
 // Sensitive-field validation for insforge.toml.
 //
 // Sensitive fields (OAuth client_secret, SMTP password, S3 secret key, etc.)

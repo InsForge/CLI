@@ -1,4 +1,3 @@
-// CLI/src/commands/config/index.ts
 import type { Command } from 'commander';
 import { registerConfigExportCommand } from './export.js';
 import { registerConfigPlanCommand } from './plan.js';

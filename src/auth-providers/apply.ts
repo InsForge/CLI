@@ -109,20 +109,24 @@ export function extractEnvPairs(content: string): Map<string, string> {
   return out;
 }
 
-// Refresh stale platform defaults in the user's .env.local. If the user's
-// value matches the manifest's literal default AND the platform now has a
-// real value (e.g., cloud DATABASE_URL), overwrite the line. User-customized
-// values (anything that differs from the manifest default) are preserved.
-//
-// One extra case beyond "matches the default": the cloud's
-// `database-connection-string` endpoint used to return a placeholder URL
-// like `postgresql://postgres:********@host/db?sslmode=require` before
-// 0.1.72 spliced the real password in. Users linked under that older CLI
-// still have the masked URL in their .env.local. The masked value can
-// never authenticate to Postgres, so it's clearly stale — detect any
-// `:****@` (one or more `*`) password and refresh from the platform.
-// Exported for unit testing.
+// The cloud's `database-connection-string` endpoint used to return a
+// placeholder URL like `postgresql://postgres:********@host/db?sslmode=require`
+// before 0.1.72 spliced the real password in. Users linked under that older
+// CLI still have the masked URL in their .env.local. The masked value can
+// never authenticate to Postgres, so it's clearly stale — any `:****@` (one
+// or more `*`) password is refreshed from the platform.
 const MASKED_PASSWORD_PATTERN = /:\*+@/;
+
+/**
+ * Refresh stale platform defaults in the user's .env.local. If the user's
+ * value matches the manifest's literal default AND the platform now has a
+ * real value (e.g., cloud DATABASE_URL), overwrite the line. User-customized
+ * values (anything that differs from the manifest default) are preserved.
+ * A masked-password URL (see `MASKED_PASSWORD_PATTERN`) is also treated as
+ * stale even when it differs from the default.
+ *
+ * Exported for unit testing.
+ */
 export function refreshStaleEnvDefaults(
   existing: string,
   manifestDefaults: Map<string, string>,
@@ -364,13 +368,8 @@ export async function applyAuthProvider(
       await fs.writeFile(envLocalPath, filled + '\n');
       result.envLocalWritten = true;
     } else {
-      // Two passes:
-      //  1. Refresh stale platform defaults in-place. If the user's existing
-      //     value matches the manifest's literal default AND we now have a
-      //     real platform value (e.g., they re-linked against a cloud project
-      //     after the CLI started fetching DATABASE_URL), update the line.
-      //     User-customized values are preserved untouched.
-      //  2. Append any genuinely new keys at the end.
+      // Two passes: refresh stale platform defaults in place (see
+      // refreshStaleEnvDefaults), then append any genuinely new keys.
       const manifestDefaults = extractEnvPairs(manifest.envExampleAppend);
       const platformValues = extractEnvPairs(filled);
       const { updated, refreshed } = refreshStaleEnvDefaults(existingLocal, manifestDefaults, platformValues);

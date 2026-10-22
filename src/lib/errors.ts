@@ -51,10 +51,9 @@ export class ProjectNotLinkedError extends CLIError {
  *     budget;
  *   - anything that is not a CLIError at all. That is an UNCLASSIFIED throw —
  *     a `res.json()` parse failure on a mangled body, or a plain bug — and a
- *     poll loop must not spin on it for its whole budget. `platformFetch`
- *     wraps every transport and HTTP failure into a CLIError, so nothing real
- *     is lost. `ossFetch` does NOT wrap raw fetch rejections, so its callers
- *     handle that case themselves (see the deployment poller).
+ *     poll loop must not spin on it for its whole budget. `platformFetch` and
+ *     `ossFetch` wrap every transport and HTTP failure into a CLIError, so
+ *     nothing real is lost.
  */
 export function isTransientApiError(err: unknown): boolean {
   if (!(err instanceof CLIError)) return false;

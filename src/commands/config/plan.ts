@@ -1,4 +1,3 @@
-// CLI/src/commands/config/plan.ts
 import type { Command } from 'commander';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
