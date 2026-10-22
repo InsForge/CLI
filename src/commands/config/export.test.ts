@@ -39,7 +39,8 @@ vi.mock('../../lib/skills.js', () => ({
 // Overwrite-confirm must go through the isInteractive-guarded wrapper, not
 // raw @clack/prompts directly — calling clack's confirm() unconditionally
 // tries to init a TTY on stdin and crashes with "uv_tty_init returned
-// EINVAL" when stdin/stdout isn't a real console handle (see TTY_TEST below).
+// EINVAL" when stdin/stdout isn't a real console handle (see the
+// "routes the overwrite prompt through the TTY-safe wrapper" test below).
 const promptsConfirmMock = vi.fn(async () => false);
 vi.mock('../../lib/prompts.js', () => ({
   confirm: (opts: unknown) => promptsConfirmMock(opts),
