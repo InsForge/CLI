@@ -11,9 +11,9 @@
 // simply omit the key. The CLI infers support from presence/absence — no
 // version handshake, no new server endpoint.
 //
-// Probe the RAW JSON, never the Zod-parsed object. Zod's
-// `.default([])` on the consumer schema would silently fill in absent fields
-// and erase the signal we're checking for.
+// Probe the RAW JSON, never the Zod-parsed object. Zod's `.default([])` on
+// the consumer schema would silently fill in absent fields and erase the
+// signal we're checking for.
 //
 // Server contract (documented in shared-schemas/metadata.schema.ts): when a
 // backend doesn't yet support a TOML-relevant field, its `/api/metadata`

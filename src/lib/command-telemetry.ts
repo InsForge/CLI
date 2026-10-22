@@ -21,9 +21,9 @@ import { CLIError } from './errors.js';
  * Telemetry must never affect command behavior, so everything is wrapped in a
  * try/catch and failures are swallowed.
  *
- * Only pass non-sensitive metadata as `properties` — counts,
- * booleans, enums, exit/status codes. Never SQL, file contents, credentials,
- * resource names, or other user-entered free text.
+ * Only pass non-sensitive metadata as `properties` — counts, booleans, enums,
+ * exit/status codes. Never SQL, file contents, credentials, resource names, or
+ * other user-entered free text.
  */
 export type CommandTelemetry = Record<
   string,

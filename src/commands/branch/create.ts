@@ -24,7 +24,8 @@ const POLL_INTERVAL_MS = 3_000;
 // now covers the observed range with headroom.
 const POLL_TIMEOUT_MS = 15 * 60 * 1_000;
 // Once the control plane says ready, wait for the data plane too. Until this
-// passes, every subsequent command against the branch fails.
+// passes, every subsequent command against the branch fails. The ready-to-
+// serving measurements above come from InsForge/InsForge#1790.
 const HEALTH_TIMEOUT_MS = 10 * 60 * 1_000;
 const HEALTH_INTERVAL_MS = 5_000;
 // Tolerance for clock skew when deciding whether a branch is the one we just

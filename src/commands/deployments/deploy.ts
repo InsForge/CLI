@@ -327,6 +327,9 @@ export async function pollDeployment(
       }
       // Transient: keep polling, but remember why the read failed so that an
       // outage lasting the whole window is not reported as a plain timeout.
+      // The `formatFetchError` arm is unreachable since fbffb74: `ossFetch`
+      // wraps raw fetch rejections into a CLIError, and `isTransientApiError`
+      // returns false for anything else (see errors.ts).
       lastTransientError =
         err instanceof CLIError ? err.message : formatFetchError(err, 'the deployment API');
     }
