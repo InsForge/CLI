@@ -1,5 +1,3 @@
-// CLI/src/lib/config-metadata.ts
-//
 // Single source of truth for converting /api/metadata's raw JSON response
 // into the shapes the rest of the CLI consumes:
 //   - liveFromMetadata → LiveConfig for the diff layer (apply, plan)

@@ -17,11 +17,8 @@ import { readBranchWithRetry } from './poll.js';
 import type { Branch, BranchMode } from '../../types.js';
 
 const POLL_INTERVAL_MS = 3_000;
-// `branch_state` reaching 'ready' and the branch's own host answering are two
-// different events, and the gap between them has been measured in MINUTES
-// (2 min and 11.5 min on ap-southeast). A 5-minute ceiling reported the slower
-// one as "still creating" when it was simply not finished yet, so the budget
-// now covers the observed range with headroom.
+// Must exceed the longest observed provisioning time: 11.5 min on ap-southeast
+// (InsForge/InsForge#1790). Below that, a slow branch is reported as stuck.
 const POLL_TIMEOUT_MS = 15 * 60 * 1_000;
 // Once the control plane says ready, wait for the data plane too. Until this
 // passes, every subsequent command against the branch fails.

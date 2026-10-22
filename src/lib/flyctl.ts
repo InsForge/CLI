@@ -101,7 +101,7 @@ function ensureFlyTomlStub(opts: { dir: string; appId: string; region: string; p
  * and returns the resulting image ref. Does NOT launch a machine — the cloud
  * backend handles that step (it owns DB state and quota enforcement).
  *
- * IMPORTANT: returns the **digest-pinned** ref `<app>@sha256:<digest>`, not
+ * Returns the **digest-pinned** ref `<app>@sha256:<digest>`, not
  * the tag-based `<app>:<label>` ref. buildkit's `--build-only --push` lands
  * the manifest in the remote builder's namespace, and Fly's registry then
  * aliases the user-app namespace to it by content digest. The bare tag does

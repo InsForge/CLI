@@ -1,4 +1,3 @@
-// CLI/src/commands/config/export.ts
 import type { Command } from 'commander';
 import { writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';

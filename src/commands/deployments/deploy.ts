@@ -318,7 +318,7 @@ export async function pollDeployment(
       // responses other than the retryable ones are terminal. Gateway 5xx
       // responses on the status endpoint are transient — the deployment itself
       // may still succeed — so keep polling, same as network-level fetch
-      // failures, which `ossFetch` now tags as such. Anything left unclassified
+      // failures, which `ossFetch` tags as such. Anything left unclassified
       // (a malformed status body failing `.json()`, a missing `status` field)
       // is a bug, not an outage: it would fail identically on every retry, so
       // it surfaces now instead of at the end of the poll window.

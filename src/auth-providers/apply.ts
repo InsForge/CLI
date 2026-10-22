@@ -121,8 +121,8 @@ export function extractEnvPairs(content: string): Map<string, string> {
 // still have the masked URL in their .env.local. The masked value can
 // never authenticate to Postgres, so it's clearly stale — detect any
 // `:****@` (one or more `*`) password and refresh from the platform.
-// Exported for unit testing.
 const MASKED_PASSWORD_PATTERN = /:\*+@/;
+// Exported for unit testing.
 export function refreshStaleEnvDefaults(
   existing: string,
   manifestDefaults: Map<string, string>,
@@ -364,13 +364,8 @@ export async function applyAuthProvider(
       await fs.writeFile(envLocalPath, filled + '\n');
       result.envLocalWritten = true;
     } else {
-      // Two passes:
-      //  1. Refresh stale platform defaults in-place. If the user's existing
-      //     value matches the manifest's literal default AND we now have a
-      //     real platform value (e.g., they re-linked against a cloud project
-      //     after the CLI started fetching DATABASE_URL), update the line.
-      //     User-customized values are preserved untouched.
-      //  2. Append any genuinely new keys at the end.
+      // Two passes: refresh stale platform defaults in place (see
+      // refreshStaleEnvDefaults), then append any genuinely new keys.
       const manifestDefaults = extractEnvPairs(manifest.envExampleAppend);
       const platformValues = extractEnvPairs(filled);
       const { updated, refreshed } = refreshStaleEnvDefaults(existingLocal, manifestDefaults, platformValues);
