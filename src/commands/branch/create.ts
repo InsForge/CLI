@@ -8,6 +8,7 @@ import {
 } from '../../lib/api/platform.js';
 import { probeBackendHealth } from '../../lib/api/oss.js';
 import { CLIError, getRootOpts, handleError, isTransientApiError } from '../../lib/errors.js';
+import { isInteractive } from '../../lib/prompts.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { buildOssHost, getProjectConfig } from '../../lib/config.js';
 import { outputJson, outputInfo } from '../../lib/output.js';
@@ -72,7 +73,7 @@ export function registerBranchCreateCommand(branch: Command): void {
         // red error frame as a create failure (no misleading "ready" line
         // before an error). JSON mode skips the spinner — `outputJson({ branch:
         // ready })` below remains the sole authoritative output.
-        const spinner = !json ? clack.spinner() : null;
+        const spinner = !json && isInteractive ? clack.spinner() : null;
         let ready: Branch;
         // Whether the branch's own host answered. Separate from `provisioned`
         // because the branch can be genuinely created and genuinely unusable,

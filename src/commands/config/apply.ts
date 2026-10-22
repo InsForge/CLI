@@ -2,11 +2,11 @@
 import type { Command } from 'commander';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
+import * as prompts from '../../lib/prompts.js';
 import { parseConfigToml } from '../../lib/config-toml.js';
 import { diffConfig, type DiffChange } from '../../lib/config-diff.js';
 import { formatPlan } from '../../lib/config-format.js';
@@ -105,11 +105,11 @@ export function registerConfigApplyCommand(cfg: Command): void {
               'CONFIRMATION_REQUIRED',
             );
           }
-          const ok = await p.confirm({
+          const ok = await prompts.confirm({
             message: 'Apply these changes?',
             initialValue: false,
           });
-          if (!ok || p.isCancel(ok)) {
+          if (!ok || prompts.isCancel(ok)) {
             console.log('Aborted.');
             await reportCliUsage('cli.config.apply', true);
             trackConfig('apply', projectConfig, {
