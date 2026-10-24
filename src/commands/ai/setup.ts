@@ -1,15 +1,18 @@
 import type { Command } from 'commander';
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 import { captureEvent, shutdownAnalytics } from '../../lib/analytics.js';
 import { getOpenRouterApiKey } from '../../lib/api/ai.js';
 import { getProjectConfig } from '../../lib/config.js';
 import { getRootOpts, handleError, ProjectNotLinkedError } from '../../lib/errors.js';
-import { upsertEnvFile } from '../../lib/env-writer.js';
+import { ensureLocalEnvIgnored, isLocalEnvFile, upsertEnvFile } from '../../lib/env-writer.js';
 import { outputInfo, outputJson, outputSuccess } from '../../lib/output.js';
 import { isInteractive } from '../../lib/prompts.js';
+
+// Re-exported from its new home in lib so `./setup.js` stays a valid import
+// path for it (setup.test.ts and any external callers are unaffected).
+export { ensureLocalEnvIgnored };
 
 const DEFAULT_ENV_FILE = '.env.local';
 const OPENROUTER_ENV_KEY = 'OPENROUTER_API_KEY';
@@ -136,36 +139,3 @@ function displayPath(path: string): string {
   return rel;
 }
 
-function isLocalEnvFile(envFile: string): boolean {
-  const normalized = envFile.replace(/\\/g, '/');
-  const basename = normalized.split('/').pop() ?? normalized;
-  return basename === '.env.local' || /^\.env\..+\.local$/.test(basename);
-}
-
-export function ensureLocalEnvIgnored(cwd: string, envFile: string): boolean {
-  if (!isLocalEnvFile(envFile)) return false;
-
-  const envPath = resolve(cwd, envFile);
-  const relEnvPath = relative(cwd, envPath);
-  if (!relEnvPath || relEnvPath.startsWith('..') || isAbsolute(relEnvPath)) {
-    return false;
-  }
-
-  const gitignorePath = join(cwd, '.gitignore');
-  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf-8') : '';
-  const lines = new Set(existing.split(/\r?\n/).map((line) => line.trim()));
-  const envBasename = envFile.replace(/\\/g, '/').split('/').pop() ?? envFile;
-  if (
-    lines.has('.env*') ||
-    lines.has('.env.*') ||
-    lines.has('.env*.local') ||
-    (lines.has('.env.local') && envBasename === '.env.local')
-  ) {
-    return false;
-  }
-
-  const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
-  const spacer = existing.length > 0 ? '\n' : '';
-  appendFileSync(gitignorePath, `${prefix}${spacer}# Local environment secrets\n.env*.local\n`);
-  return true;
-}
