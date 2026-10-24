@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   assertValidMigrationVersion,
   canonicalMigrationVersion,
@@ -10,6 +13,7 @@ import {
   getNextLocalMigrationVersion,
   getRemoteMigrationVersionStatus,
   incrementMigrationVersion,
+  listLocalMigrationFilenames,
   parseStrictLocalMigrations,
   parseMigrationFilename,
   resolveMigrationTarget,
@@ -106,6 +110,63 @@ describe('compareMigrationVersions', () => {
 describe('getMigrationsDir', () => {
   it('stores migration files in a top-level migrations directory', () => {
     expect(getMigrationsDir('/tmp/project')).toBe('/tmp/project/migrations');
+  });
+});
+
+describe('listLocalMigrationFilenames', () => {
+  let projectDir: string;
+
+  beforeAll(() => {
+    projectDir = mkdtempSync(join(tmpdir(), 'cli-migrations-list-'));
+    const migrationsDir = join(projectDir, 'migrations');
+    mkdirSync(join(migrationsDir, '_archive'), { recursive: true });
+    writeFileSync(join(migrationsDir, '_archive', '20260418091400_superseded.sql'), '');
+    writeFileSync(join(migrationsDir, '20260418091500_create-users.sql'), '');
+    writeFileSync(join(migrationsDir, 'README.md'), '');
+  });
+
+  afterAll(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it('returns an empty list when migrations/ does not exist', () => {
+    expect(listLocalMigrationFilenames(join(projectDir, 'missing'))).toEqual([]);
+  });
+
+  it('skips subdirectories and non-SQL files', () => {
+    expect(listLocalMigrationFilenames(projectDir)).toEqual([
+      '20260418091500_create-users.sql',
+    ]);
+  });
+
+  it('keeps `db migrations new` and strict validation working next to a subdirectory', () => {
+    const filenames = listLocalMigrationFilenames(projectDir);
+    const localMigrations = parseStrictLocalMigrations(filenames);
+
+    expect(localMigrations).toEqual([
+      {
+        filename: '20260418091500_create-users.sql',
+        version: '20260418091500',
+        name: 'create-users',
+      },
+    ]);
+    expect(
+      getNextLocalMigrationVersion(localMigrations, null, new Date('2026-04-18T09:17:30.000Z')),
+    ).toBe('20260418091730');
+  });
+
+  it('still rejects a misnamed .sql file', () => {
+    const misnamedDir = mkdtempSync(join(tmpdir(), 'cli-migrations-misnamed-'));
+    mkdirSync(join(misnamedDir, 'migrations'), { recursive: true });
+    writeFileSync(join(misnamedDir, 'migrations', 'bad-file.sql'), '');
+
+    try {
+      expect(() =>
+        parseStrictLocalMigrations(listLocalMigrationFilenames(misnamedDir)),
+      ).toThrow(/invalid migration filename/i);
+    } finally {
+      rmSync(misnamedDir, { recursive: true, force: true });
+    }
   });
 });
 
