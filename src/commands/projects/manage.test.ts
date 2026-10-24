@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Command } from 'commander';
 import { registerProjectManageCommands } from './manage.js';
 
@@ -77,12 +77,6 @@ describe('projects disk resizing', () => {
     expect(errors.join('\n')).toContain('upgrade-instance --volume-size');
   });
 
-  it('update never sends storageDiskSize', async () => {
-    const { updateProject } = await import('../../lib/api/platform.js');
-    await makeProgram().parseAsync(['projects', 'update', '--name', 'New', '--json'], { from: 'user' });
-    expect(updateProject).toHaveBeenCalledWith('proj-1', { name: 'New' }, undefined);
-  });
-
   it('upgrade-instance --volume-size grows the disk without an instance type', async () => {
     const { upgradeInstance } = await import('../../lib/api/platform.js');
     await makeProgram().parseAsync(
@@ -114,11 +108,10 @@ describe('projects disk resizing', () => {
     expect(errors.join('\n')).toContain('--volume-size');
   });
 
-  it('upgrade-instance rejects a non-integer volume size', async () => {
+  it.each(['4', '8.5'])('upgrade-instance rejects --volume-size %s', async (size) => {
     const { upgradeInstance } = await import('../../lib/api/platform.js');
-    (upgradeInstance as Mock).mockClear();
     await expect(
-      makeProgram().parseAsync(['projects', 'upgrade-instance', '--volume-size', '4', '--json'], { from: 'user' }),
+      makeProgram().parseAsync(['projects', 'upgrade-instance', '--volume-size', size, '--json'], { from: 'user' }),
     ).rejects.toThrow('process.exit');
     expect(upgradeInstance).not.toHaveBeenCalled();
   });

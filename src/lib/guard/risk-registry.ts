@@ -290,27 +290,17 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
     risk: 'Members of the current org may lose access. Verify the target org id.',
   }),
 
-  'projects upgrade-instance': (ctx) => {
-    const instanceType = ctx.args[0];
-    const volumeSize = ctx.opts.volumeSize as string | undefined;
-    const changes: string[] = [];
-    if (instanceType) changes.push(`changes the project instance type to "${instanceType}", restarting it`);
-    if (volumeSize) changes.push(`grows the disk to ${volumeSize} GiB`);
-    return {
-      severity: 'high',
-      kind: 'project.upgrade_instance',
-      title: instanceType ? 'Change instance type' : 'Grow project disk',
-      whatHappens: changes.length
-        ? `${changes.join(' and ')}.`.replace(/^./, (c) => c.toUpperCase())
-        : 'Changes the project instance type.',
-      blastRadius: instanceType
-        ? 'Brief downtime during the restart, and the change affects your bill.'
-        : 'The disk resizes online without a restart, and the change affects your bill.',
-      risk: volumeSize
-        ? 'Disks can only grow, never shrink. Verify the target size.'
-        : 'Verify the target instance type — a larger class costs more.',
-    };
-  },
+  'projects upgrade-instance': (ctx) => ({
+    severity: 'high',
+    kind: 'project.upgrade_instance',
+    title: 'Change instance type or grow disk',
+    whatHappens: [
+      ctx.args[0] && `Changes the project instance type to "${ctx.args[0]}", restarting it.`,
+      ctx.opts.volumeSize && `Grows the disk to ${ctx.opts.volumeSize} GiB online.`,
+    ].filter(Boolean).join(' '),
+    blastRadius: 'An instance change briefly restarts the project, and either change affects your bill.',
+    risk: 'Verify the target — a larger class costs more, and disks can only grow, never shrink.',
+  }),
 
   'backups restore': (ctx) => ({
     severity: 'critical',

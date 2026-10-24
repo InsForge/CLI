@@ -1,5 +1,4 @@
 import { Option, type Command } from 'commander';
-import type { UpgradeInstanceBody } from '../../types.js';
 import * as clack from '@clack/prompts';
 import {
   getProject,
@@ -83,7 +82,6 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
-        // Kept only to point old invocations at the command that actually grows the disk.
         if (opts.storageSize !== undefined) {
           throw new CLIError(
             '`projects update` cannot resize the disk. Use `insforge projects upgrade-instance --volume-size <gib>` instead.',
@@ -318,11 +316,7 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
           }
         }
 
-        const body: UpgradeInstanceBody = {};
-        if (instanceType !== undefined) body.instanceType = instanceType;
-        if (volumeSizeGiB !== undefined) body.volumeSizeGiB = volumeSizeGiB;
-
-        const result = await upgradeInstance(projectId, body, apiUrl);
+        const result = await upgradeInstance(projectId, { instanceType, volumeSizeGiB }, apiUrl);
         captureEvent(projectId, 'cli_project_upgrade_instance', {
           ...(instanceType !== undefined ? { instanceType } : {}),
           ...(volumeSizeGiB !== undefined ? { volumeSizeGiB } : {}),
@@ -332,12 +326,12 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
           outputJson(result);
         } else {
           outputSuccess(result.message);
-          if (instanceType !== undefined && result.previousInstanceType !== result.newInstanceType) {
+          if (result.previousInstanceType !== result.newInstanceType) {
             outputInfo(`Instance: ${result.previousInstanceType} → ${result.newInstanceType}`);
           }
           if (volumeSizeGiB !== undefined) {
             const from = result.previousVolumeSizeGiB ? `${result.previousVolumeSizeGiB} GiB → ` : '';
-            outputInfo(`Disk:     ${from}${volumeSizeGiB} GiB (resizes online; run \`insforge projects get\` to check progress)`);
+            outputInfo(`Disk:     ${from}${volumeSizeGiB} GiB (resizes online)`);
           }
         }
       } catch (err) {
