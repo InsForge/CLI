@@ -210,11 +210,12 @@ export interface FunctionResponse {
 export interface UpdateProjectBody {
   name?: string;
   customizedDomain?: string;
-  storageDiskSize?: number;
 }
 
+/** At least one of instanceType or volumeSizeGiB is required. */
 export interface UpgradeInstanceBody {
-  instanceType: string;
+  instanceType?: string;
+  volumeSizeGiB?: number;
 }
 
 /** Response of GET /platform/insforge/latest-version (public). */
@@ -229,8 +230,8 @@ export interface UpgradeInstanceResult {
   project: Project;
   previousInstanceType: string;
   newInstanceType: string;
-  previousVolumeSizeGiB: number;
-  newVolumeSizeGiB: number;
+  previousVolumeSizeGiB?: number;
+  newVolumeSizeGiB?: number;
 }
 
 // --- Billing / usage (cloud platform) ---

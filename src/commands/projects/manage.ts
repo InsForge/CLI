@@ -1,4 +1,4 @@
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 import * as clack from '@clack/prompts';
 import {
   getProject,
@@ -74,29 +74,28 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
 
   projectsCmd
     .command('update')
-    .description('Update project settings (rename, custom domain, storage size)')
+    .description('Update project settings (rename, custom domain)')
     .option('--project <id>', 'Project ID (defaults to the linked project)')
     .option('--name <name>', 'New project name (min 2 characters)')
     .option('--domain <domain>', 'Custom domain')
-    .option('--storage-size <gib>', 'Storage disk size in GiB (min 8)')
+    .addOption(new Option('--storage-size <gib>').hideHelp())
     .action(async (opts, cmd) => {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
+        if (opts.storageSize !== undefined) {
+          throw new CLIError(
+            '`projects update` cannot resize the disk. Use `insforge projects upgrade-instance --volume-size <gib>` instead.',
+          );
+        }
+
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
 
-        const body: { name?: string; customizedDomain?: string; storageDiskSize?: number } = {};
+        const body: { name?: string; customizedDomain?: string } = {};
         if (opts.name) body.name = opts.name;
         if (opts.domain) body.customizedDomain = opts.domain;
-        if (opts.storageSize !== undefined) {
-          const size = Number(opts.storageSize);
-          if (!Number.isInteger(size) || size < 8) {
-            throw new CLIError('--storage-size must be an integer >= 8 (GiB).');
-          }
-          body.storageDiskSize = size;
-        }
         if (Object.keys(body).length === 0) {
-          throw new CLIError('Nothing to update. Pass --name, --domain, or --storage-size.');
+          throw new CLIError('Nothing to update. Pass --name or --domain.');
         }
 
         const project = await updateProject(projectId, body, apiUrl);
@@ -276,24 +275,40 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
     });
 
   projectsCmd
-    .command('upgrade-instance <instanceType>')
-    .description(`Change the project instance type (${INSTANCE_TYPES.join(' | ')})`)
+    .command('upgrade-instance [instanceType]')
+    .description(
+      `Change the project instance type (${INSTANCE_TYPES.join(' | ')}) and/or grow its disk`,
+    )
     .option('--project <id>', 'Project ID (defaults to the linked project)')
-    .action(async (instanceType: string, opts, cmd) => {
+    .option('--volume-size <gib>', 'Grow the disk to this size in GiB (disks can only grow)')
+    .action(async (instanceType: string | undefined, opts, cmd) => {
       const { json, apiUrl, yes } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
 
-        if (!INSTANCE_TYPES.includes(instanceType)) {
+        if (instanceType === undefined && opts.volumeSize === undefined) {
+          throw new CLIError('Pass an instance type, --volume-size <gib>, or both.');
+        }
+        if (instanceType !== undefined && !INSTANCE_TYPES.includes(instanceType)) {
           throw new CLIError(
             `Invalid instance type "${instanceType}". Valid types: ${INSTANCE_TYPES.join(', ')}.`,
           );
         }
+        let volumeSizeGiB: number | undefined;
+        if (opts.volumeSize !== undefined) {
+          volumeSizeGiB = Number(opts.volumeSize);
+          if (!Number.isInteger(volumeSizeGiB) || volumeSizeGiB < 8) {
+            throw new CLIError('--volume-size must be an integer >= 8 (GiB).');
+          }
+        }
 
         if (!yes && !json) {
+          const changes: string[] = [];
+          if (instanceType !== undefined) changes.push(`change the instance type to "${instanceType}" (restarts the project)`);
+          if (volumeSizeGiB !== undefined) changes.push(`grow the disk to ${volumeSizeGiB} GiB (disks cannot be shrunk later)`);
           const confirmed = await clack.confirm({
-            message: `Change the instance type to "${instanceType}"? This restarts the project and may change your bill.`,
+            message: `${changes.join(' and ')}? This may change your bill.`.replace(/^./, (c) => c.toUpperCase()),
           });
           if (clack.isCancel(confirmed) || !confirmed) {
             outputInfo('Cancelled.');
@@ -301,8 +316,11 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
           }
         }
 
-        const result = await upgradeInstance(projectId, { instanceType }, apiUrl);
-        captureEvent(projectId, 'cli_project_upgrade_instance', { instanceType });
+        const result = await upgradeInstance(projectId, { instanceType, volumeSizeGiB }, apiUrl);
+        captureEvent(projectId, 'cli_project_upgrade_instance', {
+          ...(instanceType !== undefined ? { instanceType } : {}),
+          ...(volumeSizeGiB !== undefined ? { volumeSizeGiB } : {}),
+        });
 
         if (json) {
           outputJson(result);
@@ -310,6 +328,10 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
           outputSuccess(result.message);
           if (result.previousInstanceType !== result.newInstanceType) {
             outputInfo(`Instance: ${result.previousInstanceType} → ${result.newInstanceType}`);
+          }
+          if (volumeSizeGiB !== undefined) {
+            const from = result.previousVolumeSizeGiB ? `${result.previousVolumeSizeGiB} GiB → ` : '';
+            outputInfo(`Disk:     ${from}${volumeSizeGiB} GiB (resizes online)`);
           }
         }
       } catch (err) {
