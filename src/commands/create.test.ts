@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as path from 'node:path';
+import { detectRelink } from './create.js';
+import type { ProjectConfig } from '../types.js';
 
 /**
  * Unit tests for create command logic extracted into pure functions.
@@ -138,5 +140,32 @@ describe('create command: org auto-select logic', () => {
     );
     expect(result.orgId).toBeNull();
     expect(result.error).toBeNull();
+  });
+});
+
+describe('create command: silent relink detection', () => {
+  function makeConfig(projectId: string, projectName: string): ProjectConfig {
+    return {
+      project_id: projectId,
+      project_name: projectName,
+      org_id: 'org1',
+      appkey: 'key',
+      region: 'us-east',
+      api_key: 'api-key',
+      oss_host: 'https://key.us-east.insforge.app',
+    };
+  }
+
+  it('returns the previous link when the directory points at a different project', () => {
+    const previous = makeConfig('proj-prod', 'prod');
+    expect(detectRelink(previous, 'proj-staging')).toBe(previous);
+  });
+
+  it('returns null when the directory is not linked', () => {
+    expect(detectRelink(null, 'proj-new')).toBeNull();
+  });
+
+  it('returns null when the directory already points at the new project', () => {
+    expect(detectRelink(makeConfig('proj-new', 'new'), 'proj-new')).toBeNull();
   });
 });
