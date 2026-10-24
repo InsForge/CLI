@@ -12,6 +12,8 @@ import {
   ensureFlyctlAvailable,
   flyctlBuildAndPush,
 } from '../../lib/flyctl.js';
+import { fetchComputeCapabilities } from '../../lib/compute-capabilities.js';
+import { packBuildContext } from '../../lib/build-context.js';
 
 // `compute deploy` has two modes:
 //
@@ -44,7 +46,7 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
       'shared-1x'
     )
     .option('--memory <mb>', 'Memory in MB', '512')
-    .option('--region <region>', 'Fly.io region', 'iad')
+    .option('--region <region>', 'Region (providers that have more than one)', 'iad')
     .option('--env <json>', 'Env vars as JSON object')
     .option(
       '--env-file <path>',
@@ -127,16 +129,36 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           envVars = parseEnvFile(resolve(opts.envFile));
         }
 
+        // Ask the backend what its provider can do before shaping the request. A
+        // self-hosted Docker daemon has one region and no scale-to-zero, and
+        // sending those anyway records a choice that never takes effect.
+        const { provider, capabilities } = await fetchComputeCapabilities();
+        if (!capabilities.regions && process.argv.includes('--region') && !json) {
+          outputInfo(
+            `Ignoring --region: the ${provider ?? 'configured'} provider runs on a single host.`
+          );
+        }
+        if (!capabilities.scaleToZero && scaleToZero === false && !json) {
+          outputInfo(
+            `Ignoring --always-on: the ${provider ?? 'configured'} provider has no ` +
+              'scale-to-zero, so services already run continuously.'
+          );
+        }
+
         const baseBody: Record<string, unknown> = {
           name: opts.name,
           port,
           cpu: opts.cpu,
           memory,
-          region: opts.region,
+          // Omitted where it means nothing, so the stored row does not claim a
+          // region the provider never honoured.
+          ...(capabilities.regions ? { region: opts.region } : {}),
         };
         if (envVars) baseBody.envVars = envVars;
         if (opts.protocol === 'tcp') baseBody.protocol = 'tcp';
-        if (scaleToZero !== undefined) baseBody.scaleToZero = scaleToZero;
+        if (scaleToZero !== undefined && capabilities.scaleToZero) {
+          baseBody.scaleToZero = scaleToZero;
+        }
 
         // ─── Image mode ─────────────────────────────────────────────────
         if (!dir) {
@@ -188,8 +210,16 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
           return;
         }
 
-        // ─── Source mode (Path A) ───────────────────────────────────────
+        // ─── Source mode ────────────────────────────────────────────────
         const absDir = resolve(dir);
+        // Provider capability first: when it cannot build at all, whether a
+        // Dockerfile exists is beside the point.
+        if (capabilities.sourceBuild === 'none') {
+          throw new CLIError(
+            `The ${provider ?? 'configured'} compute provider cannot build from source.\n` +
+              `  Build the image yourself and deploy it with --image <url>.`
+          );
+        }
         const dockerfilePath = join(absDir, 'Dockerfile');
         if (!existsSync(dockerfilePath)) {
           throw new CLIError(
@@ -199,9 +229,88 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
               `   • Use --image <url> to deploy a pre-built image instead`
           );
         }
-        ensureFlyctlAvailable();
-
         if (!json) outputInfo(`Detected Dockerfile at ${dockerfilePath}`);
+
+        // ─── Source mode via context upload (self-hosted Docker) ─────────
+        //
+        // The backend owns the build here because it has the daemon: upload the
+        // context and it builds, tags and deploys in one call. So there is no
+        // deploy token to mint, no flyctl on PATH, and no follow-up PATCH.
+        if (capabilities.sourceBuild === 'context-upload') {
+          const listRes = await ossFetch('/api/compute/services');
+          const found = ((await listRes.json()) as Array<{ id: string; name: string }>).find(
+            (s) => s.name === opts.name
+          );
+
+          let serviceId: string;
+          if (found) {
+            serviceId = found.id;
+            if (!json) outputInfo(`Found existing service "${opts.name}", rebuilding...`);
+          } else {
+            if (!json) outputInfo(`Creating service "${opts.name}"...`);
+            const prepareRes = await ossFetch('/api/compute/services/deploy', {
+              method: 'POST',
+              body: JSON.stringify(baseBody),
+            });
+            serviceId = ((await prepareRes.json()) as { id: string }).id;
+          }
+
+          if (!json) outputInfo('Packing build context...');
+          const { tar, fileCount } = await packBuildContext(absDir);
+          if (!json) {
+            const mb = (tar.length / 1024 / 1024).toFixed(1);
+            outputInfo(`Uploading ${fileCount} file(s), ${mb} MB...`);
+          }
+
+          let buildRes;
+          try {
+            buildRes = await ossFetch(
+              `/api/compute/services/${encodeURIComponent(serviceId)}/build`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-tar' },
+                body: tar,
+              }
+            );
+          } catch (buildErr) {
+            // Same rollback rule as the flyctl path: clean up a service this
+            // command created, leave an existing one running.
+            if (!found) {
+              await ossFetch(`/api/compute/services/${encodeURIComponent(serviceId)}`, {
+                method: 'DELETE',
+              }).catch(() => undefined);
+              if (!json) outputInfo(`Rolled back service "${opts.name}" after build failure.`);
+            }
+            throw buildErr;
+          }
+
+          const built = (await buildRes.json()) as {
+            service?: Record<string, unknown>;
+            imageTag: string;
+            logs?: string[];
+          };
+          if (json) {
+            outputJson(built);
+          } else {
+            for (const line of built.logs ?? []) {
+              console.log(`  ${String(line).trimEnd()}`);
+            }
+            const svc = built.service ?? {};
+            const status = String(svc.status ?? 'running');
+            outputSuccess(`Service "${String(svc.name ?? opts.name)}" deployed [${status}]`);
+            console.log(`  Image: ${built.imageTag}`);
+            if (svc.endpointUrl) {
+              console.log(`  Endpoint: ${String(svc.endpointUrl)}`);
+            } else {
+              console.log(`  No public endpoint — reachable on the project's internal network.`);
+            }
+          }
+          await reportCliUsage('cli.compute.deploy', true);
+          return;
+        }
+
+        // ─── Source mode via flyctl remote build (Fly.io) ────────────────
+        ensureFlyctlAvailable();
 
         // 1. Resolve service: list → find by name → /deploy if missing
         const listRes = await ossFetch('/api/compute/services');
