@@ -97,10 +97,10 @@ when you want to link a directory directly to a known project.
 
 ## Commands
 
-> The `orgs`, `projects`, and `records` command groups are registered but hidden
+> The `orgs` and `projects` command groups are registered but hidden
 > (`hidden: true` in `src/index.ts`) and are intentionally excluded from this
-> reference. Use `npx @insforge/cli list` instead of `orgs`/`projects`; `records`
-> is internal and not supported for direct use.
+> reference. Use `npx @insforge/cli list` instead of `orgs`/`projects`. For
+> table data, use `db query` — there is no separate records API.
 
 ### Local Instances
 
@@ -222,6 +222,19 @@ List all organizations and their projects in a grouped table.
 ```bash
 npx @insforge/cli list
 npx @insforge/cli list --json
+```
+
+#### `npx @insforge/cli telemetry <status|enable|disable>`
+
+Manage anonymous usage analytics (command usage metadata only — never SQL,
+file contents, credentials, or free text). `disable` persists the opt-out in
+`~/.insforge/config.json`; the `DO_NOT_TRACK` and `INSFORGE_TELEMETRY_DISABLED`
+environment variables are also honored for per-run or CI opt-out.
+
+```bash
+npx @insforge/cli telemetry status
+npx @insforge/cli telemetry disable
+npx @insforge/cli telemetry enable
 ```
 
 #### `npx @insforge/cli create`
@@ -1353,6 +1366,8 @@ If you build the CLI from source without setting `POSTHOG_API_KEY` at build time
 | `INSFORGE_API_URL`      | Override the Platform API URL      |
 | `INSFORGE_EMAIL`        | Email for non-interactive login    |
 | `INSFORGE_PASSWORD`     | Password for non-interactive login |
+| `INSFORGE_TELEMETRY_DISABLED` | Disable anonymous usage analytics for this run |
+| `DO_NOT_TRACK`          | Universal opt-out convention; also disables analytics |
 
 ## Non-Interactive / CI Usage
 

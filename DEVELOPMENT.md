@@ -54,6 +54,13 @@ truth for product telemetry — do not add alternative analytics systems.
 - **Build-time key.** `POSTHOG_API_KEY` is injected at build time by
   `tsup.config.ts` via `define`. Local builds without the env var become a
   no-op automatically — the CLI itself stays functional.
+- **Opt-out.** Users can disable usage analytics persistently with
+  `insforge telemetry disable` (stored as `telemetry_disabled` in
+  `~/.insforge/config.json`) or per run via the `DO_NOT_TRACK` /
+  `INSFORGE_TELEMETRY_DISABLED` env vars. The kill switch is
+  `isTelemetryDisabled()` in `src/lib/analytics.ts`; it gates the PostHog
+  client and the legacy `reportCliUsage` path. Any new telemetry emitter
+  MUST check it, or the opt-out silently stops being true.
 
 **Do not** use `reportCliUsage` for new commands — that legacy OSS telemetry
 path has been removed from `create`, `link`, and `docs`. PostHog is the path
