@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { ossFetch } from '../../lib/api/oss.js';
+import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
 import { outputJson, outputSuccess, outputInfo } from '../../lib/output.js';
@@ -12,6 +13,10 @@ import {
   ensureFlyctlAvailable,
   flyctlBuildAndPush,
 } from '../../lib/flyctl.js';
+import {
+  imageBelongsToOwnService,
+  withStaleImageHint,
+} from '../../lib/fly-registry.js';
 
 // `compute deploy` has two modes:
 //
@@ -148,21 +153,49 @@ export function registerComputeDeployCommand(computeCmd: Command): void {
             (s) => s.name === opts.name
           );
 
+          // A registry.fly.io image whose repo is this service's own Fly app
+          // (`<name>-<projectId>`) cannot exist when the service doesn't:
+          // deleting a service destroys the app and its registry images with
+          // it. Fail fast instead of letting the platform spin in
+          // MANIFEST_UNKNOWN retries until a timeout that reads as a cloud
+          // outage.
+          if (!existing) {
+            const config = getProjectConfig();
+            const projectIds = [
+              config?.project_id,
+              config?.branched_from?.project_id,
+            ].filter((id): id is string => Boolean(id));
+            if (imageBelongsToOwnService(String(opts.image), opts.name, projectIds)) {
+              throw new CLIError(
+                `Image ${opts.image} lives in the registry of the Fly app that backs service ` +
+                  `"${opts.name}" — but that service doesn't exist, so the image is gone ` +
+                  `(deleting a service deletes its registry images). Deploying this reference ` +
+                  `will always fail.\n` +
+                  `Rebuild and push a fresh image by deploying from source:\n` +
+                  `  npx @insforge/cli compute deploy <dir> --name ${opts.name}`
+              );
+            }
+          }
+
           let res;
-          if (existing) {
-            if (!json) outputInfo(`Found existing service "${opts.name}", updating...`);
-            const updateBody: Record<string, unknown> = { ...body };
-            delete updateBody.name;
-            if (opts.protocol === 'tcp') updateBody.protocol = 'tcp';
-            res = await ossFetch(`/api/compute/services/${encodeURIComponent(existing.id)}`, {
-              method: 'PATCH',
-              body: JSON.stringify(updateBody),
-            });
-          } else {
-            res = await ossFetch('/api/compute/services', {
-              method: 'POST',
-              body: JSON.stringify(body),
-            });
+          try {
+            if (existing) {
+              if (!json) outputInfo(`Found existing service "${opts.name}", updating...`);
+              const updateBody: Record<string, unknown> = { ...body };
+              delete updateBody.name;
+              if (opts.protocol === 'tcp') updateBody.protocol = 'tcp';
+              res = await ossFetch(`/api/compute/services/${encodeURIComponent(existing.id)}`, {
+                method: 'PATCH',
+                body: JSON.stringify(updateBody),
+              });
+            } else {
+              res = await ossFetch('/api/compute/services', {
+                method: 'POST',
+                body: JSON.stringify(body),
+              });
+            }
+          } catch (deployErr) {
+            throw withStaleImageHint(deployErr, String(opts.image), opts.name);
           }
           const service = (await res.json()) as Record<string, unknown>;
 
