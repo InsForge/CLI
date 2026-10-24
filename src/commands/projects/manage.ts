@@ -83,9 +83,7 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
       const { json, apiUrl } = getRootOpts(cmd);
       try {
         if (opts.storageSize !== undefined) {
-          throw new CLIError(
-            '`projects update` cannot resize the disk. Use `insforge projects upgrade-instance --volume-size <gib>` instead.',
-          );
+          throw new CLIError('Disk size changes go through InsForge support.');
         }
 
         await requireAuth(apiUrl);
@@ -275,40 +273,24 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
     });
 
   projectsCmd
-    .command('upgrade-instance [instanceType]')
-    .description(
-      `Change the project instance type (${INSTANCE_TYPES.join(' | ')}) and/or grow its disk`,
-    )
+    .command('upgrade-instance <instanceType>')
+    .description(`Change the project instance type (${INSTANCE_TYPES.join(' | ')})`)
     .option('--project <id>', 'Project ID (defaults to the linked project)')
-    .option('--volume-size <gib>', 'Grow the disk to this size in GiB (disks can only grow)')
-    .action(async (instanceType: string | undefined, opts, cmd) => {
+    .action(async (instanceType: string, opts, cmd) => {
       const { json, apiUrl, yes } = getRootOpts(cmd);
       try {
         await requireAuth(apiUrl);
         const projectId = resolveProjectId(opts);
 
-        if (instanceType === undefined && opts.volumeSize === undefined) {
-          throw new CLIError('Pass an instance type, --volume-size <gib>, or both.');
-        }
-        if (instanceType !== undefined && !INSTANCE_TYPES.includes(instanceType)) {
+        if (!INSTANCE_TYPES.includes(instanceType)) {
           throw new CLIError(
             `Invalid instance type "${instanceType}". Valid types: ${INSTANCE_TYPES.join(', ')}.`,
           );
         }
-        let volumeSizeGiB: number | undefined;
-        if (opts.volumeSize !== undefined) {
-          volumeSizeGiB = Number(opts.volumeSize);
-          if (!Number.isInteger(volumeSizeGiB) || volumeSizeGiB < 8) {
-            throw new CLIError('--volume-size must be an integer >= 8 (GiB).');
-          }
-        }
 
         if (!yes && !json) {
-          const changes: string[] = [];
-          if (instanceType !== undefined) changes.push(`change the instance type to "${instanceType}" (restarts the project)`);
-          if (volumeSizeGiB !== undefined) changes.push(`grow the disk to ${volumeSizeGiB} GiB (disks cannot be shrunk later)`);
           const confirmed = await clack.confirm({
-            message: `${changes.join(' and ')}? This may change your bill.`.replace(/^./, (c) => c.toUpperCase()),
+            message: `Change the instance type to "${instanceType}"? This restarts the project and may change your bill.`,
           });
           if (clack.isCancel(confirmed) || !confirmed) {
             outputInfo('Cancelled.');
@@ -316,11 +298,8 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
           }
         }
 
-        const result = await upgradeInstance(projectId, { instanceType, volumeSizeGiB }, apiUrl);
-        captureEvent(projectId, 'cli_project_upgrade_instance', {
-          ...(instanceType !== undefined ? { instanceType } : {}),
-          ...(volumeSizeGiB !== undefined ? { volumeSizeGiB } : {}),
-        });
+        const result = await upgradeInstance(projectId, { instanceType }, apiUrl);
+        captureEvent(projectId, 'cli_project_upgrade_instance', { instanceType });
 
         if (json) {
           outputJson(result);
@@ -328,10 +307,6 @@ export function registerProjectManageCommands(projectsCmd: Command): void {
           outputSuccess(result.message);
           if (result.previousInstanceType !== result.newInstanceType) {
             outputInfo(`Instance: ${result.previousInstanceType} → ${result.newInstanceType}`);
-          }
-          if (volumeSizeGiB !== undefined) {
-            const from = result.previousVolumeSizeGiB ? `${result.previousVolumeSizeGiB} GiB → ` : '';
-            outputInfo(`Disk:     ${from}${volumeSizeGiB} GiB (resizes online)`);
           }
         }
       } catch (err) {

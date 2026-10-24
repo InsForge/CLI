@@ -293,13 +293,10 @@ const REGISTRY: Record<string, (ctx: OperationContext) => RiskAssessment> = {
   'projects upgrade-instance': (ctx) => ({
     severity: 'high',
     kind: 'project.upgrade_instance',
-    title: 'Change instance type or grow disk',
-    whatHappens: [
-      ctx.args[0] && `Changes the project instance type to "${ctx.args[0]}", restarting it.`,
-      ctx.opts.volumeSize && `Grows the disk to ${ctx.opts.volumeSize} GiB online.`,
-    ].filter(Boolean).join(' '),
-    blastRadius: 'An instance change briefly restarts the project, and either change affects your bill.',
-    risk: 'Verify the target — a larger class costs more, and disks can only grow, never shrink.',
+    title: 'Change instance type',
+    whatHappens: `Changes the project instance type to "${ctx.args[0] ?? '?'}", restarting it.`,
+    blastRadius: 'Brief downtime during the restart, and the change affects your bill.',
+    risk: 'Verify the target instance type — a larger class costs more.',
   }),
 
   'backups restore': (ctx) => ({
