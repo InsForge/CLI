@@ -112,6 +112,36 @@ describe('branch reset', () => {
     }));
   });
 
+  it('--json output leaves out the branch database_password', async () => {
+    const { getBranchApi } = await import('../../lib/api/platform.js');
+    (getBranchApi as Mock).mockResolvedValueOnce({
+      id: 'b1',
+      name: 'feat-x',
+      branch_state: 'ready',
+      organization_id: 'o1',
+      parent_project_id: 'p1',
+      appkey: 'k',
+      region: 'us-east',
+      branch_created_at: '2026',
+      database_password: 'plaintext-secret',
+    });
+    const program = makeProgram();
+    const logs: string[] = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.map(String).join(' '));
+    });
+    try {
+      await program.parseAsync(['reset', 'feat-x', '--yes', '--json'], { from: 'user' });
+    } finally {
+      logSpy.mockRestore();
+    }
+    const out = logs.join('\n');
+    expect(out).not.toContain('plaintext-secret');
+    const parsed = JSON.parse(out);
+    expect(parsed.branch.id).toBe('b1');
+    expect(parsed.branch).not.toHaveProperty('database_password');
+  });
+
   it('reset of merged branch is allowed (entry_state=merged threaded through analytics)', async () => {
     const program = makeProgram();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
