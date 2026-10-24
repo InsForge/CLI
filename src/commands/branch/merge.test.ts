@@ -53,9 +53,13 @@ vi.mock('../../lib/analytics.js', () => ({
   shutdownAnalytics: vi.fn(async () => {}),
 }));
 
-const clackConfirmMock = vi.hoisted(() => vi.fn(async () => true));
-vi.mock('@clack/prompts', () => ({
-  confirm: clackConfirmMock,
+// prompts.js is mocked (not @clack/prompts) because merge goes through the
+// TTY-safe wrapper: @clack/core opens a tty.WriteStream unconditionally, which
+// throws EBADF in non-interactive shells.
+const confirmMock = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('../../lib/prompts.js', () => ({
+  isInteractive: false,
+  confirm: confirmMock,
   isCancel: () => false,
 }));
 
@@ -63,8 +67,8 @@ describe('branch merge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fsMock.writeFileSync.mockReset();
-    clackConfirmMock.mockClear();
-    clackConfirmMock.mockResolvedValue(true);
+    confirmMock.mockClear();
+    confirmMock.mockResolvedValue(true);
   });
 
   it('--dry-run prints rendered_sql + summary, does not call execute', async () => {
@@ -136,9 +140,41 @@ describe('branch merge', () => {
     } finally {
       console.log = origLog;
     }
-    expect(clackConfirmMock).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
     const { mergeBranchExecuteApi } = await import('../../lib/api/platform.js');
     expect(mergeBranchExecuteApi).toHaveBeenCalledWith('b1', undefined);
+  });
+
+  // Regression: in a non-interactive shell the confirmation prompt crashed with
+  // 'uv_tty_init returned EBADF' after the full merge plan had been printed.
+  // Now the CLI says up front that -y is required and applies nothing.
+  it('non-interactive apply without -y errors actionably and does not execute', async () => {
+    const program = new Command().exitOverride();
+    program.option('--json').option('--api-url <url>').option('-y, --yes');
+    registerBranchMergeCommand(program);
+    const errors: string[] = [];
+    const origError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args.map(String).join(' '));
+    const origLog = console.log;
+    console.log = () => {};
+    let exitCode: number | undefined;
+    const origExit = process.exit;
+    process.exit = ((code?: number) => {
+      if (exitCode === undefined) exitCode = code;
+      throw new Error('__exit__');
+    }) as typeof process.exit;
+    try {
+      await program.parseAsync(['merge', 'feat-x'], { from: 'user' }).catch(() => {});
+    } finally {
+      process.exit = origExit;
+      console.error = origError;
+      console.log = origLog;
+    }
+    expect(exitCode).toBe(1);
+    expect(errors.join('\n')).toContain('Re-run with -y');
+    expect(confirmMock).not.toHaveBeenCalled();
+    const { mergeBranchExecuteApi } = await import('../../lib/api/platform.js');
+    expect(mergeBranchExecuteApi).not.toHaveBeenCalled();
   });
 
   it('conflict path exits with code 2 and prints per-conflict summary', async () => {
