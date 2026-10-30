@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { Command } from 'commander';
 import { getProjectConfig } from '../../lib/config.js';
 import { requireAuth } from '../../lib/credentials.js';
@@ -5,11 +7,25 @@ import { handleError, getRootOpts, ProjectNotLinkedError, CLIError } from '../..
 import { outputJson } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
+// Shells like PowerShell can strip or mangle embedded double quotes in a
+// --data '{"key":"value"}' argument before it ever reaches process.argv, so
+// a malformed body here is often a quoting problem, not a typo. Validate
+// client-side with a hint instead of letting the server reject the body.
+// Quoting workarounds vary across PowerShell versions and argument modes, so
+// point at --data-file as the portable fix rather than prescribing one escape form.
+const JSON_QUOTING_HINT =
+  'Invalid JSON in --data. Your shell may have altered the quotes before the CLI saw them ' +
+  '(common on PowerShell) — use --data-file <path.json> to avoid shell quoting entirely.';
+
 export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
   functionsCmd
     .command('invoke <slug>')
     .description('Invoke an edge function')
     .option('--data <json>', 'JSON body to send to the function')
+    .option(
+      '--data-file <path>',
+      'Path to a JSON file to send as the body. Mutually exclusive with --data.'
+    )
     .option('--method <method>', 'HTTP method (GET, POST, PUT, PATCH, DELETE)', 'POST')
     .action(async (slug: string, opts, cmd) => {
       const { json } = getRootOpts(cmd);
@@ -19,6 +35,12 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
         const config = getProjectConfig();
         if (!config) throw new ProjectNotLinkedError();
 
+        if (opts.data !== undefined && opts.dataFile !== undefined) {
+          throw new CLIError(
+            '--data and --data-file are mutually exclusive — pick one source for the body.'
+          );
+        }
+
         const method = opts.method.toUpperCase();
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
@@ -27,8 +49,33 @@ export function registerFunctionsInvokeCommand(functionsCmd: Command): void {
 
         const fetchOpts: RequestInit = { method, headers };
 
-        if (opts.data && ['POST', 'PUT', 'PATCH'].includes(method)) {
-          fetchOpts.body = opts.data;
+        if (
+          (opts.data !== undefined || opts.dataFile !== undefined) &&
+          ['POST', 'PUT', 'PATCH'].includes(method)
+        ) {
+          let body: string;
+          if (opts.dataFile !== undefined) {
+            try {
+              body = readFileSync(resolve(opts.dataFile), 'utf-8').replace(/^\uFEFF/, '');
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              throw new CLIError(`Could not read --data-file at ${opts.dataFile}: ${msg}`);
+            }
+          } else {
+            body = opts.data;
+          }
+
+          try {
+            JSON.parse(body);
+          } catch {
+            throw new CLIError(
+              opts.dataFile !== undefined
+                ? `Invalid JSON in --data-file at ${opts.dataFile}`
+                : JSON_QUOTING_HINT
+            );
+          }
+
+          fetchOpts.body = body;
         }
 
         // Functions client endpoint is at /functions/{slug} (not /api/functions/{slug})
