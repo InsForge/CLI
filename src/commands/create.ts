@@ -310,7 +310,10 @@ export function registerCreateCommand(program: Command): void {
                 label: o.name,
               })),
             });
-            if (prompts.isCancel(selected)) process.exit(0);
+            if (prompts.isCancel(selected)) {
+              process.exitCode = 0;
+              return;
+            }
             orgId = selected;
           }
         }
@@ -330,7 +333,10 @@ export function registerCreateCommand(program: Command): void {
             ...(defaultName ? { initialValue: defaultName } : {}),
             validate: (v) => (v.length >= 2 ? undefined : 'Name must be at least 2 characters'),
           });
-          if (prompts.isCancel(name)) process.exit(0);
+          if (prompts.isCancel(name)) {
+            process.exitCode = 0;
+            return;
+          }
           projectName = name;
         }
 
@@ -372,7 +378,10 @@ export function registerCreateCommand(program: Command): void {
                 { value: 'template', label: 'Start from a template', hint: 'Pre-built starter apps' },
               ],
             });
-            if (prompts.isCancel(approach)) process.exit(0);
+            if (prompts.isCancel(approach)) {
+              process.exitCode = 0;
+              return;
+            }
 
             captureEvent(orgId, 'create_approach_selected', {
               approach,
@@ -392,7 +401,10 @@ export function registerCreateCommand(program: Command): void {
                   { value: 'todo', label: 'Todo app with Next.js' },
                 ],
               });
-              if (prompts.isCancel(selected)) process.exit(0);
+              if (prompts.isCancel(selected)) {
+                process.exitCode = 0;
+                return;
+              }
               template = selected;
             }
           }
@@ -422,7 +434,10 @@ export function registerCreateCommand(program: Command): void {
                 return undefined;
               },
             });
-            if (prompts.isCancel(inputDir)) process.exit(0);
+            if (prompts.isCancel(inputDir)) {
+              process.exitCode = 0;
+              return;
+            }
             dirName = path.basename(inputDir).replace(/[^a-zA-Z0-9._-]/g, '-');
           }
 

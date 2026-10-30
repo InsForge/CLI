@@ -1,11 +1,11 @@
 import type { Command } from 'commander';
 import { writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { ossFetch } from '../../lib/api/oss.js';
 import { requireAuth } from '../../lib/credentials.js';
 import { handleError, getRootOpts, CLIError } from '../../lib/errors.js';
+import * as prompts from '../../lib/prompts.js';
 import { stringifyConfigToml } from '../../lib/config-toml.js';
 import {
   configFromMetadata,
@@ -41,11 +41,11 @@ export function registerConfigExportCommand(cfg: Command): void {
               'OUTPUT_EXISTS',
             );
           }
-          const ok = await p.confirm({
+          const ok = await prompts.confirm({
             message: `${opts.out} exists. Overwrite?`,
             initialValue: false,
           });
-          if (!ok || p.isCancel(ok)) {
+          if (!ok || prompts.isCancel(ok)) {
             console.log('Aborted.');
             await reportCliUsage('cli.config.export', true);
             trackConfig('export', projectConfig, {

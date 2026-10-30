@@ -70,6 +70,10 @@ vi.mock('@clack/prompts', () => ({
   spinner: () => spinnerMock,
 }));
 
+// These tests assert on the spinner-driven non-JSON path, so force the
+// isInteractive guard on — vitest's stdin/stdout aren't real TTYs.
+vi.mock('../../lib/prompts.js', () => ({ isInteractive: true }));
+
 // Run `fn` with process.exit + stderr captured, and always restore them. Returns
 // the exit code fn triggered (undefined if it never exited). Timer/mock lifecycle
 // stays with the caller — this only owns the exit/stderr swap.

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Command } from 'commander';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerConfigExportCommand } from './export.js';
@@ -34,6 +34,17 @@ vi.mock('../../lib/credentials.js', () => ({
 
 vi.mock('../../lib/skills.js', () => ({
   reportCliUsage: vi.fn(async () => {}),
+}));
+
+// Overwrite-confirm must go through the isInteractive-guarded wrapper, not
+// raw @clack/prompts directly — calling clack's confirm() unconditionally
+// tries to init a TTY on stdin and crashes with "uv_tty_init returned
+// EINVAL" when stdin/stdout isn't a real console handle (see the
+// "routes the overwrite prompt through the TTY-safe wrapper" test below).
+const promptsConfirmMock = vi.fn(async () => false);
+vi.mock('../../lib/prompts.js', () => ({
+  confirm: (opts: unknown) => promptsConfirmMock(opts),
+  isCancel: (v: unknown) => v === 'CANCEL',
 }));
 
 vi.mock('../../lib/errors.js', async (orig) => {
@@ -422,6 +433,30 @@ describe('config export (capability probe)', () => {
 
     const written = readFileSync(target, 'utf8');
     expect(written).not.toContain('[deployments]');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
+describe('config export (overwrite confirmation)', () => {
+  it('routes the overwrite prompt through the TTY-safe wrapper, not raw clack', async () => {
+    nextMetadataResponse = { auth: { allowedRedirectUrls: [] } };
+    const target = join(tmp, 'insforge.toml');
+    writeFileSync(target, 'existing contents\n', 'utf8');
+
+    const program = makeProgram();
+    await program.parseAsync(['config', 'export', '--out', target], { from: 'user' });
+
+    // The command must ask via lib/prompts.js's confirm() (isInteractive-
+    // guarded) rather than @clack/prompts directly — that's the fix for the
+    // Windows "TTY initialization failed: uv_tty_init returned EINVAL" crash.
+    expect(promptsConfirmMock).toHaveBeenCalledTimes(1);
+    expect(promptsConfirmMock.mock.calls[0][0]).toMatchObject({
+      message: expect.stringContaining('Overwrite?'),
+    });
+
+    // Declined (mock resolves false): original file must be left untouched.
+    expect(readFileSync(target, 'utf8')).toBe('existing contents\n');
 
     rmSync(tmp, { recursive: true, force: true });
   });
