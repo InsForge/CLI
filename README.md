@@ -614,7 +614,7 @@ npx @insforge/cli storage download avatars/user-123.png --bucket images --output
 
 #### `npx @insforge/cli deployments deploy [directory]`
 
-Deploy a frontend project. Zips the source, uploads it, and polls for build completion (up to 5 minutes).
+Deploy a frontend project. Uploads the source files, starts the build, and polls for completion (up to 5 minutes). Backends without direct deployment fall back to a zip upload.
 
 ```bash
 npx @insforge/cli deployments deploy
