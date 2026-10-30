@@ -36,8 +36,8 @@ function stripQuotes(v: string): string {
  *     but record it in `mismatched` so the caller can warn.
  *   - If a key isn't present → append `KEY=value` at the end.
  *
- * The file is created if it doesn't exist. Comments and unrelated lines are
- * preserved verbatim.
+ * The file is created if it doesn't exist and there is something to add.
+ * Comments and unrelated lines are preserved verbatim.
  */
 export function upsertEnvFile(
   path: string,

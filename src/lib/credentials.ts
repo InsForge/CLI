@@ -106,6 +106,8 @@ export async function refreshAccessToken(apiUrl?: string, signal?: AbortSignal):
     const updated: StoredCredentials = {
       ...creds,
       access_token: data.access_token,
+      // Refresh-token rotation is optional: the provider may omit refresh_token
+      // when it did not rotate, so keep the existing one in that case.
       refresh_token: data.refresh_token ?? creds.refresh_token,
     };
     saveCredentials(updated);

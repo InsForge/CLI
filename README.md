@@ -468,7 +468,7 @@ npx @insforge/cli db rpc my_function --data '{"param1": "value"}'
 Export database schema and/or data.
 
 ```bash
-npx @insforge/cli db export --output schema.sql
+npx @insforge/cli db export --output dump.sql
 npx @insforge/cli db export --no-data --output schema-only.sql
 ```
 
