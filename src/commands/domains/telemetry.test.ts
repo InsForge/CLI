@@ -13,8 +13,12 @@ const configMock = vi.hoisted(() => ({
 }));
 vi.mock('../../lib/config.js', () => configMock);
 
+// telemetry.ts imports command-telemetry.js, which in turn imports the group
+// and top-level trackers from analytics.js, so the mock must export them too.
 const analyticsMock = vi.hoisted(() => ({
   trackDomains: vi.fn(),
+  trackGroupCommand: vi.fn(),
+  trackTopLevelCommand: vi.fn(),
   shutdownAnalytics: vi.fn(async () => {}),
 }));
 vi.mock('../../lib/analytics.js', () => analyticsMock);

@@ -97,10 +97,10 @@ when you want to link a directory directly to a known project.
 
 ## Commands
 
-> The `orgs`, `projects`, and `records` command groups are registered but hidden
-> (`hidden: true` in `src/index.ts`) and are intentionally excluded from this
-> reference. Use `npx @insforge/cli list` instead of `orgs`/`projects`; `records`
-> is internal and not supported for direct use.
+> The `records` command group is registered but hidden (`hidden: true` in
+> `src/index.ts`); `orgs` and `projects` are visible but are intentionally
+> excluded from this reference. Use `npx @insforge/cli list` instead of
+> `orgs`/`projects`; `records` is internal and not supported for direct use.
 
 ### Local Instances
 
@@ -468,8 +468,8 @@ npx @insforge/cli db rpc my_function --data '{"param1": "value"}'
 Export database schema and/or data.
 
 ```bash
-npx @insforge/cli db export --output schema.sql
-npx @insforge/cli db export --data-only --output data.sql
+npx @insforge/cli db export --output dump.sql
+npx @insforge/cli db export --no-data --output schema-only.sql
 ```
 
 #### `npx @insforge/cli db import <file>`
@@ -614,7 +614,7 @@ npx @insforge/cli storage download avatars/user-123.png --bucket images --output
 
 #### `npx @insforge/cli deployments deploy [directory]`
 
-Deploy a frontend project. Zips the source, uploads it, and polls for build completion (up to 2 minutes).
+Deploy a frontend project. Uploads the source files, starts the build, and polls for completion (up to 5 minutes). Backends without direct deployment fall back to a zip upload.
 
 ```bash
 npx @insforge/cli deployments deploy

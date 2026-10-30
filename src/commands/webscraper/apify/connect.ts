@@ -84,7 +84,6 @@ interface RunConnectOpts {
 // data-source integration usable. Unlike PostHog there is no SDK-install
 // wizard step — the command ends once connected.
 async function runConnect(opts: RunConnectOpts): Promise<ConnectResult> {
-  // 1. Linked project
   const proj = getProjectConfig();
   if (!proj || !proj.project_id) {
     throw new ProjectNotLinkedError();
@@ -117,7 +116,6 @@ async function runConnect(opts: RunConnectOpts): Promise<ConnectResult> {
     };
   }
 
-  // 2. Login token
   const token = getAccessToken();
   if (!token) {
     throw new AuthError('Not logged in. Run `insforge login` first.');
@@ -130,7 +128,6 @@ async function runConnect(opts: RunConnectOpts): Promise<ConnectResult> {
     outputSuccess(`Linked to InsForge project: ${proj.project_name} (${proj.project_id})`);
   }
 
-  // 3. Ensure connection exists
   const { state: connectionState, connection } = await ensureConnection(
     proj.project_id,
     token,

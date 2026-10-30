@@ -16,7 +16,6 @@ interface EnvVar {
 export function registerDeploymentsEnvVarsCommand(deploymentsCmd: Command): void {
   const envCmd = deploymentsCmd.command('env').description('Manage deployment environment variables');
 
-  // list
   envCmd
     .command('list')
     .description('List all deployment environment variables')
@@ -52,7 +51,6 @@ export function registerDeploymentsEnvVarsCommand(deploymentsCmd: Command): void
       }
     });
 
-  // create / update
   envCmd
     .command('set <key> <value>')
     .description('Create or update a deployment environment variable')
@@ -80,7 +78,6 @@ export function registerDeploymentsEnvVarsCommand(deploymentsCmd: Command): void
       }
     });
 
-  // delete
   envCmd
     .command('delete <id>')
     .description('Delete a deployment environment variable by ID')

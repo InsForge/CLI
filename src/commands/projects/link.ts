@@ -304,7 +304,6 @@ export function registerProjectLinkCommand(program: Command): void {
 
             trackCommand('link', 'oss-org', { direct: true });
 
-            // Install agent skills
             await installSkills(json, opts.auth as string | undefined);
             await reportCliUsage('cli.link_direct', true, 6, projectConfig);
 
@@ -328,7 +327,6 @@ export function registerProjectLinkCommand(program: Command): void {
         let orgId = opts.orgId;
         let projectId = opts.projectId;
 
-        // Show organization selection (auto-select if only one)
         if (!orgId && !projectId) {
           const orgs = await listOrganizations(apiUrl);
           if (orgs.length === 0) {
@@ -353,12 +351,10 @@ export function registerProjectLinkCommand(program: Command): void {
           }
         }
 
-        // Save default org
         const config = getGlobalConfig();
         config.default_org_id = orgId;
         saveGlobalConfig(config);
 
-        // Select project if not specified
         if (!projectId) {
           const projects = await listProjects(orgId, apiUrl);
           if (projects.length === 0) {
@@ -378,7 +374,6 @@ export function registerProjectLinkCommand(program: Command): void {
           projectId = selected;
         }
 
-        // Fetch project details and API key
         let project;
         let apiKey;
         try {
@@ -430,7 +425,6 @@ export function registerProjectLinkCommand(program: Command): void {
         // Validation already ran at the top of the action.
         const template = opts.template as string | undefined;
         if (template) {
-          // Ask for directory name
           let dirName = project.name;
           if (!json) {
             const inputDir = await prompts.text({
@@ -459,7 +453,6 @@ export function registerProjectLinkCommand(program: Command): void {
           await fs.mkdir(templateDir);
           process.chdir(templateDir);
 
-          // Save project config in the new directory
           saveProject(projectConfig);
 
           captureEvent(orgId ?? project.organization_id, 'template_selected', { template, source: 'link' });
@@ -488,7 +481,6 @@ export function registerProjectLinkCommand(program: Command): void {
             }
           }
 
-          // Install agent skills inside the project directory
           await installSkills(json, opts.auth as string | undefined);
           await reportCliUsage('cli.link', true, 6, projectConfig);
 
@@ -530,7 +522,6 @@ export function registerProjectLinkCommand(program: Command): void {
             }
           }
 
-          // No template — install agent skills in the current directory
           await installSkills(json, opts.auth as string | undefined);
           await reportCliUsage('cli.link', true, 6, projectConfig);
 

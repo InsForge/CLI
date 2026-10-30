@@ -106,14 +106,14 @@ export async function refreshAccessToken(apiUrl?: string, signal?: AbortSignal):
     const updated: StoredCredentials = {
       ...creds,
       access_token: data.access_token,
-      // Update refresh token if rotated
+      // Refresh-token rotation is optional: the provider may omit refresh_token
+      // when it did not rotate, so keep the existing one in that case.
       refresh_token: data.refresh_token ?? creds.refresh_token,
     };
     saveCredentials(updated);
     return data.access_token;
   } catch (err) {
     if (signal?.aborted) throw err;
-    // Token refresh failed — try re-authenticating interactively
     if (process.stdout.isTTY) {
       clack.log.warn('Session expired. Please log in again.');
       const newCreds = await performOAuthLogin(apiUrl, signal);

@@ -1,6 +1,6 @@
 import { shutdownAnalytics, trackDomains } from '../../lib/analytics.js';
+import { getErrorTelemetry } from '../../lib/command-telemetry.js';
 import { getProjectConfig } from '../../lib/config.js';
-import { CLIError } from '../../lib/errors.js';
 
 export type DomainCommandTelemetry = Record<string, string | number | boolean | undefined>;
 
@@ -54,19 +54,6 @@ function sanitizeDomainTelemetry(properties: DomainCommandTelemetry): DomainComm
     }
   }
   return sanitized;
-}
-
-function getErrorTelemetry(error: unknown): DomainCommandTelemetry {
-  return {
-    error_name: error instanceof Error ? error.name : typeof error,
-    ...(error instanceof CLIError
-      ? {
-          error_code: error.code,
-          exit_code: error.exitCode,
-          status_code: error.statusCode,
-        }
-      : {}),
-  };
 }
 
 export async function trackDomainUsage(

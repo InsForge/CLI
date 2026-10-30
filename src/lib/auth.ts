@@ -261,11 +261,9 @@ export async function performOAuthLogin(apiUrl?: string, signal?: AbortSignal): 
   const config = getGlobalConfig();
   const clientId = config.oauth_client_id ?? DEFAULT_CLIENT_ID;
 
-  // 1. Generate PKCE and state
   const pkce = generatePKCE();
   const state = generateState();
 
-  // 2. Start local callback server
   const { port, result, close } = await startCallbackServer();
   if (signal?.aborted) {
     close();
@@ -273,7 +271,6 @@ export async function performOAuthLogin(apiUrl?: string, signal?: AbortSignal): 
   }
   const redirectUri = `http://127.0.0.1:${port}/callback`;
 
-  // 3. Build authorization URL
   const authUrl = buildAuthorizeUrl({
     platformUrl,
     clientId,
@@ -292,7 +289,7 @@ export async function performOAuthLogin(apiUrl?: string, signal?: AbortSignal): 
     process.stderr.write(`\nTo sign in, open this URL in your browser:\n\n  ${pc.cyan(pc.underline(authUrl))}\n\n`);
   }
 
-  // 4. Open browser (best effort — often works even from agent shells since we're on the same machine)
+  // Best effort — often works even from agent shells since we're on the same machine.
   try {
     const open = (await import('open')).default;
     await waitForAbort(open(authUrl), signal);
@@ -304,7 +301,7 @@ export async function performOAuthLogin(apiUrl?: string, signal?: AbortSignal): 
     if (isInteractive) clack.log.warn('Could not open browser. Please visit the URL above.');
   }
 
-  // 5. Wait for callback — use clack spinner only in TTY (non-TTY spinner renders garbage)
+  // Use the clack spinner only in a TTY: the non-TTY spinner renders garbage.
   const s = isInteractive ? clack.spinner() : null;
   s?.start('Waiting for authentication...');
   if (!isInteractive) process.stderr.write('Waiting for authentication...\n');
@@ -313,13 +310,11 @@ export async function performOAuthLogin(apiUrl?: string, signal?: AbortSignal): 
     const callbackResult = await waitForAbort(result, signal);
     close();
 
-    // Verify state
     if (callbackResult.state !== state) {
       s?.stop('Authentication failed');
       throw new Error('State mismatch. Possible CSRF attack.');
     }
 
-    // 6. Exchange code for tokens
     s?.message('Exchanging authorization code...');
     const tokens = await exchangeCodeForTokens({
       platformUrl,
@@ -330,7 +325,6 @@ export async function performOAuthLogin(apiUrl?: string, signal?: AbortSignal): 
       signal,
     });
 
-    // 7. Save credentials and fetch profile
     const creds: StoredCredentials = {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
@@ -361,14 +355,10 @@ export async function performOAuthLogin(apiUrl?: string, signal?: AbortSignal): 
   }
 }
 
-// ============================================================================
-// Device Authorization Grant (RFC 8628) — `insforge login --device`
-//
-// For environments where the browser can never reach a loopback listener in
-// this process (agent sandboxes like the ChatGPT app, SSH, containers, CI).
-// No callback and nothing to paste: the user approves a short code on the
-// dashboard while this process polls the token endpoint over outbound HTTPS.
-// ============================================================================
+// Device Authorization Grant (RFC 8628), `insforge login --device`: for
+// environments where the browser can never reach a loopback listener in this
+// process (agent sandboxes, SSH, containers, CI). The user approves a short
+// code on the dashboard while this process polls the token endpoint.
 
 export interface DeviceAuthorization {
   device_code: string;

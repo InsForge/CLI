@@ -26,7 +26,6 @@ export function registerMetadataCommand(program: Command): void {
           return;
         }
 
-        // Auth
         console.log('\n  Auth');
         console.log(`    OAuth Providers:   ${data.auth.oAuthProviders.length ? data.auth.oAuthProviders.join(', ') : '(none)'}`);
         console.log(`    Email Verification: ${data.auth.requireEmailVerification ? 'Yes' : 'No'}`);
@@ -35,7 +34,6 @@ export function registerMetadataCommand(program: Command): void {
         console.log(`    Verify Email Method: ${data.auth.verifyEmailMethod}`);
         console.log(`    Reset Password Method: ${data.auth.resetPasswordMethod}`);
 
-        // Database
         console.log('\n  Database');
         console.log(`    Size: ${formatSize(data.database.totalSizeInGB)}`);
         if (data.database.tables.length) {
@@ -47,7 +45,6 @@ export function registerMetadataCommand(program: Command): void {
           console.log('    No tables.');
         }
 
-        // Storage
         console.log('\n  Storage');
         console.log(`    Size: ${formatSize(data.storage.totalSizeInGB)}`);
         if (data.storage.buckets.length) {
@@ -59,7 +56,6 @@ export function registerMetadataCommand(program: Command): void {
           console.log('    No buckets.');
         }
 
-        // Functions
         console.log('\n  Functions');
         if (data.functions.length) {
           outputTable(
@@ -70,7 +66,6 @@ export function registerMetadataCommand(program: Command): void {
           console.log('    No functions deployed.');
         }
 
-        // AI
         if (data.aiIntegration?.models?.length) {
           console.log('\n  AI Models');
           outputTable(
@@ -83,7 +78,6 @@ export function registerMetadataCommand(program: Command): void {
           );
         }
 
-        // Realtime
         if (data.realtime?.channels && Array.isArray(data.realtime.channels) && data.realtime.channels.length) {
           console.log(`\n  Realtime: ${data.realtime.channels.length} channel(s)`);
           outputTable(
@@ -92,7 +86,6 @@ export function registerMetadataCommand(program: Command): void {
           );
         }
 
-        // Version
         if (data.version) {
           console.log(`\n  Version: ${data.version}`);
         }
