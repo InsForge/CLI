@@ -30,7 +30,7 @@ import {
   flyctlBuildAndPush,
 } from './flyctl.js';
 
-// ─── spawnSync helpers (mirrors docker.test.ts) ───────────────────────────────
+// ─── spawnSync helpers ────────────────────────────────────────────────────────
 
 function ok(stdout = ''): SpawnSyncReturns<string> {
   return {

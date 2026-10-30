@@ -55,8 +55,9 @@ truth for product telemetry — do not add alternative analytics systems.
   `tsup.config.ts` via `define`. Local builds without the env var become a
   no-op automatically — the CLI itself stays functional.
 
-**Do not** use `reportCliUsage` for new commands — that legacy OSS telemetry
-path has been removed from `create`, `link`, and `docs`. PostHog is the path
+**Do not** use `reportCliUsage` for new commands — that is the legacy OSS
+telemetry path (`POST /api/usage/mcp` in `src/lib/skills.ts`), still called by
+existing commands including `create`, `link`, and `docs`. PostHog is the path
 going forward.
 
 ## 3. Keep InsForge agent skills in sync

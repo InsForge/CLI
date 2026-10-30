@@ -34,21 +34,18 @@ export function registerContextCommand(program: Command): void {
 
         console.log('\n  InsForge CLI Context\n');
 
-        // Auth status
         if (creds) {
           console.log(`  User:          ${creds.user.name} <${creds.user.email}>`);
         } else {
           console.log('  User:          (not logged in)');
         }
 
-        // Org (only relevant when logged in)
         if (creds && globalConfig.default_org_id) {
           console.log(`  Default Org:   ${globalConfig.default_org_id}`);
         } else if (creds) {
           console.log('  Default Org:   (none)');
         }
 
-        // Project
         if (projectConfig) {
           console.log('');
           console.log(`  Project:       ${projectConfig.project_name} (${projectConfig.project_id})`);

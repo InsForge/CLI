@@ -103,7 +103,6 @@ interface RunSetupOpts {
 //      to the user's own terminal — agent shells and CI runners can't drive
 //      it, and detecting "are we really attended?" is too fragile.
 async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
-  // 1. Linked project
   const proj = getProjectConfig();
   if (!proj || !proj.project_id) {
     throw new ProjectNotLinkedError();
@@ -143,24 +142,18 @@ async function runSetup(opts: RunSetupOpts): Promise<SetupResult> {
     connection = existing;
     dashboardConnection = 'already-connected';
   } else {
-    // 2. Login token
     const token = getAccessToken();
     if (!token) {
       throw new AuthError('Not logged in. Run `insforge login` first.');
     }
 
-    // 3. Ensure dashboard connection exists
     const cloudResult = await ensureDashboardConnection(proj.project_id, token, opts);
     dashboardConnection = cloudResult.state;
     connection = cloudResult.connection;
   }
 
-  // 4. Print the wizard command and exit. The wizard is interactive (browser
-  // OAuth + framework picker) and reliably detecting "do we have a real,
-  // attended TTY?" is fragile — agent shells allocate a PTY but never type
-  // into it; CI runners vary. Rather than try to autodetect, we always defer
-  // the wizard step to the user; they paste-and-run one command in their own
-  // terminal. CLI's job ends here.
+  // Print the wizard command and exit; never run the wizard here (see the
+  // flow note above runSetup).
   if (!opts.json) {
     const details = [
       connection.projectName ? `  Project:    ${connection.projectName}` : null,

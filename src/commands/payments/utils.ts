@@ -5,6 +5,7 @@ import type {
 import { getProjectConfig } from "../../lib/config.js";
 import { CLIError } from "../../lib/errors.js";
 import { shutdownAnalytics, trackPayments } from "../../lib/analytics.js";
+import { getErrorTelemetry } from "../../lib/command-telemetry.js";
 
 export type PaymentCommandTelemetry = Record<
   string,
@@ -44,19 +45,6 @@ function sanitizePaymentTelemetry(
   }
 
   return sanitized;
-}
-
-function getErrorTelemetry(error: unknown): PaymentCommandTelemetry {
-  return {
-    error_name: error instanceof Error ? error.name : typeof error,
-    ...(error instanceof CLIError
-      ? {
-          error_code: error.code,
-          exit_code: error.exitCode,
-          status_code: error.statusCode,
-        }
-      : {}),
-  };
 }
 
 export function parseEnvironment(value: string): PaymentEnvironment {

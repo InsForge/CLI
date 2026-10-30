@@ -65,15 +65,14 @@ export function upsertEnvFile(
     result.added.push(key);
   }
 
+  // Only write when there is something to add, so a missing file is never
+  // created empty.
   if (additions.length > 0) {
-    // Ensure the existing content ends with a newline before appending.
     if (content.length > 0 && !content.endsWith('\n')) {
       content += '\n';
     }
     content += additions.join('\n') + '\n';
     writeFileSync(path, content);
-  } else if (!exists) {
-    // Nothing to add and file didn't exist — don't create an empty file.
   }
 
   return result;

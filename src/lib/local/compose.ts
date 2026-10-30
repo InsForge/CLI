@@ -193,7 +193,6 @@ export function removeProjectVolumes(projectName: string): VolumeSweep {
   if (r.status === 0) return { removed: left, remaining: [] };
   // Partial success is normal here: `docker volume rm a b c` removes what it
   // can and fails on the rest, so re-reading is the only way to know which.
-  // Reporting "removed nothing" would have been wrong in both directions.
   const remaining = projectVolumes(projectName);
   return {
     removed: left.filter((v) => !remaining.includes(v)),
