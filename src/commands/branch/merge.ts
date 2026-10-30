@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { writeFileSync } from 'node:fs';
-import * as clack from '@clack/prompts';
+import * as prompts from '../../lib/prompts.js';
 import {
   listBranchesApi,
   mergeBranchDryRunApi,
@@ -36,6 +36,18 @@ export function registerBranchMergeCommand(branch: Command): void {
         const branches = await listBranchesApi(parentId, apiUrl);
         const target = branches.find(b => b.name === name);
         if (!target) throw new CLIError(`Branch '${name}' not found.`);
+
+        // A non-interactive shell (CI, agent sandbox) can never answer the apply
+        // confirmation — and some of them have no usable TTY at all — so say what
+        // flag is needed up front instead of printing the whole merge plan first.
+        if (!opts.dryRun && !json && !yes && !prompts.isInteractive) {
+          throw new CLIError(
+            'Applying a merge requires confirmation, but stdin is not interactive. ' +
+              'Re-run with -y to apply, or with --dry-run to preview the SQL.',
+            1,
+            'MERGE_CONFIRMATION_REQUIRED',
+          );
+        }
 
         // Always compute diff first (cheap, gives the user a preview).
         const diff = await mergeBranchDryRunApi(target.id, apiUrl);
@@ -89,10 +101,10 @@ export function registerBranchMergeCommand(branch: Command): void {
         // Confirm before executing (unless --yes or --json).
         if (!yes && !json) {
           const parentLabel = project.branched_from?.project_name ?? project.project_name;
-          const confirmed = await clack.confirm({
+          const confirmed = await prompts.confirm({
             message: `Apply this merge to parent project '${parentLabel}'?`,
           });
-          if (clack.isCancel(confirmed) || !confirmed) {
+          if (prompts.isCancel(confirmed) || !confirmed) {
             outputInfo('Merge cancelled.');
             return;
           }
