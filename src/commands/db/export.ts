@@ -6,6 +6,17 @@ import { handleError, getRootOpts } from '../../lib/errors.js';
 import { outputJson, outputSuccess } from '../../lib/output.js';
 import { trackCommandUsage } from '../../lib/command-telemetry.js';
 
+/**
+ * The backend may wrap the export in a JSON envelope keyed `content` or
+ * `data` — unwrap either so `-o file.sql` writes raw SQL/JSON rather than
+ * the envelope itself. Returns null when the payload isn't a wrapper.
+ */
+export function extractExportContent(parsed: Record<string, unknown>): string | null {
+  if (typeof parsed.content === 'string') return parsed.content;
+  if (typeof parsed.data === 'string') return parsed.data;
+  return null;
+}
+
 export function registerDbExportCommand(dbCmd: Command): void {
   dbCmd
     .command('export')
@@ -43,13 +54,14 @@ export function registerDbExportCommand(dbCmd: Command): void {
 
         const raw = await res.text();
 
-        // API may return JSON wrapper { format, content, tables } or raw SQL/JSON text
+        // API may return JSON wrapper { format, content|data, tables } or raw SQL/JSON text
         let content: string;
         let meta: { format?: string; tables?: string[] } | null = null;
         try {
           const parsed = JSON.parse(raw) as Record<string, unknown>;
-          if (typeof parsed.content === 'string') {
-            content = parsed.content;
+          const wrapped = extractExportContent(parsed);
+          if (wrapped !== null) {
+            content = wrapped;
             meta = { format: parsed.format as string, tables: parsed.tables as string[] };
           } else {
             content = raw;
@@ -59,7 +71,7 @@ export function registerDbExportCommand(dbCmd: Command): void {
         }
 
         if (json) {
-          outputJson(meta ?? { content });
+          outputJson(meta ? { ...meta, content } : { content });
           await trackCommandUsage('db', 'export', true);
           return;
         }
